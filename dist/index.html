@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#C17B82" />
+    <meta name="description" content="Agenda, clientes, financeiro e relatórios para lash designers." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Lash Studio" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <title>Lash Studio — Gestão Profissional</title>
+    <script type="module" crossorigin src="/assets/index-4mj426FW.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BV7x_DIO.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (function () {
+        var installPrompt = null;
+        window.__lashPwa = {
+          getInstallPrompt: function () { return installPrompt; },
+          clearInstallPrompt: function () { installPrompt = null; },
+        };
+        window.addEventListener('beforeinstallprompt', function (e) {
+          e.preventDefault();
+          installPrompt = e;
+          window.dispatchEvent(new CustomEvent('lash-pwa-install-ready'));
+        });
+        window.__lashPwaApplyUpdate = function () {
+          if (!('serviceWorker' in navigator)) return Promise.resolve();
+          return navigator.serviceWorker.getRegistration().then(function (reg) {
+            if (reg && reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+          });
+        };
+        var refreshing = false;
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (refreshing) return;
+            refreshing = true;
+            window.location.reload();
+          });
+        }
+        window.addEventListener('load', function () {
+          if (!('serviceWorker' in navigator)) return;
+          navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
+            var triggerUpdateCheck = function () {
+              reg.update().catch(function () {});
+            };
+            triggerUpdateCheck();
+            window.addEventListener('focus', triggerUpdateCheck);
+            document.addEventListener('visibilitychange', function () {
+              if (document.visibilityState === 'visible') triggerUpdateCheck();
+            });
+            setInterval(triggerUpdateCheck, 5 * 60 * 1000);
+
+            if (reg.waiting && navigator.serviceWorker.controller) {
+              window.dispatchEvent(new CustomEvent('lash-pwa-update-ready'));
+            }
+            reg.addEventListener('updatefound', function () {
+              var nw = reg.installing;
+              if (!nw) return;
+              nw.addEventListener('statechange', function () {
+                if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.dispatchEvent(new CustomEvent('lash-pwa-update-ready'));
+                }
+              });
+            });
+          }).catch(function () {});
+        });
+      })();
+    </script>
+  </body>
+</html>
