@@ -7,7 +7,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
   const [form, setForm] = useState({
     clientId: '', serviceId: '',
     date: new Date().toISOString().slice(0, 10),
-    value: '', notes: '', durationMinutes: 60,
+    value: '', notes: '',
     ...initial,
     blocked: blocked != null ? blocked : !!initial?.blocked,
     durationMinutes: initial?.durationMinutes != null && Number(initial.durationMinutes) > 0
