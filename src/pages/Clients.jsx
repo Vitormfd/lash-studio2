@@ -5,6 +5,11 @@ import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
 
 const normPhone = (v) => (v || '').toString().replace(/\D/g, '')
+const normalizeImportedPhone = (v) => {
+  const digits = normPhone(v)
+  if (digits.startsWith('55') && digits.length >= 12) return digits.slice(2)
+  return digits
+}
 const pickFirst = (v) => (Array.isArray(v) ? v[0] : v)
 const decodeVcardValue = (v) => {
   if (v == null) return ''
@@ -82,6 +87,27 @@ const pickTelValue = (tel) => {
   if (typeof t === 'object') return t.number || t.tel || t.value || ''
   return ''
 }
+const asMoney = (v) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`
+const validRevenueAppts = (appointments, clientId) => appointments.filter(
+  (a) => a.clientId === clientId && !a.blocked && a.status !== 'cancelled'
+)
+const getClientSpendMetrics = (client, appointments) => {
+  const now = new Date()
+  const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(now.getMonth() - 6)
+  const oneYearAgo = new Date(now); oneYearAgo.setFullYear(now.getFullYear() - 1)
+  const createdAt = client.createdAt ? new Date(client.createdAt) : null
+
+  const appts = validRevenueAppts(appointments, client.id)
+  const sumBy = (predicate) => appts
+    .filter((a) => predicate(new Date(`${a.date}T12:00`)))
+    .reduce((sum, a) => sum + Number(a.value || 0), 0)
+
+  return {
+    sinceCreated: sumBy((d) => !createdAt || Number.isNaN(createdAt.getTime()) || d >= createdAt),
+    last6Months: sumBy((d) => d >= sixMonthsAgo),
+    last12Months: sumBy((d) => d >= oneYearAgo),
+  }
+}
 
 const Clients = ({ clients, setClients, appointments, addToast }) => {
   const [search, setSearch] = useState('')
@@ -136,7 +162,7 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
       const toAdd = []
       for (const p of (picked || [])) {
         const name = (pickFirst(p.name) || '').toString().trim()
-        const phone = pickTelValue(p.tel).toString().trim()
+        const phone = normalizeImportedPhone(pickTelValue(p.tel))
         const phoneNorm = normPhone(phone)
         const key = `${name.toLowerCase()}|${phoneNorm}`
         if (!name && !phoneNorm) continue
@@ -190,7 +216,7 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
 
     for (const c of selected) {
       const name = (c.name || '').toString().trim()
-      const phone = (c.phone || '').toString().trim()
+      const phone = normalizeImportedPhone(c.phone)
       const phoneNorm = normPhone(phone)
       const key = `${name.toLowerCase()}|${phoneNorm}`
       if (!name && !phoneNorm) continue
@@ -233,6 +259,7 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
         {filtered.map((c) => {
           const count = getApptCount(c.id)
+          const spend = getClientSpendMetrics(c, appointments)
           const initials = c.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
           return (
             <div key={c.id} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
@@ -250,6 +277,17 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
                   {c.notes}
                 </p>
               )}
+              <div style={{ background: 'var(--off-white)', borderRadius: 10, border: '1px solid var(--rose-light)', padding: '8px 10px', marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
+                  <span>Desde cadastro</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.sinceCreated)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
+                  <span>Últimos 6 meses</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.last6Months)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-light)' }}>
+                  <span>Último 1 ano</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.last12Months)}</strong>
+                </div>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{count} atendimentos</span>
                 <div style={{ display: 'flex', gap: 6 }}>

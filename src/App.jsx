@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { initSupabase, DB, uid } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
+import { applyTheme, getSavedThemeId } from './lib/theme'
 import { useToast } from './hooks/useToast'
 
 import Sidebar from './components/Sidebar'
@@ -75,6 +76,10 @@ const AppMain = ({ session, onLogout }) => {
       setClients(c); setServices(s); setAppointments(a); setConfigState(cfg)
       setLoading(false)
     }).catch(() => setLoading(false))
+  }, [userId])
+
+  useEffect(() => {
+    applyTheme(getSavedThemeId(userId))
   }, [userId])
 
   // ── CLIENTS ──

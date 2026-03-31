@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { Btn, Field, Inp } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
+import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 
 const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   const [cost, setCost] = useState(config.avgCost)
+  const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
   const [pwaStandalone, setPwaStandalone] = useState(false)
@@ -23,6 +25,10 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
     window.addEventListener('lash-pwa-install-ready', checkPrompt)
     return () => window.removeEventListener('lash-pwa-install-ready', checkPrompt)
   }, [])
+
+  useEffect(() => {
+    setThemeId(getSavedThemeId(session?.userId))
+  }, [session?.userId])
 
   const installPwa = async () => {
     const p = window.__lashPwa?.getInstallPrompt?.()
@@ -43,6 +49,12 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       setPwForm({ current: '', next: '', confirm: '' }); setPwError('')
       addToast('Senha alterada!', 'success')
     } catch (e) { setPwError(e.message) }
+  }
+
+  const applySelectedTheme = (id) => {
+    const next = saveAndApplyTheme(session?.userId, id)
+    setThemeId(next)
+    addToast('Tema aplicado!', 'success')
   }
 
   return (
@@ -68,6 +80,50 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
         <Btn onClick={() => { setConfig({ ...config, avgCost: Number(cost) }); addToast('Configurações salvas!', 'success') }}>
           <Icon name="check" size={14} color="#fff" /> Salvar configurações
         </Btn>
+      </div>
+
+      {/* Theme settings */}
+      <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Tema do app</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 12 }}>
+          Escolha a paleta de cores que deseja usar no app.
+        </p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {THEME_LIST.map((theme) => {
+            const active = themeId === theme.id
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => applySelectedTheme(theme.id)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  background: active ? 'var(--rose-light)' : '#fff',
+                  border: `1px solid ${active ? 'var(--rose-deep)' : 'var(--rose-light)'}`,
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  color: 'var(--text)',
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: active ? 600 : 500 }}>{theme.label}</span>
+                <span style={{ display: 'flex', gap: 6 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: theme.vars['--rose-deep'] }} />
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: theme.vars['--rose'] }} />
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: theme.vars['--nude'] }} />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <Btn variant="ghost" sm onClick={() => applySelectedTheme('rose')}>
+            Voltar ao tema padrão
+          </Btn>
+        </div>
       </div>
 
       {/* Account */}
