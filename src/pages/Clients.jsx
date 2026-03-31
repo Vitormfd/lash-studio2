@@ -15,9 +15,30 @@ const decodeVcardValue = (v) => {
     .replace(/\\\\/g, '\\')
     .trim()
 }
-const unfoldVcard = (text) => text.replace(/\r?\n[ \t]/g, '')
+const unfoldVcard = (text) => text.replace(/=\r?\n/g, '').replace(/\r?\n[ \t]/g, '')
+const decodeQuotedPrintable = (v) => {
+  const src = (v || '').replace(/=\r?\n/g, '')
+  const bytes = []
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i]
+    if (ch === '=' && i + 2 < src.length) {
+      const hex = src.slice(i + 1, i + 3)
+      if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+        bytes.push(parseInt(hex, 16))
+        i += 2
+        continue
+      }
+    }
+    bytes.push(ch.charCodeAt(0))
+  }
+  try {
+    return new TextDecoder('utf-8').decode(new Uint8Array(bytes))
+  } catch {
+    return src
+  }
+}
 const parseVcf = (rawText) => {
-  const text = unfoldVcard(rawText || '')
+  const text = unfoldVcard((rawText || '').replace(/\u0000/g, ''))
   const blocks = text.split(/BEGIN:VCARD/i).slice(1)
   const out = []
 
@@ -32,10 +53,13 @@ const parseVcf = (rawText) => {
       if (idx < 0) continue
       const left = line.slice(0, idx)
       const right = line.slice(idx + 1)
-      const rawKey = left.split(';')[0].toUpperCase()
+      const leftParts = left.split(';')
+      const rawKey = leftParts[0].toUpperCase()
       // iOS costuma exportar como item1.TEL / item2.TEL etc.
       const key = rawKey.includes('.') ? rawKey.split('.').pop() : rawKey
-      const value = decodeVcardValue(right)
+      const hasQuotedPrintable = left.toUpperCase().includes('ENCODING=QUOTED-PRINTABLE')
+      let value = hasQuotedPrintable ? decodeQuotedPrintable(right) : decodeVcardValue(right)
+      if (key === 'TEL' && /^tel:/i.test(value)) value = value.replace(/^tel:/i, '')
       if (key === 'FN' && value) name = value
       if (key === 'N' && !name && value) {
         const [last, first] = value.split(';')
@@ -100,17 +124,20 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
     if (!canPickContacts) { addToast('Seu navegador não suporta importar contatos.', 'warning'); return }
     try {
       const picked = await navigator.contacts.select(['name', 'tel'], { multiple: true })
-      const existingPhones = new Set(clients.map((c) => normPhone(c.phone)).filter(Boolean))
+      const existingKeys = new Set(
+        clients.map((c) => `${(c.name || '').trim().toLowerCase()}|${normPhone(c.phone)}`).filter((x) => x !== '|')
+      )
 
       const toAdd = []
       for (const p of (picked || [])) {
         const name = (pickFirst(p.name) || '').toString().trim()
         const phone = pickTelValue(p.tel).toString().trim()
         const phoneNorm = normPhone(phone)
+        const key = `${name.toLowerCase()}|${phoneNorm}`
         if (!name && !phoneNorm) continue
-        if (phoneNorm && existingPhones.has(phoneNorm)) continue
+        if (existingKeys.has(key)) continue
 
-        if (phoneNorm) existingPhones.add(phoneNorm)
+        existingKeys.add(key)
         toAdd.push({ id: uid(), name: name || 'Sem nome', phone, notes: '', createdAt: new Date().toISOString() })
       }
 
@@ -150,7 +177,9 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
   }
 
   const confirmImportSelected = () => {
-    const existingPhones = new Set(clients.map((c) => normPhone(c.phone)).filter(Boolean))
+    const existingKeys = new Set(
+      clients.map((c) => `${(c.name || '').trim().toLowerCase()}|${normPhone(c.phone)}`).filter((x) => x !== '|')
+    )
     const selected = importList.filter((c) => importSelected.has(c.id))
     const toAdd = []
 
@@ -158,9 +187,10 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
       const name = (c.name || '').toString().trim()
       const phone = (c.phone || '').toString().trim()
       const phoneNorm = normPhone(phone)
+      const key = `${name.toLowerCase()}|${phoneNorm}`
       if (!name && !phoneNorm) continue
-      if (phoneNorm && existingPhones.has(phoneNorm)) continue
-      if (phoneNorm) existingPhones.add(phoneNorm)
+      if (existingKeys.has(key)) continue
+      existingKeys.add(key)
       toAdd.push({ id: uid(), name: name || 'Sem nome', phone, notes: '', createdAt: new Date().toISOString() })
     }
 
