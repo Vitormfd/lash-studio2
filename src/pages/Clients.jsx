@@ -32,7 +32,9 @@ const parseVcf = (rawText) => {
       if (idx < 0) continue
       const left = line.slice(0, idx)
       const right = line.slice(idx + 1)
-      const key = left.split(';')[0].toUpperCase()
+      const rawKey = left.split(';')[0].toUpperCase()
+      // iOS costuma exportar como item1.TEL / item2.TEL etc.
+      const key = rawKey.includes('.') ? rawKey.split('.').pop() : rawKey
       const value = decodeVcardValue(right)
       if (key === 'FN' && value) name = value
       if (key === 'N' && !name && value) {
