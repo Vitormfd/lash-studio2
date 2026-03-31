@@ -92,6 +92,11 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
   const [importList, setImportList] = useState([])
   const [importSearch, setImportSearch] = useState('')
   const [importSelected, setImportSelected] = useState(() => new Set())
+  const addClientsSequentially = (items) => {
+    for (const item of items) {
+      setClients((prev) => [...prev, item])
+    }
+  }
 
   const filtered = clients.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -142,7 +147,7 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
       }
 
       if (toAdd.length === 0) { addToast('Nenhum contato novo para importar.', 'info'); return }
-      setClients([...clients, ...toAdd])
+      addClientsSequentially(toAdd)
       addToast(`${toAdd.length} contato(s) importado(s)!`, 'success')
     } catch (e) {
       const msg = (e && typeof e === 'object' && 'name' in e) ? e.name : ''
@@ -195,7 +200,7 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
     }
 
     if (toAdd.length === 0) { addToast('Nenhum contato novo para importar.', 'info'); setImportModal(false); return }
-    setClients([...clients, ...toAdd])
+    addClientsSequentially(toAdd)
     addToast(`${toAdd.length} contato(s) importado(s)!`, 'success')
     setImportModal(false)
   }
