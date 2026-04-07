@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard'
 import Agenda from './pages/Agenda'
 import Clients from './pages/Clients'
 import Services from './pages/Services'
+import Inventory from './pages/Inventory'
 import Finance from './pages/Finance'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
@@ -29,6 +30,7 @@ const NAV_TITLES = {
   agenda: 'Agenda',
   clients: 'Clientes',
   services: 'Serviços',
+  inventory: 'Estoque',
   finance: 'Financeiro',
   reports: 'Relatórios',
   settings: 'Configurações',
@@ -46,6 +48,8 @@ const AppMain = ({ session, onLogout }) => {
   const [clients, setClients] = useState([])
   const [services, setServices] = useState([])
   const [appointments, setAppointments] = useState([])
+  const [inventoryItems, setInventoryItems] = useState([])
+  const [inventoryMovements, setInventoryMovements] = useState([])
   const [config, setConfigState] = useState({ avgCost: 12.35 })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
@@ -71,9 +75,11 @@ const AppMain = ({ session, onLogout }) => {
       DB.getClients(userId),
       DB.getServices(userId),
       DB.getAppointments(userId),
+      DB.getInventoryItems(userId),
+      DB.getInventoryMovements(userId),
       DB.getConfig(userId),
-    ]).then(([c, s, a, cfg]) => {
-      setClients(c); setServices(s); setAppointments(a); setConfigState(cfg)
+    ]).then(([c, s, a, invItems, invMovs, cfg]) => {
+      setClients(c); setServices(s); setAppointments(a); setInventoryItems(invItems); setInventoryMovements(invMovs); setConfigState(cfg)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [userId])
@@ -145,6 +151,25 @@ const AppMain = ({ session, onLogout }) => {
     setConfigState(cfg)
   }
 
+  // ── INVENTORY ──
+  const handleSaveInventoryItem = async (item) => {
+    const saved = await DB.saveInventoryItem(userId, item)
+    setInventoryItems((list) => {
+      const exists = list.some((x) => x.id === saved.id)
+      return exists ? list.map((x) => (x.id === saved.id ? saved : x)) : [...list, saved]
+    })
+  }
+
+  const handleDeleteInventoryItem = async (id) => {
+    await DB.deleteInventoryItem(userId, id)
+    setInventoryItems((list) => list.filter((x) => x.id !== id))
+  }
+
+  const handleSaveInventoryMovement = async (movement) => {
+    const saved = await DB.saveInventoryMovement(userId, movement)
+    setInventoryMovements((list) => [saved, ...list])
+  }
+
   // ── COMPAT SETTERS (para páginas que usam setClients/setServices como array-setter) ──
   const setClientsCompat = (valOrFn) => {
     const next = typeof valOrFn === 'function' ? valOrFn(clients) : valOrFn
@@ -188,6 +213,16 @@ const AppMain = ({ session, onLogout }) => {
           {page === 'agenda' && <Agenda appointments={appointments} clients={clients} services={services} onNew={saveAppt} onEdit={setEditAppt} onDelete={deleteAppt} addToast={addToast} />}
           {page === 'clients' && <Clients clients={clients} setClients={setClientsCompat} appointments={appointments} addToast={addToast} />}
           {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
+          {page === 'inventory' && (
+            <Inventory
+              items={inventoryItems}
+              movements={inventoryMovements}
+              onSaveItem={handleSaveInventoryItem}
+              onDeleteItem={handleDeleteInventoryItem}
+              onSaveMovement={handleSaveInventoryMovement}
+              addToast={addToast}
+            />
+          )}
           {page === 'finance' && <Finance appointments={appointments} services={services} clients={clients} config={config} setConfig={saveConfig} />}
           {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} />}
           {page === 'settings' && <Settings config={config} setConfig={saveConfig} addToast={addToast} session={session} onLogout={onLogout} />}
