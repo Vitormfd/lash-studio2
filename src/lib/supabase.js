@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-// ─── LOCAL STORAGE HELPERS ───────────────────────────────────────────────────
+// ─── LOCAL STORAGE HELPERS 1───────────────────────────────────────────────────
 export const local = {
   get: (k) => { try { return JSON.parse(localStorage.getItem(k)) || null } catch { return null } },
   set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
