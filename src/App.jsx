@@ -272,11 +272,27 @@ const AppMain = ({ session, onLogout }) => {
     setServices(next)
   }
 
-  const todayNotifs = appointments.filter((a) => {
-    if (a.blocked || a.status === 'cancelled') return false
-    const diff = (new Date(a.date + 'T' + a.time) - new Date()) / 60000
-    return diff > 0 && diff < 30
-  }).length
+  const countSoonAppointments = () =>
+    appointments.filter((a) => {
+      if (a.blocked || a.status === 'cancelled') return false
+      const diff = (new Date(a.date + 'T' + a.time) - new Date()) / 60000
+      return diff > 0 && diff < 30
+    }).length
+
+  const todayNotifs = countSoonAppointments()
+
+  const handleBellClick = () => {
+    const n = countSoonAppointments()
+    setPage('agenda')
+    if (n > 0) {
+      addToast(
+        `${n === 1 ? '1 horário' : `${n} horários`} começando nos próximos 30 min — confira na agenda.`,
+        'info',
+      )
+    } else {
+      addToast('Nenhum atendimento nos próximos 30 min. Toque em Configurações para ativar lembretes no celular.', 'info')
+    }
+  }
 
   if (loading) return <DashboardSkeleton />
 
@@ -305,7 +321,14 @@ const AppMain = ({ session, onLogout }) => {
       <Sidebar active={page} setActive={setPage} open={sidebarOpen} setOpen={setSidebarOpen} session={session} onLogout={onLogout} />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, overflow: 'hidden' }}>
-        <Topbar title={NAV_TITLES[page]} setOpen={setSidebarOpen} notifs={todayNotifs} onNewAppt={() => { setNewApptInitial(null); setNewApptModal(true) }} offline={!online} />
+        <Topbar
+          title={NAV_TITLES[page]}
+          setOpen={setSidebarOpen}
+          notifs={todayNotifs}
+          onBellClick={handleBellClick}
+          onNewAppt={() => { setNewApptInitial(null); setNewApptModal(true) }}
+          offline={!online}
+        />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {page === 'dashboard' && (

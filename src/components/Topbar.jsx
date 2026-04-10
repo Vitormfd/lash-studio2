@@ -1,7 +1,7 @@
 import Icon from './Icon'
 import { Btn } from './UI'
 
-const Topbar = ({ title, setOpen, notifs, onNewAppt, offline }) => (
+const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline }) => (
   <header
     style={{
       position: 'sticky', top: 0,
@@ -26,7 +26,14 @@ const Topbar = ({ title, setOpen, notifs, onNewAppt, offline }) => (
     </div>
 
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <button style={{ position: 'relative', background: 'var(--rose-light)', border: 'none', borderRadius: 8, padding: 8, display: 'flex', color: 'var(--text-mid)', cursor: 'pointer' }}>
+      <button
+        type="button"
+        title="Horários próximos"
+        aria-label={notifs > 0 ? `Há ${notifs} horário(s) nos próximos 30 minutos` : 'Ver agenda e lembretes'}
+        onClick={() => onBellClick?.()}
+        className="lash-btn-press"
+        style={{ position: 'relative', background: 'var(--rose-light)', border: 'none', borderRadius: 8, padding: 8, display: 'flex', color: 'var(--text-mid)', cursor: 'pointer' }}
+      >
         <Icon name="bell" size={17} />
         {notifs > 0 && (
           <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--rose-deep)', borderRadius: '50%', border: '2px solid var(--off-white)' }} />
