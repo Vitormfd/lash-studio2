@@ -134,6 +134,8 @@ export const DB = {
           status: a.status,
           blocked: a.blocked,
           durationMinutes: a.duration_minutes != null ? Number(a.duration_minutes) : 60,
+          reminderEnabled: !!a.reminder_enabled,
+          reminderMinutesBefore: a.reminder_minutes_before != null ? Number(a.reminder_minutes_before) : 60,
         }))
     }
     return uget(userId, 'appointments') || []
@@ -155,10 +157,21 @@ export const DB = {
         blocked: appt.blocked || false,
         duration_minutes: appt.durationMinutes != null && Number(appt.durationMinutes) > 0
           ? Number(appt.durationMinutes) : 60,
+        reminder_enabled: !!appt.reminderEnabled,
+        reminder_minutes_before: appt.reminderMinutesBefore != null && Number(appt.reminderMinutesBefore) > 0
+          ? Number(appt.reminderMinutesBefore) : 60,
       }
-      const { data, error } = appt._new
-        ? await sb.from('appointments').insert(row).select().single()
-        : await sb.from('appointments').update(row).eq('id', appt.id).select().single()
+      const run = async (r) =>
+        appt._new
+          ? sb.from('appointments').insert(r).select().single()
+          : sb.from('appointments').update(r).eq('id', appt.id).select().single()
+      let { data, error } = await run(row)
+      if (error) {
+        const { reminder_enabled: _re, reminder_minutes_before: _rm, ...rest } = row
+        const second = await run(rest)
+        data = second.data
+        error = second.error
+      }
       if (!error && data) return { ...appt, id: data.id }
     }
     const all = uget(userId, 'appointments') || []

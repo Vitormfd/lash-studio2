@@ -109,9 +109,10 @@ const getClientSpendMetrics = (client, appointments) => {
   }
 }
 
-const Clients = ({ clients, setClients, appointments, addToast }) => {
+const Clients = ({ clients, setClients, appointments, services = [], addToast }) => {
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
+  const [historyClient, setHistoryClient] = useState(null)
   const [form, setForm] = useState({ name: '', phone: '', notes: '' })
   const canPickContacts = typeof navigator !== 'undefined' && !!navigator.contacts?.select
   const [importModal, setImportModal] = useState(false)
@@ -137,10 +138,10 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
     if (!form.name) return
     if (modal === 'new') {
       setClients([...clients, { ...form, id: uid(), createdAt: new Date().toISOString() }])
-      addToast('Cliente cadastrado!', 'success')
+      addToast('Cliente cadastrado com sucesso!', 'success')
     } else {
       setClients(clients.map((c) => (c.id === modal.id ? { ...c, ...form } : c)))
-      addToast('Cliente atualizado!', 'success')
+      addToast('Cliente salvo com sucesso!', 'success')
     }
     setModal(null)
   }
@@ -154,6 +155,14 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
   const openEdit = (c) => { setForm({ name: c.name, phone: c.phone, notes: c.notes }); setModal(c) }
   const openNew = () => { setForm({ name: '', phone: '', notes: '' }); setModal('new') }
   const getApptCount = (id) => appointments.filter((a) => a.clientId === id && a.status !== 'cancelled').length
+
+  const getClientHistory = (clientId) =>
+    appointments
+      .filter((a) => a.clientId === clientId && !a.blocked)
+      .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
+
+  const statusLabel = (s) =>
+    ({ confirmed: 'Confirmado', done: 'Realizado', cancelled: 'Cancelado' }[s] || s)
 
   const importContacts = async () => {
     if (!canPickContacts) { addToast('Seu navegador não suporta importar contatos.', 'warning'); return }
@@ -294,7 +303,10 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{count} atendimentos</span>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Btn variant="ghost" sm onClick={() => setHistoryClient(c)} title="Histórico de atendimentos">
+                    <Icon name="calendar" size={12} /> Histórico
+                  </Btn>
                   <Btn variant="ghost" sm onClick={() => openEdit(c)}><Icon name="edit" size={12} /></Btn>
                   <Btn variant="ghost" sm onClick={() => del(c.id)}><Icon name="trash" size={12} color="#C5515F" /></Btn>
                 </div>
@@ -324,6 +336,46 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
           <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
           <Btn onClick={save} disabled={!form.name}><Icon name="check" size={14} color="#fff" /> Salvar</Btn>
         </div>
+      </Modal>
+
+      <Modal open={!!historyClient} onClose={() => setHistoryClient(null)} title={historyClient ? `Histórico — ${historyClient.name}` : ''}>
+        {historyClient && (
+          <>
+            <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 12 }}>
+              Atendimentos registrados (agendamentos não cancelados e bloqueios não aparecem como atendimento).
+            </p>
+            <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--rose-light)', borderRadius: 12 }}>
+              {getClientHistory(historyClient.id).length === 0 ? (
+                <p style={{ padding: 16, fontSize: 13, color: 'var(--text-light)', margin: 0 }}>Nenhum atendimento ainda.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--rose-light)', background: 'var(--rose-light)' }}>
+                      {['Data', 'Serviço', 'Valor', 'Status'].map((h) => (
+                        <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600, color: 'var(--text-light)', fontSize: 10, textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getClientHistory(historyClient.id).map((a) => (
+                      <tr key={a.id} style={{ borderBottom: '1px solid var(--rose-light)' }}>
+                        <td style={{ padding: '8px 10px', color: 'var(--text)' }}>
+                          {new Date(a.date + 'T12:00').toLocaleDateString('pt-BR')} {String(a.time).slice(0, 5)}
+                        </td>
+                        <td style={{ padding: '8px 10px', color: 'var(--text-mid)' }}>{services.find((s) => s.id === a.serviceId)?.name || '—'}</td>
+                        <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--rose-dark)' }}>{asMoney(a.value)}</td>
+                        <td style={{ padding: '8px 10px' }}>{statusLabel(a.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <Btn variant="ghost" onClick={() => setHistoryClient(null)}>Fechar</Btn>
+            </div>
+          </>
+        )}
       </Modal>
 
       <Modal open={importModal} onClose={() => setImportModal(false)} title="Importar contatos">

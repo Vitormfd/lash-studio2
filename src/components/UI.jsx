@@ -1,5 +1,5 @@
 // ─── BTN ─────────────────────────────────────────────────────────────────────
-export const Btn = ({ children, variant = 'primary', sm, full, onClick, type = 'button', disabled }) => {
+export const Btn = ({ children, variant = 'primary', sm, full, onClick, type = 'button', disabled, loading }) => {
   const styles = {
     primary: { background: 'var(--rose-deep)', color: '#fff', border: 'none' },
     outline: { background: 'transparent', color: 'var(--rose-deep)', border: '1.5px solid var(--rose-deep)' },
@@ -8,28 +8,47 @@ export const Btn = ({ children, variant = 'primary', sm, full, onClick, type = '
     success: { background: '#7BAF7B', color: '#fff', border: 'none' },
     warning: { background: '#D4915A', color: '#fff', border: 'none' },
   }
+  const isBusy = disabled || loading
   return (
     <button
       type={type}
       onClick={onClick}
-      disabled={disabled}
+      disabled={isBusy}
       style={{
         ...styles[variant],
         borderRadius: 10,
         padding: sm ? '7px 14px' : '11px 20px',
         fontSize: sm ? 12 : 14,
         fontWeight: 500,
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        cursor: isBusy ? 'not-allowed' : 'pointer',
         width: full ? '100%' : 'auto',
         display: 'inline-flex',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 7,
-        opacity: disabled ? 0.6 : 1,
+        opacity: isBusy ? 0.7 : 1,
         transition: 'opacity 0.2s, transform 0.1s',
         fontFamily: 'inherit',
+        position: 'relative',
       }}
     >
-      {children}
+      {loading && (
+        <span
+          aria-hidden
+          style={{
+            width: sm ? 14 : 16,
+            height: sm ? 14 : 16,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.35)',
+            borderTopColor: variant === 'ghost' || variant === 'outline' ? 'var(--rose-deep)' : '#fff',
+            animation: 'spin 0.7s linear infinite',
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <span style={{ opacity: loading ? 0.92 : 1, display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+        {children}
+      </span>
     </button>
   )
 }

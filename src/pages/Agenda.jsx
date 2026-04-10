@@ -10,7 +10,7 @@ import {
   formatDurationLabel, endTimeLabel,
 } from '../lib/utils'
 
-const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, addToast }) => {
+const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMarkStatus, addToast }) => {
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
   const [modal, setModal] = useState(null)
@@ -58,13 +58,36 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, addT
                       {appt.blocked && <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{formatDurationLabel(dm)}</div>}
                       {appt.notes && <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>{appt.notes}</div>}
                     </div>
-                    <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                    <div style={{ display: 'flex', gap: 4, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {!appt.blocked && onMarkStatus && appt.status !== 'cancelled' && (
+                        <button
+                          type="button"
+                          title={appt.status === 'done' ? 'Reabrir atendimento' : 'Marcar como concluído'}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onMarkStatus(appt, appt.status === 'done' ? 'confirmed' : 'done')
+                          }}
+                          style={{
+                            background: appt.status === 'done' ? 'rgba(123,175,123,0.25)' : 'rgba(212,145,90,0.2)',
+                            border: 'none',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            padding: '4px 8px',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: appt.status === 'done' ? '#065F46' : '#92400E',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {appt.status === 'done' ? 'Reabrir' : 'Concluir'}
+                        </button>
+                      )}
                       {!appt.blocked && (
-                        <button onClick={(e) => { e.stopPropagation(); onEdit(appt) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-light)' }}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(appt) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-light)' }}>
                           <Icon name="edit" size={13} />
                         </button>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); onDelete(appt.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#C5515F' }}>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(appt.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#C5515F' }}>
                         <Icon name="trash" size={13} />
                       </button>
                     </div>

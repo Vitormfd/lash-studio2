@@ -44,6 +44,7 @@ const AppMain = ({ session, onLogout }) => {
   const [newApptModal, setNewApptModal] = useState(false)
   const [editAppt, setEditAppt] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   const [clients, setClients] = useState([])
   const [services, setServices] = useState([])
@@ -70,19 +71,30 @@ const AppMain = ({ session, onLogout }) => {
     }
   }, [])
 
-  useEffect(() => {
-    Promise.all([
-      DB.getClients(userId),
-      DB.getServices(userId),
-      DB.getAppointments(userId),
-      DB.getInventoryItems(userId),
-      DB.getInventoryMovements(userId),
-      DB.getConfig(userId),
-    ]).then(([c, s, a, invItems, invMovs, cfg]) => {
+  const reloadData = useCallback(async () => {
+    setLoading(true)
+    setLoadError(false)
+    try {
+      const [c, s, a, invItems, invMovs, cfg] = await Promise.all([
+        DB.getClients(userId),
+        DB.getServices(userId),
+        DB.getAppointments(userId),
+        DB.getInventoryItems(userId),
+        DB.getInventoryMovements(userId),
+        DB.getConfig(userId),
+      ])
       setClients(c); setServices(s); setAppointments(a); setInventoryItems(invItems); setInventoryMovements(invMovs); setConfigState(cfg)
+    } catch {
+      setLoadError(true)
+      addToast('Não foi possível carregar seus dados. Verifique a conexão e tente de novo.', 'error')
+    } finally {
       setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [userId])
+    }
+  }, [userId, addToast])
+
+  useEffect(() => {
+    reloadData()
+  }, [reloadData])
 
   useEffect(() => {
     applyTheme(getSavedThemeId(userId))
@@ -129,13 +141,13 @@ const AppMain = ({ session, onLogout }) => {
       if (overlapsOther(editAppt.id)) { addToast('Conflito com outro horário ou bloqueio.', 'error'); return }
       const saved = await DB.saveAppointment(userId, { ...form, id: editAppt.id })
       setAppointments((a) => a.map((x) => (x.id === editAppt.id ? saved : x)))
-      setEditAppt(null); addToast('Atualizado!', 'success')
+      setEditAppt(null); addToast('Agendamento salvo com sucesso!', 'success')
     } else {
       if (overlapsOther(null)) { addToast('Horário conflita com outro agendamento ou bloqueio.', 'error'); return }
       const newAppt = { ...form, id: uid(), status: form.blocked ? 'blocked' : 'confirmed', _new: true }
       const saved = await DB.saveAppointment(userId, newAppt)
       setAppointments((a) => [...a, saved])
-      setNewApptModal(false); addToast(form.blocked ? 'Horário bloqueado!' : 'Agendado!', 'success')
+      setNewApptModal(false); addToast(form.blocked ? 'Horário bloqueado com sucesso!' : 'Agendamento criado com sucesso!', 'success')
     }
   }
 
@@ -143,6 +155,16 @@ const AppMain = ({ session, onLogout }) => {
     await DB.deleteAppointment(userId, id)
     setAppointments((a) => a.filter((x) => x.id !== id))
     addToast('Removido.', 'success')
+  }
+
+  const markAppointmentStatus = async (appt, status) => {
+    try {
+      const saved = await DB.saveAppointment(userId, { ...appt, status })
+      setAppointments((prev) => prev.map((x) => (x.id === appt.id ? saved : x)))
+      addToast(status === 'done' ? 'Atendimento concluído!' : 'Atendimento reaberto.', 'success')
+    } catch {
+      addToast('Não foi possível atualizar o status.', 'error')
+    }
   }
 
   // ── CONFIG ──
@@ -201,6 +223,26 @@ const AppMain = ({ session, onLogout }) => {
 
   if (loading) return <Spinner text="Carregando seus dados..." />
 
+  if (loadError) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--off-white)' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: 28, border: '1px solid var(--rose-light)', maxWidth: 400, textAlign: 'center' }}>
+          <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Algo deu errado ao carregar</p>
+          <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 18 }}>Verifique sua internet e tente novamente.</p>
+          <button
+            type="button"
+            onClick={() => reloadData()}
+            style={{
+              background: 'var(--rose-deep)', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Tentar de novo
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', minWidth: 0, width: '100%', background: 'var(--off-white)' }}>
       <Sidebar active={page} setActive={setPage} open={sidebarOpen} setOpen={setSidebarOpen} session={session} onLogout={onLogout} />
@@ -209,9 +251,32 @@ const AppMain = ({ session, onLogout }) => {
         <Topbar title={NAV_TITLES[page]} setOpen={setSidebarOpen} notifs={todayNotifs} onNewAppt={() => setNewApptModal(true)} offline={!online} />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          {page === 'dashboard' && <Dashboard appointments={appointments} clients={clients} services={services} config={config} />}
-          {page === 'agenda' && <Agenda appointments={appointments} clients={clients} services={services} onNew={saveAppt} onEdit={setEditAppt} onDelete={deleteAppt} addToast={addToast} />}
-          {page === 'clients' && <Clients clients={clients} setClients={setClientsCompat} appointments={appointments} addToast={addToast} />}
+          {page === 'dashboard' && (
+            <Dashboard
+              appointments={appointments}
+              clients={clients}
+              services={services}
+              config={config}
+              onGoAgenda={() => setPage('agenda')}
+              onNewAppointment={() => setNewApptModal(true)}
+              onGoClients={() => setPage('clients')}
+            />
+          )}
+          {page === 'agenda' && (
+            <Agenda
+              appointments={appointments}
+              clients={clients}
+              services={services}
+              onNew={saveAppt}
+              onEdit={setEditAppt}
+              onDelete={deleteAppt}
+              onMarkStatus={markAppointmentStatus}
+              addToast={addToast}
+            />
+          )}
+          {page === 'clients' && (
+            <Clients clients={clients} setClients={setClientsCompat} appointments={appointments} services={services} addToast={addToast} />
+          )}
           {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
           {page === 'inventory' && (
             <Inventory

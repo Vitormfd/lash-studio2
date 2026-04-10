@@ -15,6 +15,7 @@ const listBoxStyle = {
 const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked }) => {
   const [clientFilter, setClientFilter] = useState('')
   const [serviceFilter, setServiceFilter] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const [form, setForm] = useState({
     clientId: '', serviceId: '',
@@ -27,6 +28,9 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
     time: initial?.time != null && String(initial.time).trim() !== ''
       ? String(initial.time).trim().slice(0, 5)
       : '09:00',
+    reminderEnabled: !!initial?.reminderEnabled,
+    reminderMinutesBefore: initial?.reminderMinutesBefore != null && Number(initial.reminderMinutesBefore) > 0
+      ? Number(initial.reminderMinutesBefore) : 60,
   })
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
@@ -71,6 +75,16 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
   const valid = form.blocked
     ? form.date && timeStr && dur > 0
     : form.clientId && form.serviceId && form.date && timeStr && form.value && dur > 0
+
+  const submit = async () => {
+    if (!valid) return
+    setSaving(true)
+    try {
+      await Promise.resolve(onSave({ ...form, time: timeStr }))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div>
@@ -206,12 +220,39 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
           <Field label="Observações">
             <Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Observações sobre o atendimento..." rows={3} />
           </Field>
+          <Field label="Lembrete (estrutura para envio futuro)">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text-mid)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={!!form.reminderEnabled}
+                onChange={(e) => set('reminderEnabled', e.target.checked)}
+                style={{ width: 18, height: 18, accentColor: 'var(--rose-deep)' }}
+              />
+              Quero registrar lembrete para este horário
+            </label>
+            <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 6, lineHeight: 1.45 }}>
+              O envio automático (ex.: WhatsApp) será ligado depois; os dados já ficam salvos para disparar no futuro.
+            </p>
+            {form.reminderEnabled && (
+              <Sel
+                value={String(form.reminderMinutesBefore)}
+                onChange={(e) => set('reminderMinutesBefore', Number(e.target.value))}
+                style={{ ...inputStyle, marginTop: 10 }}
+              >
+                <option value="15">15 min antes</option>
+                <option value="30">30 min antes</option>
+                <option value="60">1 hora antes</option>
+                <option value="120">2 horas antes</option>
+                <option value="1440">1 dia antes</option>
+              </Sel>
+            )}
+          </Field>
         </>
       )}
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
-        <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-        <Btn onClick={() => valid && onSave({ ...form, time: timeStr })} disabled={!valid}>
+        <Btn variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Btn>
+        <Btn onClick={submit} disabled={!valid} loading={saving}>
           <Icon name="check" size={14} color="#fff" />
           {initial?.id ? 'Salvar' : form.blocked ? 'Bloquear' : 'Agendar'}
         </Btn>
