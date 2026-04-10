@@ -1,5 +1,5 @@
 // ─── BTN ─────────────────────────────────────────────────────────────────────
-export const Btn = ({ children, variant = 'primary', sm, full, onClick, type = 'button', disabled, loading }) => {
+export const Btn = ({ children, variant = 'primary', sm, full, touch, onClick, type = 'button', disabled, loading }) => {
   const styles = {
     primary: { background: 'var(--rose-deep)', color: '#fff', border: 'none' },
     outline: { background: 'transparent', color: 'var(--rose-deep)', border: '1.5px solid var(--rose-deep)' },
@@ -17,7 +17,8 @@ export const Btn = ({ children, variant = 'primary', sm, full, onClick, type = '
       style={{
         ...styles[variant],
         borderRadius: 10,
-        padding: sm ? '7px 14px' : '11px 20px',
+        padding: touch ? (sm ? '10px 16px' : '13px 22px') : sm ? '7px 14px' : '11px 20px',
+        minHeight: touch ? (sm ? 44 : 48) : undefined,
         fontSize: sm ? 12 : 14,
         fontWeight: 500,
         cursor: isBusy ? 'not-allowed' : 'pointer',
@@ -31,6 +32,7 @@ export const Btn = ({ children, variant = 'primary', sm, full, onClick, type = '
         fontFamily: 'inherit',
         position: 'relative',
       }}
+      className="lash-btn-press"
     >
       {loading && (
         <span

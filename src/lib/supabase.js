@@ -136,14 +136,38 @@ export const DB = {
           durationMinutes: a.duration_minutes != null ? Number(a.duration_minutes) : 60,
           reminderEnabled: !!a.reminder_enabled,
           reminderMinutesBefore: a.reminder_minutes_before != null ? Number(a.reminder_minutes_before) : 60,
+          notificationStatus: a.notification_status != null ? String(a.notification_status) : 'none',
+          reminderSentAt: a.reminder_sent_at || null,
         }))
     }
-    return uget(userId, 'appointments') || []
+    const raw = uget(userId, 'appointments') || []
+    return raw.map((a) => ({
+      ...a,
+      notificationStatus: a.notificationStatus ?? 'none',
+      reminderSentAt: a.reminderSentAt ?? null,
+    }))
   },
 
   async saveAppointment(userId, appt) {
     const sb = getClient()
+    const mapRow = (a) => ({
+      id: a.id,
+      clientId: a.client_id,
+      serviceId: a.service_id,
+      date: a.date,
+      time: a.time,
+      value: a.value,
+      notes: a.notes || '',
+      status: a.status,
+      blocked: !!a.blocked,
+      durationMinutes: a.duration_minutes != null ? Number(a.duration_minutes) : 60,
+      reminderEnabled: !!a.reminder_enabled,
+      reminderMinutesBefore: a.reminder_minutes_before != null ? Number(a.reminder_minutes_before) : 60,
+      notificationStatus: a.notification_status != null ? String(a.notification_status) : 'none',
+      reminderSentAt: a.reminder_sent_at || null,
+    })
     if (sb) {
+      const defaultStatus = appt.blocked ? 'blocked' : 'pending'
       const row = {
         id: appt.id,
         user_id: userId,
@@ -153,13 +177,15 @@ export const DB = {
         time: appt.time,
         value: appt.value || null,
         notes: appt.notes || '',
-        status: appt.status || 'confirmed',
+        status: appt.status || defaultStatus,
         blocked: appt.blocked || false,
         duration_minutes: appt.durationMinutes != null && Number(appt.durationMinutes) > 0
           ? Number(appt.durationMinutes) : 60,
         reminder_enabled: !!appt.reminderEnabled,
         reminder_minutes_before: appt.reminderMinutesBefore != null && Number(appt.reminderMinutesBefore) > 0
           ? Number(appt.reminderMinutesBefore) : 60,
+        notification_status: appt.notificationStatus != null ? String(appt.notificationStatus) : 'none',
+        reminder_sent_at: appt.reminderSentAt || null,
       }
       const run = async (r) =>
         appt._new
@@ -167,18 +193,29 @@ export const DB = {
           : sb.from('appointments').update(r).eq('id', appt.id).select().single()
       let { data, error } = await run(row)
       if (error) {
-        const { reminder_enabled: _re, reminder_minutes_before: _rm, ...rest } = row
+        const {
+          reminder_enabled: _re,
+          reminder_minutes_before: _rm,
+          notification_status: _ns,
+          reminder_sent_at: _rsa,
+          ...rest
+        } = row
         const second = await run(rest)
         data = second.data
         error = second.error
       }
-      if (!error && data) return { ...appt, id: data.id }
+      if (!error && data) return { ...mapRow(data), _new: undefined }
     }
     const all = uget(userId, 'appointments') || []
     const exists = all.find((a) => a.id === appt.id)
-    const updated = exists ? all.map((a) => (a.id === appt.id ? appt : a)) : [...all, appt]
-    uset(userId, 'appointments', updated)
-    return appt
+    const merged = exists ? all.map((a) => (a.id === appt.id ? appt : a)) : [...all, appt]
+    uset(userId, 'appointments', merged)
+    const { _new: __n, ...rest } = appt
+    return {
+      ...rest,
+      notificationStatus: rest.notificationStatus ?? 'none',
+      reminderSentAt: rest.reminderSentAt ?? null,
+    }
   },
 
   async deleteAppointment(userId, id) {
@@ -327,5 +364,41 @@ export const DB = {
     const updated = [movement, ...all]
     uset(userId, 'inventory_movements', updated)
     return movement
+  },
+
+  // ── Push Web (PWA) — tabela push_subscriptions (ver supabase/sql/push_subscriptions.sql) ──
+  async savePushSubscription(userId, subscription, prefs = {}) {
+    const subJson = subscription && typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription
+    if (!subJson?.endpoint) return false
+    const sb = getClient()
+    if (sb) {
+      const row = {
+        user_id: userId,
+        endpoint: subJson.endpoint,
+        keys_p256dh: subJson.keys?.p256dh ?? '',
+        keys_auth: subJson.keys?.auth ?? '',
+        morning_enabled: prefs.morningEnabled !== false,
+        reminder_minutes_before: prefs.reminderMinutesBefore ?? 60,
+        progress_enabled: prefs.progressEnabled !== false,
+        updated_at: new Date().toISOString(),
+      }
+      const { error } = await sb.from('push_subscriptions').upsert(row, { onConflict: 'user_id,endpoint' })
+      if (!error) return true
+    }
+    uset(userId, 'push_subscription', { ...subJson, prefs, updatedAt: new Date().toISOString() })
+    return true
+  },
+
+  async deletePushSubscription(userId, subscriptionOrEndpoint) {
+    const endpoint =
+      typeof subscriptionOrEndpoint === 'string'
+        ? subscriptionOrEndpoint
+        : subscriptionOrEndpoint?.endpoint
+    if (!endpoint) return
+    const sb = getClient()
+    if (sb) {
+      await sb.from('push_subscriptions').delete().eq('user_id', userId).eq('endpoint', endpoint)
+    }
+    uset(userId, 'push_subscription', null)
   },
 }

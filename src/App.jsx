@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { initSupabase, DB, uid } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
+import { progressPushBody } from './lib/dayMessages'
+import { useLocalReminders } from './hooks/useLocalReminders'
 import { applyTheme, getSavedThemeId } from './lib/theme'
 import { useToast } from './hooks/useToast'
 
@@ -11,6 +13,7 @@ import Modal from './components/Modal'
 import Toast from './components/Toast'
 import AppointmentForm from './components/AppointmentForm'
 import { Spinner } from './components/UI'
+import DashboardSkeleton from './components/DashboardSkeleton'
 
 import AuthScreen from './pages/AuthScreen'
 import Dashboard from './pages/Dashboard'
@@ -42,6 +45,7 @@ const AppMain = ({ session, onLogout }) => {
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [newApptModal, setNewApptModal] = useState(false)
+  const [newApptInitial, setNewApptInitial] = useState(null)
   const [editAppt, setEditAppt] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -56,6 +60,23 @@ const AppMain = ({ session, onLogout }) => {
   const [swUpdateReady, setSwUpdateReady] = useState(false)
 
   const { toasts, addToast, removeToast } = useToast()
+  const [notifGate, setNotifGate] = useState(0)
+
+  useEffect(() => {
+    const bump = () => setNotifGate((g) => g + 1)
+    window.addEventListener('lash-notification-settings-changed', bump)
+    return () => window.removeEventListener('lash-notification-settings-changed', bump)
+  }, [])
+
+  const localNotifEnabled =
+    typeof Notification !== 'undefined' && Notification.permission === 'granted'
+
+  useLocalReminders({
+    appointments,
+    enabled: localNotifEnabled,
+    reminderMinutesBefore: 60,
+    permissionVersion: notifGate,
+  })
 
   useEffect(() => {
     const onUp = () => setOnline(true)
@@ -102,8 +123,9 @@ const AppMain = ({ session, onLogout }) => {
 
   // ── CLIENTS ──
   const handleAddClient = async (client) => {
+    setClients((c) => [...c, client])
     const saved = await DB.saveClient(userId, { ...client, _new: true })
-    setClients((c) => [...c, saved])
+    setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleUpdateClient = async (client) => {
     const saved = await DB.saveClient(userId, client)
@@ -144,10 +166,12 @@ const AppMain = ({ session, onLogout }) => {
       setEditAppt(null); addToast('Agendamento salvo com sucesso!', 'success')
     } else {
       if (overlapsOther(null)) { addToast('Horário conflita com outro agendamento ou bloqueio.', 'error'); return }
-      const newAppt = { ...form, id: uid(), status: form.blocked ? 'blocked' : 'confirmed', _new: true }
+      const newAppt = { ...form, id: uid(), status: form.blocked ? 'blocked' : 'pending', _new: true }
       const saved = await DB.saveAppointment(userId, newAppt)
       setAppointments((a) => [...a, saved])
-      setNewApptModal(false); addToast(form.blocked ? 'Horário bloqueado com sucesso!' : 'Agendamento criado com sucesso!', 'success')
+      setNewApptModal(false)
+      setNewApptInitial(null)
+      addToast(form.blocked ? 'Horário bloqueado com sucesso!' : 'Agendamento criado!', 'success')
     }
   }
 
@@ -159,9 +183,42 @@ const AppMain = ({ session, onLogout }) => {
 
   const markAppointmentStatus = async (appt, status) => {
     try {
+      const prevStatus = appt.status
       const saved = await DB.saveAppointment(userId, { ...appt, status })
-      setAppointments((prev) => prev.map((x) => (x.id === appt.id ? saved : x)))
-      addToast(status === 'done' ? 'Atendimento concluído!' : 'Atendimento reaberto.', 'success')
+      const merged = appointments.map((x) => (x.id === appt.id ? saved : x))
+      setAppointments(merged)
+      if (status === 'done' && prevStatus !== 'done') {
+        const v = Number(appt.value || 0)
+        addToast(`+ R$ ${v.toFixed(2).replace('.', ',')} adicionados hoje 💰`, 'success')
+        const todayStr = new Date().toISOString().slice(0, 10)
+        const totalDone = merged
+          .filter((a) => a.date === todayStr && a.status === 'done')
+          .reduce((s, a) => s + Number(a.value || 0), 0)
+        if (
+          totalDone >= 100 &&
+          typeof Notification !== 'undefined' &&
+          Notification.permission === 'granted'
+        ) {
+          setTimeout(() => {
+            try {
+              new Notification('Lash Studio', {
+                body: progressPushBody(totalDone),
+                icon: '/icon-192.png',
+                badge: '/icon-192.png',
+                tag: `fat-${todayStr}`,
+              })
+            } catch (_) {}
+          }, 400)
+        }
+      } else if (status === 'cancelled') {
+        addToast('Agendamento cancelado.', 'warning')
+      } else if (status === 'confirmed' && prevStatus === 'pending') {
+        addToast('Agendamento confirmado!', 'success')
+      } else if (status === 'done') {
+        addToast('Atendimento atualizado.', 'success')
+      } else {
+        addToast('Status atualizado.', 'success')
+      }
     } catch {
       addToast('Não foi possível atualizar o status.', 'error')
     }
@@ -221,7 +278,7 @@ const AppMain = ({ session, onLogout }) => {
     return diff > 0 && diff < 30
   }).length
 
-  if (loading) return <Spinner text="Carregando seus dados..." />
+  if (loading) return <DashboardSkeleton />
 
   if (loadError) {
     return (
@@ -248,7 +305,7 @@ const AppMain = ({ session, onLogout }) => {
       <Sidebar active={page} setActive={setPage} open={sidebarOpen} setOpen={setSidebarOpen} session={session} onLogout={onLogout} />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, overflow: 'hidden' }}>
-        <Topbar title={NAV_TITLES[page]} setOpen={setSidebarOpen} notifs={todayNotifs} onNewAppt={() => setNewApptModal(true)} offline={!online} />
+        <Topbar title={NAV_TITLES[page]} setOpen={setSidebarOpen} notifs={todayNotifs} onNewAppt={() => { setNewApptInitial(null); setNewApptModal(true) }} offline={!online} />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {page === 'dashboard' && (
@@ -258,7 +315,7 @@ const AppMain = ({ session, onLogout }) => {
               services={services}
               config={config}
               onGoAgenda={() => setPage('agenda')}
-              onNewAppointment={() => setNewApptModal(true)}
+              onNewAppointment={() => { setNewApptInitial(null); setNewApptModal(true) }}
               onGoClients={() => setPage('clients')}
             />
           )}
@@ -275,7 +332,18 @@ const AppMain = ({ session, onLogout }) => {
             />
           )}
           {page === 'clients' && (
-            <Clients clients={clients} setClients={setClientsCompat} appointments={appointments} services={services} addToast={addToast} />
+            <Clients
+              clients={clients}
+              setClients={setClientsCompat}
+              appointments={appointments}
+              services={services}
+              addToast={addToast}
+              onScheduleAfterCreate={(clientId) => {
+                setNewApptInitial({ clientId })
+                setNewApptModal(true)
+                setPage('dashboard')
+              }}
+            />
           )}
           {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
           {page === 'inventory' && (
@@ -295,8 +363,15 @@ const AppMain = ({ session, onLogout }) => {
       </main>
 
       {/* Modals */}
-      <Modal open={newApptModal} onClose={() => setNewApptModal(false)} title="Novo Agendamento">
-        <AppointmentForm clients={clients} services={services} onClose={() => setNewApptModal(false)} onSave={saveAppt} />
+      <Modal open={newApptModal} onClose={() => { setNewApptModal(false); setNewApptInitial(null) }} title="Novo Agendamento">
+        <AppointmentForm
+          key={newApptInitial?.clientId || 'new'}
+          initial={newApptInitial || undefined}
+          clients={clients}
+          services={services}
+          onClose={() => { setNewApptModal(false); setNewApptInitial(null) }}
+          onSave={saveAppt}
+        />
       </Modal>
       <Modal open={!!editAppt} onClose={() => setEditAppt(null)} title="Editar Agendamento">
         {editAppt && <AppointmentForm initial={editAppt} clients={clients} services={services} onClose={() => setEditAppt(null)} onSave={saveAppt} />}

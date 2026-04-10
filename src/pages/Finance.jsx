@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StatCard, Btn, Inp, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { MONTHS_PT } from '../lib/utils'
+import { statusMeta } from '../lib/appointmentStatus'
 
 const Finance = ({ appointments, services, clients, config, setConfig }) => {
   const [editCost, setEditCost] = useState(false)
@@ -95,8 +96,10 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
               {real.sort((a, b) => b.date.localeCompare(a.date)).map((a) => {
                 const client = clients.find((c) => c.id === a.clientId)
                 const service = services.find((s) => s.id === a.serviceId)
-                const statusMap = { confirmed: ['#FEF3C7', '#92400E', 'Confirmado'], done: ['#D1FAE5', '#065F46', 'Realizado'], cancelled: ['#FEE2E2', '#991B1B', 'Cancelado'] }
-                const [bg, tc, label] = statusMap[a.status] || statusMap.confirmed
+                const sm = statusMeta(a.status)
+                const bg = sm.bg
+                const tc = sm.text
+                const label = sm.label
                 return (
                   <tr key={a.id} style={{ borderBottom: '1px solid var(--rose-light)' }}>
                     <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text)' }}>{new Date(a.date + 'T12:00').toLocaleDateString('pt-BR')} {a.time}</td>

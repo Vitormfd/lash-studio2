@@ -101,6 +101,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
             ) : (
               <>
                 <Inp
+                  autoFocus={!blocked && !selectedClient}
                   value={clientFilter}
                   onChange={(e) => setClientFilter(e.target.value)}
                   placeholder="Digite nome ou telefone para buscar..."
@@ -148,6 +149,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
             ) : (
               <>
                 <Inp
+                  autoFocus={!blocked && !!selectedClient && !selectedService}
                   value={serviceFilter}
                   onChange={(e) => setServiceFilter(e.target.value)}
                   placeholder="Digite nome ou valor para buscar..."

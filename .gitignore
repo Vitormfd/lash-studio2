@@ -3,3 +3,8 @@ dist/
 .DS_Store
 *.log
 .netlify
+
+# Segredos e ambiente local (nunca commitar)
+.env
+.env.local
+.env.*.local

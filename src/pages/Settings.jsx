@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react'
 import { Btn, Field, Inp } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
+import { DB } from '../lib/supabase'
+import {
+  isPushSupported,
+  getVapidPublicKey,
+  subscribeToPush,
+  unsubscribePush,
+  getExistingPushSubscription,
+} from '../lib/pushClient'
 import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 
 const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
@@ -11,6 +19,20 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   const [pwError, setPwError] = useState('')
   const [pwaStandalone, setPwaStandalone] = useState(false)
   const [pwaCanInstall, setPwaCanInstall] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushOn, setPushOn] = useState(false)
+  const userId = session?.userId
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const sub = await getExistingPushSubscription()
+      if (!cancelled) setPushOn(!!sub)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const standalone =
@@ -29,6 +51,64 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   useEffect(() => {
     setThemeId(getSavedThemeId(session?.userId))
   }, [session?.userId])
+
+  const enablePushNotifications = async () => {
+    if (!isPushSupported()) {
+      addToast('Este navegador não suporta notificações push.', 'warning')
+      return
+    }
+    if (!userId) {
+      addToast('Faça login novamente para ativar notificações.', 'warning')
+      return
+    }
+    if (!getVapidPublicKey()) {
+      addToast('Configure VITE_VAPID_PUBLIC_KEY no ambiente (par VAPID) para registrar o dispositivo no servidor.', 'warning')
+    }
+    setPushBusy(true)
+    try {
+      const perm = await Notification.requestPermission()
+      window.dispatchEvent(new CustomEvent('lash-notification-settings-changed'))
+      if (perm !== 'granted') {
+        addToast('Sem permissão. Você pode ativar depois nas configurações do navegador.', 'warning')
+        return
+      }
+      const sub = await subscribeToPush()
+      if (!sub) {
+        addToast('Não foi possível registrar o push. Confira a chave VAPID pública.', 'error')
+        return
+      }
+      await DB.savePushSubscription(userId, sub, {
+        morningEnabled: true,
+        reminderMinutesBefore: 60,
+        progressEnabled: true,
+      })
+      setPushOn(true)
+      addToast('Notificações ativadas neste aparelho.', 'success')
+    } catch {
+      addToast('Não foi possível ativar notificações.', 'error')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
+  const disablePushNotifications = async () => {
+    if (!userId) return
+    setPushBusy(true)
+    try {
+      const sub = await getExistingPushSubscription()
+      if (sub) {
+        await DB.deletePushSubscription(userId, sub)
+        await unsubscribePush()
+      }
+      setPushOn(false)
+      window.dispatchEvent(new CustomEvent('lash-notification-settings-changed'))
+      addToast('Notificações desativadas.', 'info')
+    } catch {
+      addToast('Erro ao desativar.', 'error')
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   const installPwa = async () => {
     const p = window.__lashPwa?.getInstallPrompt?.()
@@ -145,8 +225,39 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
         </div>
       </div>
 
-      {/* PWA Install */}
+      {/* Notificações push — permissão só aqui, não ao abrir o app */}
       <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Lembretes no celular</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 14 }}>
+          Receba aviso antes do próximo horário e resumos do dia. Ative quando quiser — não pedimos permissão ao entrar no app.
+          No iPhone, instale o app na tela inicial para melhor suporte a notificações.
+        </p>
+        {!isPushSupported() ? (
+          <p style={{ fontSize: 12, color: 'var(--text-light)' }}>Notificações não disponíveis neste navegador.</p>
+        ) : Notification.permission === 'denied' ? (
+          <p style={{ fontSize: 12, color: '#B45309' }}>
+            Permissão bloqueada. Abra as configurações do navegador e permita notificações para este site.
+          </p>
+        ) : pushOn ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600 }}>Notificações ativas neste dispositivo ✓</p>
+            <Btn variant="outline" touch full onClick={disablePushNotifications} loading={pushBusy} disabled={pushBusy}>
+              Desativar
+            </Btn>
+          </div>
+        ) : (
+          <Btn touch full onClick={enablePushNotifications} loading={pushBusy} disabled={pushBusy}>
+            <Icon name="calendar" size={14} color="#fff" /> Ativar lembretes
+          </Btn>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 12, lineHeight: 1.5 }}>
+          O envio com app fechado usa o servidor (Supabase). Rode o SQL em <code style={{ fontSize: 10 }}>supabase/sql/push_subscriptions.sql</code> e configure a Edge Function conforme{' '}
+          <code style={{ fontSize: 10 }}>supabase/functions/send-scheduled-pushes/README.md</code>.
+        </p>
+      </div>
+
+      {/* PWA Install */}
+      <div style={{ background: '#fff', borderRadius: 14, padding: '20px', border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>App no celular (PWA)</h3>
         {pwaStandalone ? (
           <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6 }}>

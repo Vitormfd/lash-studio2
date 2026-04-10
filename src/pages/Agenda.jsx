@@ -9,6 +9,7 @@ import {
   apptDurationMin, apptCoversSlotHour, apptStartsInHourRow, apptIntervalsOverlap,
   formatDurationLabel, endTimeLabel,
 } from '../lib/utils'
+import { statusMeta } from '../lib/appointmentStatus'
 
 const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMarkStatus, addToast }) => {
   const [view, setView] = useState('day')
@@ -21,15 +22,68 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
 
   const statusColor = (a) => {
     if (a.blocked) return { bg: '#F5E5E5', border: '#E8B4B4', text: '#C5515F' }
-    if (a.status === 'cancelled') return { bg: '#F0F0F0', border: '#CCCCCC', text: '#999' }
-    const hex = normalizeServiceColor(services.find((s) => s.id === a.serviceId)?.color)
-    const tint = hex ? hexToRgba(hex, 0.22) || 'var(--rose-light)' : null
-    if (a.status === 'done') {
-      if (hex) return { bg: hexToRgba(hex, 0.14) || '#E8F5E8', border: hex, text: '#2D6A2D' }
-      return { bg: '#E8F5E8', border: '#B4D8B4', text: '#5A9A5A' }
+    const m = statusMeta(a.status)
+    return { bg: m.bg, border: m.border, text: m.text }
+  }
+
+  const quickBtn = (label, appt, next, extra = {}) => (
+    <button
+      type="button"
+      key={label}
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation()
+        onMarkStatus(appt, next)
+      }}
+      style={{
+        background: 'rgba(255,255,255,0.65)',
+        border: `1px solid ${extra.border || 'var(--border-mid)'}`,
+        borderRadius: 6,
+        cursor: 'pointer',
+        padding: '4px 8px',
+        fontSize: 10,
+        fontWeight: 700,
+        color: extra.color || 'var(--text)',
+        fontFamily: 'inherit',
+        transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+        boxShadow: '0 1px 2px rgba(44,26,30,0.06)',
+      }}
+      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.97)' }}
+      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)' }}
+    >
+      {label}
+    </button>
+  )
+
+  const QuickStatusRow = ({ appt }) => {
+    if (appt.blocked || !onMarkStatus) return null
+    if (appt.status === 'cancelled') return null
+    if (appt.status === 'pending') {
+      return (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+          {quickBtn('Confirmar', appt, 'confirmed', { border: '#93C5FD', color: '#1D4ED8' })}
+          {quickBtn('Concluir', appt, 'done', { border: '#6EE7B7', color: '#065F46' })}
+          {quickBtn('Cancelar', appt, 'cancelled', { border: '#FCA5A5', color: '#991B1B' })}
+        </div>
+      )
     }
-    if (hex) return { bg: tint, border: hex, text: hex }
-    return { bg: 'var(--rose-light)', border: 'var(--blush-mid)', text: 'var(--rose-dark)' }
+    if (appt.status === 'confirmed') {
+      return (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+          {quickBtn('Concluir', appt, 'done', { border: '#6EE7B7', color: '#065F46' })}
+          {quickBtn('Cancelar', appt, 'cancelled', { border: '#FCA5A5', color: '#991B1B' })}
+        </div>
+      )
+    }
+    if (appt.status === 'done') {
+      return (
+        <div style={{ marginTop: 6 }}>
+          {quickBtn('Reabrir', appt, 'confirmed', { border: '#93C5FD', color: '#1D4ED8' })}
+        </div>
+      )
+    }
+    return null
   }
 
   // ── DAY VIEW ──────────────────────────────────────────────────────────────
@@ -57,31 +111,11 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
                       {!appt.blocked && <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{getServiceName(appt.serviceId)} · R$ {appt.value} · {formatDurationLabel(dm)}</div>}
                       {appt.blocked && <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{formatDurationLabel(dm)}</div>}
                       {appt.notes && <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>{appt.notes}</div>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 4, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      {!appt.blocked && onMarkStatus && appt.status !== 'cancelled' && (
-                        <button
-                          type="button"
-                          title={appt.status === 'done' ? 'Reabrir atendimento' : 'Marcar como concluído'}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onMarkStatus(appt, appt.status === 'done' ? 'confirmed' : 'done')
-                          }}
-                          style={{
-                            background: appt.status === 'done' ? 'rgba(123,175,123,0.25)' : 'rgba(212,145,90,0.2)',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            padding: '4px 8px',
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: appt.status === 'done' ? '#065F46' : '#92400E',
-                            fontFamily: 'inherit',
-                          }}
-                        >
-                          {appt.status === 'done' ? 'Reabrir' : 'Concluir'}
-                        </button>
+                      {!appt.blocked && (
+                        <QuickStatusRow appt={appt} />
                       )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end', alignSelf: 'flex-start' }}>
                       {!appt.blocked && (
                         <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(appt) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-light)' }}>
                           <Icon name="edit" size={13} />

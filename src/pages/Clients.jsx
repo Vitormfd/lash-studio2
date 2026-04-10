@@ -3,6 +3,7 @@ import Modal from '../components/Modal'
 import { Btn, Field, Inp, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
+import { statusMeta } from '../lib/appointmentStatus'
 
 const normPhone = (v) => (v || '').toString().replace(/\D/g, '')
 const normalizeImportedPhone = (v) => {
@@ -88,8 +89,9 @@ const pickTelValue = (tel) => {
   return ''
 }
 const asMoney = (v) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`
+/** Apenas concluídos — valores efetivamente realizados */
 const validRevenueAppts = (appointments, clientId) => appointments.filter(
-  (a) => a.clientId === clientId && !a.blocked && a.status !== 'cancelled'
+  (a) => a.clientId === clientId && !a.blocked && a.status === 'done'
 )
 const getClientSpendMetrics = (client, appointments) => {
   const now = new Date()
@@ -109,7 +111,27 @@ const getClientSpendMetrics = (client, appointments) => {
   }
 }
 
-const Clients = ({ clients, setClients, appointments, services = [], addToast }) => {
+const getVisitPattern = (clientId, appointments) => {
+  const done = appointments
+    .filter((a) => a.clientId === clientId && !a.blocked && a.status === 'done')
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+  if (done.length >= 2) {
+    const gaps = []
+    for (let i = 1; i < done.length; i += 1) {
+      const d0 = new Date(done[i - 1].date + 'T12:00')
+      const d1 = new Date(done[i].date + 'T12:00')
+      gaps.push((d1 - d0) / 86400000)
+    }
+    const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length
+    if (avg >= 60) return `~${Math.round(avg / 30)} meses entre visitas`
+    if (avg >= 14) return `~${Math.round(avg / 7)} semanas entre visitas`
+    return `~${Math.round(avg)} dias entre visitas`
+  }
+  if (done.length === 1) return 'Primeira visita concluída'
+  return 'Ainda sem visitas concluídas'
+}
+
+const Clients = ({ clients, setClients, appointments, services = [], addToast, onScheduleAfterCreate }) => {
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
@@ -134,16 +156,19 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast })
     return name.includes(q) || phone.includes(search.trim()) || notes.includes(q)
   })
 
-  const save = () => {
+  const save = (andSchedule) => {
     if (!form.name) return
     if (modal === 'new') {
-      setClients([...clients, { ...form, id: uid(), createdAt: new Date().toISOString() }])
-      addToast('Cliente cadastrado com sucesso!', 'success')
+      const newId = uid()
+      setClients([...clients, { ...form, id: newId, createdAt: new Date().toISOString() }])
+      addToast('Cliente salvo com sucesso!', 'success')
+      setModal(null)
+      if (andSchedule && onScheduleAfterCreate) onScheduleAfterCreate(newId)
     } else {
       setClients(clients.map((c) => (c.id === modal.id ? { ...c, ...form } : c)))
       addToast('Cliente salvo com sucesso!', 'success')
+      setModal(null)
     }
-    setModal(null)
   }
 
   const del = (id) => {
@@ -161,8 +186,7 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast })
       .filter((a) => a.clientId === clientId && !a.blocked)
       .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
 
-  const statusLabel = (s) =>
-    ({ confirmed: 'Confirmado', done: 'Realizado', cancelled: 'Cancelado' }[s] || s)
+  const statusLabel = (s) => statusMeta(s).label
 
   const importContacts = async () => {
     if (!canPickContacts) { addToast('Seu navegador não suporta importar contatos.', 'warning'); return }
@@ -273,6 +297,8 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast })
         {filtered.map((c) => {
           const count = getApptCount(c.id)
           const spend = getClientSpendMetrics(c, appointments)
+          const pattern = getVisitPattern(c.id, appointments)
+          const recent = getClientHistory(c.id).slice(0, 3)
           const initials = c.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
           return (
             <div key={c.id} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
@@ -291,16 +317,49 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast })
                 </p>
               )}
               <div style={{ background: 'var(--off-white)', borderRadius: 10, border: '1px solid var(--rose-light)', padding: '8px 10px', marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-mid)', marginBottom: 8, lineHeight: 1.35 }}>
+                  <strong style={{ color: 'var(--text)' }}>Frequência:</strong> {pattern}
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
-                  <span>Desde cadastro</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.sinceCreated)}</strong>
+                  <span>Total pago (desde cadastro)</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.sinceCreated)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
                   <span>Últimos 6 meses</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.last6Months)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-light)' }}>
-                  <span>Último 1 ano</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.last12Months)}</strong>
+                  <span>Último ano</span><strong style={{ color: 'var(--rose-dark)', fontSize: 12 }}>{asMoney(spend.last12Months)}</strong>
                 </div>
               </div>
+              {recent.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Últimos horários</div>
+                  {recent.map((a) => {
+                    const sm = statusMeta(a.status)
+                    return (
+                      <div
+                        key={a.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 8,
+                          fontSize: 12,
+                          padding: '6px 8px',
+                          borderRadius: 8,
+                          background: 'var(--rose-light)',
+                          marginBottom: 4,
+                        }}
+                      >
+                        <span style={{ color: 'var(--text)' }}>
+                          {new Date(a.date + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · {String(a.time).slice(0, 5)}
+                        </span>
+                        <span style={{ fontWeight: 600, color: 'var(--rose-dark)' }}>{asMoney(a.value)}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 6, background: sm.bg, color: sm.text }}>{sm.label}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{count} atendimentos</span>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -332,9 +391,18 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast })
         <Field label="Observações">
           <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Alergias, preferências, etc." rows={3} />
         </Field>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 4 }}>
           <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
-          <Btn onClick={save} disabled={!form.name}><Icon name="check" size={14} color="#fff" /> Salvar</Btn>
+          {modal === 'new' ? (
+            <>
+              <Btn variant="outline" onClick={() => save(false)} disabled={!form.name}>Salvar</Btn>
+              <Btn onClick={() => save(true)} disabled={!form.name}>
+                <Icon name="calendar" size={14} color="#fff" /> Salvar e agendar
+              </Btn>
+            </>
+          ) : (
+            <Btn onClick={() => save(false)} disabled={!form.name}><Icon name="check" size={14} color="#fff" /> Salvar</Btn>
+          )}
         </div>
       </Modal>
 

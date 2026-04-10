@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lash-studio-pwa-v2';
+const CACHE_NAME = 'lash-studio-pwa-v3';
 const PRECACHE_URLS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -19,6 +19,41 @@ self.addEventListener('activate', (event) => {
         Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Lash Studio', body: 'Você tem uma atualização.', tag: 'lash-push' };
+  if (event.data) {
+    try {
+      const j = event.data.json();
+      payload = { ...payload, ...j };
+    } catch (_) {
+      payload.body = event.data.text() || payload.body;
+    }
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: payload.tag || 'lash-default',
+      data: payload.data || { url: '/' },
+      vibrate: [120, 80, 120],
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const c of clientList) {
+        if (c.url && 'focus' in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
   );
 });
 
