@@ -299,7 +299,7 @@ const AppMain = ({ session, onLogout }) => {
   if (loadError) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--off-white)' }}>
-        <div style={{ background: '#fff', borderRadius: 16, padding: 28, border: '1px solid var(--rose-light)', maxWidth: 400, textAlign: 'center' }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 28, border: '1px solid var(--rose-light)', maxWidth: 400, textAlign: 'center' }}>
           <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Algo deu errado ao carregar</p>
           <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 18 }}>Verifique sua internet e tente novamente.</p>
           <button
@@ -406,7 +406,7 @@ const AppMain = ({ session, onLogout }) => {
       {swUpdateReady && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10001, background: 'linear-gradient(135deg, var(--rose-deep) 0%, var(--rose-dark) 100%)', color: '#fff', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap', boxShadow: '0 -8px 32px rgba(44,26,30,0.2)' }}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>Nova versão do app disponível.</span>
-          <button type="button" onClick={() => { if (window.__lashPwaApplyUpdate) window.__lashPwaApplyUpdate() }} style={{ background: '#fff', color: 'var(--rose-dark)', border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button type="button" onClick={() => { if (window.__lashPwaApplyUpdate) window.__lashPwaApplyUpdate() }} style={{ background: 'var(--surface)', color: 'var(--rose-dark)', border: 'none', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             Atualizar agora
           </button>
           <button type="button" onClick={() => setSwUpdateReady(false)} style={{ background: 'transparent', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>

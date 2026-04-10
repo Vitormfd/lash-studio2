@@ -46,7 +46,7 @@ const Reports = ({ appointments, services, clients }) => {
       </div>
 
       {/* Daily chart */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: '16px 16px 12px', border: '1px solid var(--rose-light)', marginBottom: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: '16px 16px 12px', border: '1px solid var(--rose-light)', marginBottom: 14 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Faturamento por dia</h3>
         {daily.length === 0 ? (
           <p style={{ textAlign: 'center', padding: 20, color: 'var(--text-light)', fontSize: 13 }}>Sem dados</p>
@@ -67,7 +67,7 @@ const Reports = ({ appointments, services, clients }) => {
       </div>
 
       {/* By service */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Por serviço</h3>
         {services.filter((s) => svcMap[s.id]).sort((a, b) => (svcMap[b.id] || 0) - (svcMap[a.id] || 0)).map((s) => {
           const val = svcMap[s.id] || 0

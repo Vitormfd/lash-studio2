@@ -8,7 +8,7 @@ const listBoxStyle = {
   overflowY: 'auto',
   border: '1.5px solid var(--border-mid)',
   borderRadius: 10,
-  background: '#fff',
+  background: 'var(--surface)',
   marginTop: 6,
 }
 

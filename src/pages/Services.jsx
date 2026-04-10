@@ -55,7 +55,7 @@ const Services = ({ services, setServices, appointments, addToast }) => {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
         {filtered.map((s) => (
-          <div key={s.id} style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div key={s.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: normalizeServiceColor(s.color) || 'var(--rose-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: normalizeServiceColor(s.color) ? 'inset 0 0 0 1px rgba(0,0,0,0.06)' : 'none' }}>
                 <Icon name="star" size={16} color={normalizeServiceColor(s.color) ? '#2C1A1E' : 'var(--rose-deep)'} />

@@ -138,7 +138,7 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
         {filtered.map((item) => {
           const low = Number(item.stock || 0) <= Number(item.minStock || 0)
           return (
-            <div key={item.id} style={{ background: '#fff', borderRadius: 14, padding: 14, border: `1px solid ${low ? '#FBC7C7' : 'var(--rose-light)'}` }}>
+            <div key={item.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: 14, border: `1px solid ${low ? '#FBC7C7' : 'var(--rose-light)'}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{item.name}</div>
@@ -179,7 +179,7 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
         </div>
       )}
 
-      <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginTop: 16 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginTop: 16 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Últimas movimentações</h3>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>

@@ -13,7 +13,7 @@ const Modal = ({ open, onClose, title, children, wide }) => {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 20, width: '100%',
+          background: 'var(--surface)', borderRadius: 20, width: '100%',
           maxWidth: wide ? 600 : 460, maxHeight: '92vh', overflow: 'auto',
           boxShadow: '0 20px 60px rgba(139,77,85,0.2)',
         }}

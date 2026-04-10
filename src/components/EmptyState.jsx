@@ -5,7 +5,7 @@ const EmptyState = ({ icon = '📋', title, hint }) => (
       textAlign: 'center',
       padding: '40px 20px',
       color: 'var(--text-light)',
-      background: '#fff',
+      background: 'var(--surface)',
       borderRadius: 14,
       border: '1px dashed var(--rose-light)',
     }}

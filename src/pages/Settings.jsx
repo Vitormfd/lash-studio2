@@ -63,7 +63,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
     }
     if (!getVapidPublicKey()) {
       addToast(
-        'O app ainda foi gerado sem VITE_VAPID_PUBLIC_KEY. No Vercel: Deployments → três pontos no último deploy → Redeploy. Depois atualize esta página (no PWA: feche o app e abra de novo).',
+        'Esta versão do app não tem a chave no build. No Vercel, abra a variável VITE_VAPID_PUBLIC_KEY e marque também Production (não só Preview). Salve, faça Redeploy e atualize o app.',
         'warning',
       )
       return
@@ -153,7 +153,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       </div>
 
       {/* Financial settings */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Configurações Financeiras</h3>
         <Field label="Custo médio por cliente (R$)">
           <Inp type="number" value={cost} onChange={(e) => setCost(e.target.value)} step="0.01" />
@@ -167,7 +167,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       </div>
 
       {/* Theme settings */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Tema do app</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 12 }}>
           Escolha a paleta de cores que deseja usar no app.
@@ -186,7 +186,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: 10,
-                  background: active ? 'var(--rose-light)' : '#fff',
+                  background: active ? 'var(--rose-light)' : 'var(--surface)',
                   border: `1px solid ${active ? 'var(--rose-deep)' : 'var(--rose-light)'}`,
                   borderRadius: 10,
                   padding: '10px 12px',
@@ -211,7 +211,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       </div>
 
       {/* Account */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Minha conta</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 16 }}>{session?.email}</p>
         <div style={{ display: 'flex', gap: 12 }}>
@@ -230,7 +230,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       </div>
 
       {/* Notificações push — permissão só aqui, não ao abrir o app */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Lembretes no celular</h3>
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 14 }}>
           Receba aviso antes do próximo horário e resumos do dia. Ative quando quiser — não pedimos permissão ao entrar no app.
@@ -253,7 +253,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {!getVapidPublicKey() && (
               <p style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', padding: '10px 12px', borderRadius: 10, lineHeight: 1.55 }}>
-                <strong>Já colocou a variável no Vercel?</strong> Ela só entra no app depois de um <strong>novo deploy</strong> (Build). Vá em <strong>Deployments</strong> → ⋮ no último → <strong>Redeploy</strong>. No celular, atualize o site ou feche e abra o PWA para carregar a versão nova.
+                <strong>Erro comum:</strong> no Vercel a variável está só em <strong>Preview</strong>, mas o site que você abre no celular usa <strong>Production</strong>. Edite <code style={{ fontSize: 10 }}>VITE_VAPID_PUBLIC_KEY</code> e marque <strong>Production</strong> (e Preview se quiser). Depois <strong>Redeploy</strong> e atualize o PWA.
               </p>
             )}
             <Btn touch full onClick={enablePushNotifications} loading={pushBusy} disabled={pushBusy}>
@@ -268,7 +268,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       </div>
 
       {/* PWA Install */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: '20px', border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: '20px', border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>App no celular (PWA)</h3>
         {pwaStandalone ? (
           <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6 }}>
@@ -292,7 +292,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       </div>
 
       {/* About */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Sobre o Sistema</h3>
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6 }}>
           <strong>Lash Studio</strong> — Gestão profissional para lash designers.<br />

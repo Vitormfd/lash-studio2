@@ -58,7 +58,7 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
       </div>
 
       {/* Per-service breakdown */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 14 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 14 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Faturamento por Serviço</h3>
         {services.map((s) => {
           const appts = real.filter((a) => a.serviceId === s.id)
@@ -81,7 +81,7 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
       </div>
 
       {/* Appointments table */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Atendimentos do mês</h3>
         <div style={{ overflowX: 'auto', minWidth: 0, WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>

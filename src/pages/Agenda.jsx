@@ -156,7 +156,7 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
           {days.map((d) => {
             const isToday = d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10)
             return (
-              <div key={d.toISOString()} style={{ textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid var(--rose-light)', background: isToday ? 'var(--rose-light)' : '#fff' }}>
+              <div key={d.toISOString()} style={{ textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid var(--rose-light)', background: isToday ? 'var(--rose-light)' : 'var(--surface)' }}>
                 <div style={{ fontSize: 10, color: 'var(--text-light)' }}>{DAYS_PT[d.getDay()]}</div>
                 <div style={{ fontSize: 14, fontWeight: isToday ? 600 : 400, color: isToday ? 'var(--rose-deep)' : 'var(--text)' }}>{d.getDate()}</div>
               </div>
@@ -220,7 +220,7 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
             const isToday = ds === todayStr
             return (
               <div key={i} onClick={() => { setCurrent(new Date(ds + 'T12:00')); setView('day') }}
-                style={{ minHeight: 64, padding: 4, borderRadius: 8, cursor: 'pointer', background: isToday ? 'var(--rose-light)' : '#fff', border: `1px solid ${isToday ? 'var(--rose)' : 'var(--rose-light)'}`, transition: 'background 0.15s' }}>
+                style={{ minHeight: 64, padding: 4, borderRadius: 8, cursor: 'pointer', background: isToday ? 'var(--rose-light)' : 'var(--surface)', border: `1px solid ${isToday ? 'var(--rose)' : 'var(--rose-light)'}`, transition: 'background 0.15s' }}>
                 <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--rose-deep)' : 'var(--text)', textAlign: 'right', marginBottom: 3 }}>{day}</div>
                 {appts.slice(0, 2).map((a) => {
                   const acc = normalizeServiceColor(services.find((s) => s.id === a.serviceId)?.color)

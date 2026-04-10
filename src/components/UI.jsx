@@ -73,7 +73,7 @@ export const inputStyle = {
   borderRadius: 10,
   fontSize: 14,
   color: 'var(--text)',
-  background: '#fff',
+  background: 'var(--surface)',
   transition: 'border-color 0.2s',
 }
 
@@ -114,7 +114,7 @@ export const Textarea = (props) => (
 import Icon from './Icon'
 
 export const StatCard = ({ label, value, sub, color = 'var(--rose-deep)', icon }) => (
-  <div style={{ background: '#fff', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--rose-light)', flex: '1 1 140px', minWidth: 130 }}>
+  <div style={{ background: 'var(--surface)', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--rose-light)', flex: '1 1 140px', minWidth: 130 }}>
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
       <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--rose-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={17} color={color} />

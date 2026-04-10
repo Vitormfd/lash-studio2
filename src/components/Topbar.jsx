@@ -5,7 +5,7 @@ const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline }) => 
   <header
     style={{
       position: 'sticky', top: 0,
-      background: 'rgba(253,250,248,0.9)', backdropFilter: 'blur(10px)',
+      background: 'color-mix(in srgb, var(--off-white) 92%, transparent)', backdropFilter: 'blur(10px)',
       borderBottom: '1px solid var(--rose-light)', padding: '12px 20px',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 40,
     }}

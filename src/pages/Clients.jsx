@@ -301,7 +301,7 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
           const recent = getClientHistory(c.id).slice(0, 3)
           const initials = c.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
           return (
-            <div key={c.id} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
+            <div key={c.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, var(--rose-light) 0%, var(--nude) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'var(--rose-dark)' }}>
                   {initials}
@@ -472,7 +472,7 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
 
         <div style={{ marginTop: 10, border: '1px solid var(--rose-light)', borderRadius: 12, overflow: 'hidden', maxHeight: 320, overflowY: 'auto' }}>
           {visibleImportList.map((c) => (
-            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--rose-light)', cursor: 'pointer', background: importSelected.has(c.id) ? 'var(--rose-light)' : '#fff' }}>
+            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--rose-light)', cursor: 'pointer', background: importSelected.has(c.id) ? 'var(--rose-light)' : 'var(--surface)' }}>
               <input
                 type="checkbox"
                 checked={importSelected.has(c.id)}

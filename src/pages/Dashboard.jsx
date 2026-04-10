@@ -94,7 +94,7 @@ const Dashboard = ({
           <div
             style={{
               ...cardInteractive,
-              background: 'linear-gradient(135deg, var(--rose-light) 0%, #fff 55%)',
+              background: 'linear-gradient(135deg, var(--rose-light) 0%, var(--surface) 55%)',
               borderRadius: 14,
               padding: 16,
               border: '2px solid var(--rose-deep)',
@@ -117,7 +117,7 @@ const Dashboard = ({
 
         {/* Linha do dia — horários */}
         {todaySummary.count > 0 && (
-          <div style={{ background: '#fff', borderRadius: 14, padding: 14, border: '1px solid var(--rose-light)', marginBottom: 12 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 14, border: '1px solid var(--rose-light)', marginBottom: 12 }}>
             <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Horários de hoje</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {todayOrdered.map((a) => {
@@ -131,7 +131,7 @@ const Dashboard = ({
                       gap: 10,
                       padding: '8px 10px',
                       borderRadius: 8,
-                      background: a.id === nextAppt?.id ? 'var(--rose-light)' : acc ? hexToRgba(acc, 0.1) : 'var(--off-white)',
+                      background: a.id === nextAppt?.id ? 'var(--rose-light)' : acc ? hexToRgba(acc, 0.24) : 'var(--rose-light)',
                       border: a.id === nextAppt?.id ? '1px solid var(--rose-deep)' : '1px solid var(--rose-light)',
                       ...cardInteractive,
                     }}
@@ -177,7 +177,7 @@ const Dashboard = ({
           { title: 'Amanhã', list: tomorrowAppts, color: 'var(--rose)' },
           { title: 'Esta semana', list: weekAppts, color: 'var(--nude-dark)' },
         ].map(({ title, list, color }) => (
-          <div key={title} style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
+          <div key={title} style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{title}</h3>
               <span style={{ background: 'var(--rose-light)', color, fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
@@ -197,7 +197,7 @@ const Dashboard = ({
                       key={a.id}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
-                        background: acc ? hexToRgba(acc, 0.14) || 'var(--rose-light)' : 'var(--rose-light)',
+                        background: acc ? hexToRgba(acc, 0.28) || 'var(--rose-light)' : 'var(--rose-light)',
                         borderLeft: acc ? `4px solid ${acc}` : 'none',
                       }}
                     >

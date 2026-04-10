@@ -65,7 +65,7 @@ const AuthScreen = ({ onLogin }) => {
     </svg>
   )
 
-  const inputBase = { width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-mid)', borderRadius: 10, fontSize: 14, color: 'var(--text)', background: '#fff', transition: 'border-color 0.2s', fontFamily: 'inherit' }
+  const inputBase = { width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-mid)', borderRadius: 10, fontSize: 14, color: 'var(--text)', background: 'var(--surface)', transition: 'border-color 0.2s', fontFamily: 'inherit' }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--off-white)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -82,11 +82,11 @@ const AuthScreen = ({ onLogin }) => {
         </div>
 
         {/* Card */}
-        <div style={{ background: '#fff', borderRadius: 20, padding: '28px 28px 24px', border: '1px solid var(--rose-light)', boxShadow: '0 4px 40px rgba(139,77,85,0.08)' }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '28px 28px 24px', border: '1px solid var(--rose-light)', boxShadow: '0 4px 40px rgba(139,77,85,0.08)' }}>
           {/* Toggle */}
           <div style={{ display: 'flex', background: 'var(--rose-light)', borderRadius: 10, padding: 3, marginBottom: 24 }}>
             {[['login', 'Entrar'], ['register', 'Criar conta']].map(([m, l]) => (
-              <button key={m} onClick={() => switchMode(m)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', background: mode === m ? '#fff' : 'transparent', color: mode === m ? 'var(--rose-dark)' : 'var(--text-light)', boxShadow: mode === m ? '0 1px 6px rgba(139,77,85,0.1)' : 'none' }}>
+              <button key={m} onClick={() => switchMode(m)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', background: mode === m ? 'var(--surface)' : 'transparent', color: mode === m ? 'var(--rose-dark)' : 'var(--text-light)', boxShadow: mode === m ? '0 1px 6px rgba(139,77,85,0.1)' : 'none' }}>
                 {l}
               </button>
             ))}

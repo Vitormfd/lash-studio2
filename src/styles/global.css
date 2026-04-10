@@ -11,6 +11,7 @@
   --blush-mid: #E9B8BC;
   --white: #FFFFFF;
   --off-white: #FDFAF8;
+  --surface: #ffffff;
   --text: #2C1A1E;
   --text-mid: #6B4A50;
   --text-light: #A07880;
@@ -126,7 +127,7 @@ textarea {
   background: linear-gradient(
     90deg,
     var(--rose-light) 0%,
-    #fff 45%,
+    var(--surface) 45%,
     var(--rose-light) 90%
   );
   background-size: 200% 100%;
