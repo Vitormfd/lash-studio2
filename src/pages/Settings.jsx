@@ -62,7 +62,11 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       return
     }
     if (!getVapidPublicKey()) {
-      addToast('Configure VITE_VAPID_PUBLIC_KEY no ambiente (par VAPID) para registrar o dispositivo no servidor.', 'warning')
+      addToast(
+        'Chave VAPID pública ausente no app. No Vercel/hosting, adicione VITE_VAPID_PUBLIC_KEY (mesma do par web-push) e faça um novo deploy.',
+        'warning',
+      )
+      return
     }
     setPushBusy(true)
     try {
@@ -74,7 +78,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       }
       const sub = await subscribeToPush()
       if (!sub) {
-        addToast('Não foi possível registrar o push. Confira a chave VAPID pública.', 'error')
+        addToast('Não foi possível registrar o push. Verifique se a chave pública corresponde à privada no servidor.', 'error')
         return
       }
       await DB.savePushSubscription(userId, sub, {
@@ -243,6 +247,15 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
             <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600 }}>Notificações ativas neste dispositivo ✓</p>
             <Btn variant="outline" touch full onClick={disablePushNotifications} loading={pushBusy} disabled={pushBusy}>
               Desativar
+            </Btn>
+          </div>
+        ) : !getVapidPublicKey() ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', padding: '10px 12px', borderRadius: 10, lineHeight: 1.55 }}>
+              <strong>Deploy:</strong> o app precisa da variável <code style={{ fontSize: 10 }}>VITE_VAPID_PUBLIC_KEY</code> no painel do Vercel (ou outro host), com o mesmo valor da chave <strong>pública</strong> do par VAPID. Depois disso, faça um <strong>novo deploy</strong> — o Vite só embute essa chave na build.
+            </p>
+            <Btn touch full disabled title="Configure a variável de ambiente e faça redeploy">
+              Ativar lembretes (indisponível sem chave)
             </Btn>
           </div>
         ) : (
