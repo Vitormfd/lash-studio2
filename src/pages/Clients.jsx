@@ -124,10 +124,14 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
     }
   }
 
-  const filtered = clients.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone && c.phone.includes(search))
-  )
+  const q = search.trim().toLowerCase()
+  const filtered = clients.filter((c) => {
+    if (!q) return true
+    const name = (c.name || '').toLowerCase()
+    const phone = (c.phone || '').toString()
+    const notes = (c.notes || '').toLowerCase()
+    return name.includes(q) || phone.includes(search.trim()) || notes.includes(q)
+  })
 
   const save = () => {
     if (!form.name) return
@@ -240,7 +244,7 @@ const Clients = ({ clients, setClients, appointments, addToast }) => {
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-        <Inp placeholder="Buscar cliente..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, maxWidth: 280 }} />
+        <Inp placeholder="Buscar por nome, telefone ou observações..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, flex: '1 1 220px', maxWidth: 360 }} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Btn variant="ghost" onClick={importContacts} disabled={!canPickContacts}>
             <Icon name="upload" size={14} />

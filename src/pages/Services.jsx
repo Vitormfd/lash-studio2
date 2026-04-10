@@ -1,13 +1,22 @@
 import { useState } from 'react'
 import Modal from '../components/Modal'
-import { Btn, Field, Inp } from '../components/UI'
+import { Btn, Field, Inp, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
 import { normalizeServiceColor, SERVICE_COLOR_PRESETS } from '../lib/utils'
 
 const Services = ({ services, setServices, appointments, addToast }) => {
+  const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState({ name: '', price: '', color: '' })
+
+  const q = search.trim().toLowerCase()
+  const filtered = services.filter((s) => {
+    if (!q) return true
+    const name = (s.name || '').toLowerCase()
+    const priceStr = String(s.price ?? '')
+    return name.includes(q) || priceStr.includes(search.trim())
+  })
 
   const save = () => {
     if (!form.name || !form.price) return
@@ -32,14 +41,20 @@ const Services = ({ services, setServices, appointments, addToast }) => {
 
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <Inp
+          placeholder="Buscar serviço por nome ou valor..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ ...inputStyle, flex: '1 1 220px', maxWidth: 360 }}
+        />
         <Btn onClick={() => { setForm({ name: '', price: '', color: '' }); setModal('new') }}>
           <Icon name="plus" size={14} color="#fff" /> Novo Serviço
         </Btn>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-        {services.map((s) => (
+        {filtered.map((s) => (
           <div key={s.id} style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: normalizeServiceColor(s.color) || 'var(--rose-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: normalizeServiceColor(s.color) ? 'inset 0 0 0 1px rgba(0,0,0,0.06)' : 'none' }}>
@@ -62,6 +77,12 @@ const Services = ({ services, setServices, appointments, addToast }) => {
           </div>
         ))}
       </div>
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-light)' }}>
+          <p style={{ fontSize: 15 }}>Nenhum serviço encontrado</p>
+        </div>
+      )}
 
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'new' ? 'Novo Serviço' : 'Editar Serviço'}>
         <Field label="Nome do serviço">
