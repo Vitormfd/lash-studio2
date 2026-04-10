@@ -63,7 +63,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
     }
     if (!getVapidPublicKey()) {
       addToast(
-        'Chave VAPID pública ausente no app. No Vercel/hosting, adicione VITE_VAPID_PUBLIC_KEY (mesma do par web-push) e faça um novo deploy.',
+        'O app ainda foi gerado sem VITE_VAPID_PUBLIC_KEY. No Vercel: Deployments → três pontos no último deploy → Redeploy. Depois atualize esta página (no PWA: feche o app e abra de novo).',
         'warning',
       )
       return
@@ -249,19 +249,17 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
               Desativar
             </Btn>
           </div>
-        ) : !getVapidPublicKey() ? (
+        ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <p style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', padding: '10px 12px', borderRadius: 10, lineHeight: 1.55 }}>
-              <strong>Deploy:</strong> o app precisa da variável <code style={{ fontSize: 10 }}>VITE_VAPID_PUBLIC_KEY</code> no painel do Vercel (ou outro host), com o mesmo valor da chave <strong>pública</strong> do par VAPID. Depois disso, faça um <strong>novo deploy</strong> — o Vite só embute essa chave na build.
-            </p>
-            <Btn touch full disabled title="Configure a variável de ambiente e faça redeploy">
-              Ativar lembretes (indisponível sem chave)
+            {!getVapidPublicKey() && (
+              <p style={{ fontSize: 12, color: '#92400E', background: '#FEF3C7', padding: '10px 12px', borderRadius: 10, lineHeight: 1.55 }}>
+                <strong>Já colocou a variável no Vercel?</strong> Ela só entra no app depois de um <strong>novo deploy</strong> (Build). Vá em <strong>Deployments</strong> → ⋮ no último → <strong>Redeploy</strong>. No celular, atualize o site ou feche e abra o PWA para carregar a versão nova.
+              </p>
+            )}
+            <Btn touch full onClick={enablePushNotifications} loading={pushBusy} disabled={pushBusy}>
+              <Icon name="calendar" size={14} color="#fff" /> Ativar lembretes
             </Btn>
           </div>
-        ) : (
-          <Btn touch full onClick={enablePushNotifications} loading={pushBusy} disabled={pushBusy}>
-            <Icon name="calendar" size={14} color="#fff" /> Ativar lembretes
-          </Btn>
         )}
         <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 12, lineHeight: 1.5 }}>
           O envio com app fechado usa o servidor (Supabase). Rode o SQL em <code style={{ fontSize: 10 }}>supabase/sql/push_subscriptions.sql</code> e configure a Edge Function conforme{' '}
