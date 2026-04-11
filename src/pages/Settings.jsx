@@ -12,7 +12,7 @@ import {
 } from '../lib/pushClient'
 import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 
-const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
+const Settings = ({ config, setConfig, addToast, session, onLogout, isDemo = false }) => {
   const [cost, setCost] = useState(config.avgCost)
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
@@ -22,6 +22,12 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   const [pushBusy, setPushBusy] = useState(false)
   const [pushOn, setPushOn] = useState(false)
   const userId = session?.userId
+
+  const blockDemoAction = () => {
+    if (!isDemo) return false
+    addToast('Modo demonstracao: configuracoes em somente leitura.', 'info')
+    return true
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -53,6 +59,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   }, [session?.userId])
 
   const enablePushNotifications = async () => {
+    if (blockDemoAction()) return
     if (!isPushSupported()) {
       addToast('Este navegador não suporta notificações push.', 'warning')
       return
@@ -96,6 +103,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   }
 
   const disablePushNotifications = async () => {
+    if (blockDemoAction()) return
     if (!userId) return
     setPushBusy(true)
     try {
@@ -115,6 +123,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   }
 
   const installPwa = async () => {
+    if (blockDemoAction()) return
     const p = window.__lashPwa?.getInstallPrompt?.()
     if (!p) { addToast('Use o menu do navegador (⋮) → Instalar app ou atalho.', 'warning'); return }
     p.prompt()
@@ -125,6 +134,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   }
 
   const changePassword = async () => {
+    if (blockDemoAction()) return
     if (!pwForm.next) { setPwError('Preencha a nova senha.'); return }
     if (pwForm.next.length < 6) { setPwError('Nova senha deve ter ao menos 6 caracteres.'); return }
     if (pwForm.next !== pwForm.confirm) { setPwError('As senhas não coincidem.'); return }
@@ -136,6 +146,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
   }
 
   const applySelectedTheme = (id) => {
+    if (blockDemoAction()) return
     const next = saveAndApplyTheme(session?.userId, id)
     setThemeId(next)
     addToast('Tema aplicado!', 'success')
@@ -143,6 +154,13 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
 
   return (
     <div style={{ padding: 16 }}>
+      {isDemo && (
+        <div style={{ background: '#FEF3C7', borderRadius: 12, padding: '12px 16px', border: '1px solid #FCD34D', maxWidth: 480, marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#92400E' }}>Modo demonstracao: somente leitura</p>
+          <p style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>Nesta tela, alteracoes de configuracao ficam bloqueadas no teste gratis.</p>
+        </div>
+      )}
+
       {/* Supabase status */}
       <div style={{ background: '#D1FAE5', borderRadius: 12, padding: '12px 16px', border: '1px solid #A7F3D0', maxWidth: 480, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#059669', flexShrink: 0 }} />
@@ -156,12 +174,12 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Configurações Financeiras</h3>
         <Field label="Custo médio por cliente (R$)">
-          <Inp type="number" value={cost} onChange={(e) => setCost(e.target.value)} step="0.01" />
+          <Inp type="number" value={cost} onChange={(e) => setCost(e.target.value)} step="0.01" disabled={isDemo} />
           <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 5 }}>
             Usado para calcular o lucro real de cada atendimento
           </p>
         </Field>
-        <Btn onClick={() => { setConfig({ ...config, avgCost: Number(cost) }); addToast('Configurações salvas!', 'success') }}>
+        <Btn onClick={() => { if (blockDemoAction()) return; setConfig({ ...config, avgCost: Number(cost) }); addToast('Configurações salvas!', 'success') }} disabled={isDemo}>
           <Icon name="check" size={14} color="#fff" /> Salvar configurações
         </Btn>
       </div>
@@ -180,6 +198,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
                 key={theme.id}
                 type="button"
                 onClick={() => applySelectedTheme(theme.id)}
+                disabled={isDemo}
                 style={{
                   width: '100%',
                   display: 'flex',
@@ -191,6 +210,8 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
                   borderRadius: 10,
                   padding: '10px 12px',
                   color: 'var(--text)',
+                  cursor: isDemo ? 'not-allowed' : 'pointer',
+                  opacity: isDemo ? 0.7 : 1,
                 }}
               >
                 <span style={{ fontSize: 13, fontWeight: active ? 600 : 500 }}>{theme.label}</span>
@@ -204,7 +225,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
           })}
         </div>
         <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
-          <Btn variant="ghost" sm onClick={() => applySelectedTheme('rose')}>
+          <Btn variant="ghost" sm onClick={() => applySelectedTheme('rose')} disabled={isDemo}>
             Voltar ao tema padrão
           </Btn>
         </div>
@@ -216,15 +237,15 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 16 }}>{session?.email}</p>
         <div style={{ display: 'flex', gap: 12 }}>
           <Field label="Nova senha" half>
-            <Inp type="password" value={pwForm.next} onChange={(e) => setPwForm((f) => ({ ...f, next: e.target.value }))} placeholder="Mín. 6 caracteres" />
+            <Inp type="password" value={pwForm.next} onChange={(e) => setPwForm((f) => ({ ...f, next: e.target.value }))} placeholder="Mín. 6 caracteres" disabled={isDemo} />
           </Field>
           <Field label="Confirmar" half>
-            <Inp type="password" value={pwForm.confirm} onChange={(e) => setPwForm((f) => ({ ...f, confirm: e.target.value }))} placeholder="Repita" />
+            <Inp type="password" value={pwForm.confirm} onChange={(e) => setPwForm((f) => ({ ...f, confirm: e.target.value }))} placeholder="Repita" disabled={isDemo} />
           </Field>
         </div>
         {pwError && <p style={{ fontSize: 12, color: '#C5515F', marginBottom: 10 }}>{pwError}</p>}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Btn onClick={changePassword}><Icon name="check" size={14} color="#fff" /> Alterar senha</Btn>
+          <Btn onClick={changePassword} disabled={isDemo}><Icon name="check" size={14} color="#fff" /> Alterar senha</Btn>
           <Btn variant="ghost" onClick={onLogout}>Sair da conta</Btn>
         </div>
       </div>
@@ -245,7 +266,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
         ) : pushOn ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <p style={{ fontSize: 13, color: '#065F46', fontWeight: 600 }}>Notificações ativas neste dispositivo ✓</p>
-            <Btn variant="outline" touch full onClick={disablePushNotifications} loading={pushBusy} disabled={pushBusy}>
+            <Btn variant="outline" touch full onClick={disablePushNotifications} loading={pushBusy} disabled={pushBusy || isDemo}>
               Desativar
             </Btn>
           </div>
@@ -256,7 +277,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
                 <strong>Erro comum:</strong> no Vercel a variável está só em <strong>Preview</strong>, mas o site que você abre no celular usa <strong>Production</strong>. Edite <code style={{ fontSize: 10 }}>VITE_VAPID_PUBLIC_KEY</code> e marque <strong>Production</strong> (e Preview se quiser). Depois <strong>Redeploy</strong> e atualize o PWA.
               </p>
             )}
-            <Btn touch full onClick={enablePushNotifications} loading={pushBusy} disabled={pushBusy}>
+            <Btn touch full onClick={enablePushNotifications} loading={pushBusy} disabled={pushBusy || isDemo}>
               <Icon name="calendar" size={14} color="#fff" /> Ativar lembretes
             </Btn>
           </div>
@@ -280,7 +301,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout }) => {
               Instale para abrir direto da tela inicial, com ícone próprio e melhor experiência no celular.
             </p>
             {pwaCanInstall ? (
-              <Btn onClick={installPwa}><Icon name="check" size={14} color="#fff" /> Instalar app</Btn>
+              <Btn onClick={installPwa} disabled={isDemo}><Icon name="check" size={14} color="#fff" /> Instalar app</Btn>
             ) : (
               <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.65 }}>
                 <strong>Chrome / Edge (Android ou desktop):</strong> menu ⋮ → &quot;Instalar app&quot; ou ícone na barra de endereço.<br />

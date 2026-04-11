@@ -40,7 +40,7 @@ const NAV_TITLES = {
   settings: 'Configurações',
 }
 
-const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services']
+const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services', 'inventory', 'finance', 'reports', 'settings']
 
 // ─── APP MAIN (autenticado) ───────────────────────────────────────────────────
 const AppMain = ({ session, onLogout }) => {
@@ -433,7 +433,16 @@ const AppMain = ({ session, onLogout }) => {
           )}
           {page === 'finance' && <Finance appointments={appointments} services={services} clients={clients} config={config} setConfig={saveConfig} />}
           {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} />}
-          {page === 'settings' && <Settings config={config} setConfig={saveConfig} addToast={addToast} session={session} onLogout={onLogout} />}
+          {page === 'settings' && (
+            <Settings
+              config={config}
+              setConfig={saveConfig}
+              addToast={addToast}
+              session={session}
+              onLogout={onLogout}
+              isDemo={isDemo}
+            />
+          )}
         </div>
       </main>
 
