@@ -1,7 +1,7 @@
 import Icon from './Icon'
 import { Btn } from './UI'
 
-const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline }) => (
+const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDemo }) => (
   <header
     style={{
       position: 'sticky', top: 0,
@@ -18,6 +18,11 @@ const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline }) => 
         <Icon name="menu" size={18} />
       </button>
       <h1 className="serif" style={{ fontSize: 20, fontWeight: 500, color: 'var(--text)' }}>{title}</h1>
+      {isDemo && (
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74' }}>
+          Teste gratis
+        </span>
+      )}
       {offline && (
         <span style={{ fontSize: 11, fontWeight: 600, color: '#92400E', background: '#FEF3C7', padding: '4px 10px', borderRadius: 20, border: '1px solid #FCD34D' }}>
           Sem internet
@@ -39,7 +44,7 @@ const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline }) => 
           <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--rose-deep)', borderRadius: '50%', border: '2px solid var(--off-white)' }} />
         )}
       </button>
-      <Btn onClick={onNewAppt} sm>
+      <Btn onClick={onNewAppt} sm disabled={isDemo}>
         <Icon name="plus" size={14} color="#fff" /> Novo
       </Btn>
     </div>

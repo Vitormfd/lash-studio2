@@ -11,7 +11,12 @@ const NAV = [
   { id: 'settings', label: 'Configurações', icon: 'settings' },
 ]
 
-const Sidebar = ({ active, setActive, open, setOpen, session, onLogout }) => (
+const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedNavIds }) => {
+  const navItems = Array.isArray(allowedNavIds)
+    ? NAV.filter((n) => allowedNavIds.includes(n.id))
+    : NAV
+
+  return (
   <>
     {open && (
       <div
@@ -42,7 +47,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout }) => (
 
       {/* Nav items */}
       <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
-        {NAV.map((n) => (
+        {navItems.map((n) => (
           <button
             key={n.id}
             onClick={() => { setActive(n.id); setOpen(false) }}
@@ -75,6 +80,11 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout }) => (
             <div style={{ fontSize: 10, color: 'var(--text-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {session?.email || ''}
             </div>
+            {session?.isDemo && (
+              <div style={{ marginTop: 4, fontSize: 10, fontWeight: 600, color: 'var(--rose-dark)', background: 'var(--rose-light)', borderRadius: 999, padding: '2px 8px', display: 'inline-flex' }}>
+                Modo demonstracao
+              </div>
+            )}
           </div>
         </div>
         <button
@@ -87,6 +97,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout }) => (
       </div>
     </aside>
   </>
-)
+  )
+}
 
 export default Sidebar

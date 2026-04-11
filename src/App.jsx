@@ -40,9 +40,12 @@ const NAV_TITLES = {
   settings: 'Configurações',
 }
 
+const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services']
+
 // ─── APP MAIN (autenticado) ───────────────────────────────────────────────────
 const AppMain = ({ session, onLogout }) => {
   const userId = session.userId
+  const isDemo = !!session?.isDemo
   const [page, setPage] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [newApptModal, setNewApptModal] = useState(false)
@@ -62,6 +65,18 @@ const AppMain = ({ session, onLogout }) => {
 
   const { toasts, addToast, removeToast } = useToast()
   const [notifGate, setNotifGate] = useState(0)
+
+  const guardDemoWrite = useCallback(() => {
+    if (!isDemo) return false
+    addToast('Modo demonstracao: esta acao esta bloqueada no teste gratis.', 'warning')
+    return true
+  }, [isDemo, addToast])
+
+  useEffect(() => {
+    if (!isDemo) return
+    if (DEMO_ALLOWED_PAGES.includes(page)) return
+    setPage('dashboard')
+  }, [isDemo, page])
 
   useEffect(() => {
     const bump = () => setNotifGate((g) => g + 1)
@@ -124,35 +139,42 @@ const AppMain = ({ session, onLogout }) => {
 
   // ── CLIENTS ──
   const handleAddClient = async (client) => {
+    if (guardDemoWrite()) return
     setClients((c) => [...c, client])
     const saved = await DB.saveClient(userId, { ...client, _new: true })
     setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleUpdateClient = async (client) => {
+    if (guardDemoWrite()) return
     const saved = await DB.saveClient(userId, client)
     setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleDeleteClient = async (id) => {
+    if (guardDemoWrite()) return
     await DB.deleteClient(userId, id)
     setClients((c) => c.filter((x) => x.id !== id))
   }
 
   // ── SERVICES ──
   const handleAddService = async (svc) => {
+    if (guardDemoWrite()) return
     const saved = await DB.saveService(userId, { ...svc, _new: true })
     setServices((s) => [...s, saved])
   }
   const handleUpdateService = async (svc) => {
+    if (guardDemoWrite()) return
     const saved = await DB.saveService(userId, svc)
     setServices((s) => s.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleDeleteService = async (id) => {
+    if (guardDemoWrite()) return
     await DB.deleteService(userId, id)
     setServices((s) => s.filter((x) => x.id !== id))
   }
 
   // ── APPOINTMENTS ──
   const saveAppt = async (form) => {
+    if (guardDemoWrite()) return
     const dur = Number(form.durationMinutes) || 60
     const overlapsOther = (idToSkip) =>
       appointments.find((a) => {
@@ -177,12 +199,14 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const deleteAppt = async (id) => {
+    if (guardDemoWrite()) return
     await DB.deleteAppointment(userId, id)
     setAppointments((a) => a.filter((x) => x.id !== id))
     addToast('Removido.', 'success')
   }
 
   const markAppointmentStatus = async (appt, status) => {
+    if (guardDemoWrite()) return
     try {
       const prevStatus = appt.status
       const saved = await DB.saveAppointment(userId, { ...appt, status })
@@ -227,12 +251,14 @@ const AppMain = ({ session, onLogout }) => {
 
   // ── CONFIG ──
   const saveConfig = async (cfg) => {
+    if (guardDemoWrite()) return
     await DB.saveConfig(userId, cfg)
     setConfigState(cfg)
   }
 
   // ── INVENTORY ──
   const handleSaveInventoryItem = async (item) => {
+    if (guardDemoWrite()) return
     const saved = await DB.saveInventoryItem(userId, item)
     setInventoryItems((list) => {
       const exists = list.some((x) => x.id === saved.id)
@@ -241,17 +267,20 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const handleDeleteInventoryItem = async (id) => {
+    if (guardDemoWrite()) return
     await DB.deleteInventoryItem(userId, id)
     setInventoryItems((list) => list.filter((x) => x.id !== id))
   }
 
   const handleSaveInventoryMovement = async (movement) => {
+    if (guardDemoWrite()) return
     const saved = await DB.saveInventoryMovement(userId, movement)
     setInventoryMovements((list) => [saved, ...list])
   }
 
   // ── COMPAT SETTERS (para páginas que usam setClients/setServices como array-setter) ──
   const setClientsCompat = (valOrFn) => {
+    if (isDemo) { guardDemoWrite(); return }
     const next = typeof valOrFn === 'function' ? valOrFn(clients) : valOrFn
     const added = next.find((c) => !clients.find((x) => x.id === c.id))
     const removed = clients.find((c) => !next.find((x) => x.id === c.id))
@@ -263,6 +292,7 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const setServicesCompat = (valOrFn) => {
+    if (isDemo) { guardDemoWrite(); return }
     const next = typeof valOrFn === 'function' ? valOrFn(services) : valOrFn
     const added = next.find((s) => !services.find((x) => x.id === s.id))
     const removed = services.find((s) => !next.find((x) => x.id === s.id))
@@ -319,7 +349,16 @@ const AppMain = ({ session, onLogout }) => {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', minWidth: 0, width: '100%', background: 'var(--off-white)' }}>
-      <Sidebar active={page} setActive={setPage} open={sidebarOpen} setOpen={setSidebarOpen} session={session} onLogout={onLogout} />
+      <Sidebar
+        active={page}
+        setActive={setPage}
+        open={sidebarOpen}
+        setOpen={setSidebarOpen}
+        session={session}
+        onLogout={onLogout}
+        allowedNavIds={isDemo ? DEMO_ALLOWED_PAGES : null}
+      />
+
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, overflow: 'hidden' }}>
         <Topbar
@@ -327,8 +366,13 @@ const AppMain = ({ session, onLogout }) => {
           setOpen={setSidebarOpen}
           notifs={todayNotifs}
           onBellClick={handleBellClick}
-          onNewAppt={() => { setNewApptInitial(null); setNewApptModal(true) }}
+          onNewAppt={() => {
+            if (isDemo) { guardDemoWrite(); return }
+            setNewApptInitial(null)
+            setNewApptModal(true)
+          }}
           offline={!online}
+          isDemo={isDemo}
         />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -339,7 +383,11 @@ const AppMain = ({ session, onLogout }) => {
               services={services}
               config={config}
               onGoAgenda={() => setPage('agenda')}
-              onNewAppointment={() => { setNewApptInitial(null); setNewApptModal(true) }}
+              onNewAppointment={() => {
+                if (isDemo) { guardDemoWrite(); return }
+                setNewApptInitial(null)
+                setNewApptModal(true)
+              }}
               onGoClients={() => setPage('clients')}
             />
           )}
@@ -349,7 +397,10 @@ const AppMain = ({ session, onLogout }) => {
               clients={clients}
               services={services}
               onNew={saveAppt}
-              onEdit={setEditAppt}
+              onEdit={(appt) => {
+                if (isDemo) { guardDemoWrite(); return }
+                setEditAppt(appt)
+              }}
               onDelete={deleteAppt}
               onMarkStatus={markAppointmentStatus}
               addToast={addToast}
@@ -426,10 +477,27 @@ const App = () => {
 
   useEffect(() => {
     initSupabase(SUPABASE_URL, SUPABASE_KEY)
-    AUTH.getSession().then((s) => {
-      if (s) setSession(s)
-      setChecking(false)
-    }).catch(() => setChecking(false))
+    AUTH.getSession()
+      .then(async (s) => {
+        if (s) {
+          setSession(s)
+          return
+        }
+
+        const params = new URLSearchParams(window.location.search)
+        const wantsDemo = params.get('demo') === '1' || params.get('trial') === '1'
+        if (!wantsDemo) return
+
+        const demoSession = await AUTH.createDemoSession()
+        AUTH.saveLocalSession(demoSession)
+        setSession(demoSession)
+        params.delete('demo')
+        params.delete('trial')
+        const nextSearch = params.toString()
+        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`
+        window.history.replaceState({}, document.title, nextUrl)
+      })
+      .finally(() => setChecking(false))
   }, [])
 
   if (checking) return <Spinner text="Carregando..." />
