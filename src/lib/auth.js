@@ -1,4 +1,5 @@
 import { getClient, local, uid } from './supabase'
+import { toLocalYmd } from './dashboardStats'
 
 const uset = (userId, key, val) => local.set(`u_${userId}_${key}`, val)
 
@@ -76,7 +77,7 @@ export const AUTH = {
       { id: uid(), name: 'Clássico', price: 120, color: '#9B8FB8' },
       { id: uid(), name: 'Manutenção', price: 80, color: '#7BAF9A' },
     ]
-    const today = new Date().toISOString().slice(0, 10)
+    const today = toLocalYmd(new Date())
     uset(userId, 'clients', clients)
     uset(userId, 'services', services)
     uset(userId, 'appointments', [

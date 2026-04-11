@@ -4,7 +4,7 @@ import Icon from '../components/Icon'
 import EmptyState from '../components/EmptyState'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
 import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin } from '../lib/utils'
-import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList } from '../lib/dashboardStats'
+import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList, toLocalYmd } from '../lib/dashboardStats'
 import { getPersonalityMessage } from '../lib/dayMessages'
 
 const cardInteractive = {
@@ -22,7 +22,8 @@ const Dashboard = ({
 }) => {
   const now = new Date()
   const today = getTodayStr(now)
-  const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10)
+  const tomorrowD = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+  const tomorrow = toLocalYmd(tomorrowD)
   const monday = new Date(now); monday.setDate(now.getDate() - now.getDay() + 1)
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const monthStr = today.slice(0, 7)

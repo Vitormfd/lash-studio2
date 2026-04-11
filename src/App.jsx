@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { initSupabase, DB, uid } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
+import { toLocalYmd } from './lib/dashboardStats'
 import { progressPushBody } from './lib/dayMessages'
 import { useLocalReminders } from './hooks/useLocalReminders'
 import { applyTheme, getSavedThemeId } from './lib/theme'
@@ -190,7 +191,7 @@ const AppMain = ({ session, onLogout }) => {
       if (status === 'done' && prevStatus !== 'done') {
         const v = Number(appt.value || 0)
         addToast(`+ R$ ${v.toFixed(2).replace('.', ',')} adicionados hoje 💰`, 'success')
-        const todayStr = new Date().toISOString().slice(0, 10)
+        const todayStr = toLocalYmd(new Date())
         const totalDone = merged
           .filter((a) => a.date === todayStr && a.status === 'done')
           .reduce((s, a) => s + Number(a.value || 0), 0)

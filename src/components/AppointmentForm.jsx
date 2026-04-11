@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Btn, Field, Inp, Sel, Textarea, inputStyle } from './UI'
 import Icon from './Icon'
 import { DURATION_OPTIONS, formatDurationLabel, endTimeLabel } from '../lib/utils'
+import { toLocalYmd } from '../lib/dashboardStats'
 
 const listBoxStyle = {
   maxHeight: 200,
@@ -19,7 +20,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
 
   const [form, setForm] = useState({
     clientId: '', serviceId: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: toLocalYmd(new Date()),
     value: '', notes: '',
     ...initial,
     blocked: blocked != null ? blocked : !!initial?.blocked,

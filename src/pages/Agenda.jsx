@@ -10,13 +10,14 @@ import {
   formatDurationLabel, endTimeLabel,
 } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
+import { toLocalYmd } from '../lib/dashboardStats'
 
 const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMarkStatus, addToast }) => {
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
   const [modal, setModal] = useState(null)
 
-  const dateStr = current.toISOString().slice(0, 10)
+  const dateStr = toLocalYmd(current)
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Bloqueado'
   const getServiceName = (id) => services.find((s) => s.id === id)?.name || ''
 
@@ -154,9 +155,9 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
         <div style={{ minWidth: 500, display: 'grid', gridTemplateColumns: '44px repeat(7, 1fr)', gap: 0 }}>
           <div />
           {days.map((d) => {
-            const isToday = d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10)
+            const isToday = toLocalYmd(d) === toLocalYmd(new Date())
             return (
-              <div key={d.toISOString()} style={{ textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid var(--rose-light)', background: isToday ? 'var(--rose-light)' : 'var(--surface)' }}>
+              <div key={toLocalYmd(d)} style={{ textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid var(--rose-light)', background: isToday ? 'var(--rose-light)' : 'var(--surface)' }}>
                 <div style={{ fontSize: 10, color: 'var(--text-light)' }}>{DAYS_PT[d.getDay()]}</div>
                 <div style={{ fontSize: 14, fontWeight: isToday ? 600 : 400, color: isToday ? 'var(--rose-deep)' : 'var(--text)' }}>{d.getDate()}</div>
               </div>
@@ -166,7 +167,7 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
             <div key={h} style={{ display: 'contents' }}>
               <div style={{ padding: '4px 6px 0', fontSize: 10, color: 'var(--text-light)', textAlign: 'right', borderBottom: '1px solid var(--rose-light)' }}>{h}</div>
               {days.map((d) => {
-                const ds = d.toISOString().slice(0, 10)
+                const ds = toLocalYmd(d)
                 const dayList = appointments.filter((a) => a.date === ds)
                 const appt = dayList.find((a) => apptStartsInHourRow(a, h))
                 const slotBusy = dayList.some((a) => apptCoversSlotHour(a, ds, h))
@@ -206,7 +207,7 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
       const day = i - firstDay + 1
       return day < 1 || day > daysInMonth ? null : day
     })
-    const todayStr = new Date().toISOString().slice(0, 10)
+    const todayStr = toLocalYmd(new Date())
     return (
       <div style={{ flex: 1, overflow: 'auto', minWidth: 0, padding: '0 4px', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
