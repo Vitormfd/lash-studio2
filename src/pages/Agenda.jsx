@@ -12,7 +12,19 @@ import {
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
 
-const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMarkStatus, addToast }) => {
+const Agenda = ({
+  appointments,
+  clients,
+  services,
+  onNew,
+  onEdit,
+  onDelete,
+  onMarkStatus,
+  addToast,
+  canUserEdit,
+  onBlockedAction,
+  onUpgrade,
+}) => {
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
   const [modal, setModal] = useState(null)
@@ -34,6 +46,10 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
       title={label}
       onClick={(e) => {
         e.stopPropagation()
+        if (!canUserEdit) {
+          onBlockedAction?.('Desbloqueie para marcar atendimento como concluido.')
+          return
+        }
         onMarkStatus(appt, next)
       }}
       style={{
@@ -118,8 +134,19 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
                     </div>
                     <div style={{ display: 'flex', gap: 4, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end', alignSelf: 'flex-start' }}>
                       {!appt.blocked && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(appt) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-light)' }}>
-                          <Icon name="edit" size={13} />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!canUserEdit) {
+                              onBlockedAction?.('Desbloqueie para editar agendamentos.')
+                              return
+                            }
+                            onEdit(appt)
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-light)', opacity: canUserEdit ? 1 : 0.72 }}
+                        >
+                          <Icon name={canUserEdit ? 'edit' : 'lock'} size={13} />
                         </button>
                       )}
                       <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(appt.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#C5515F' }}>
@@ -262,6 +289,14 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 57px)', overflow: 'hidden', padding: '12px 0 0', minWidth: 0, width: '100%' }}>
       {/* Controls */}
       <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        {!canUserEdit && (
+          <div style={{ width: '100%', border: '1px solid var(--rose-light)', borderRadius: 10, background: 'var(--rose-light)', padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-mid)' }}>Desbloqueie para criar agendamentos</span>
+            <Btn sm onClick={() => onUpgrade?.()}>
+              <Icon name="lock" size={12} color="#fff" /> Desbloquear agora
+            </Btn>
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => navigate(-1)} style={{ background: 'var(--rose-light)', border: 'none', borderRadius: 8, padding: 7, cursor: 'pointer', display: 'flex' }}><Icon name="chevLeft" size={15} /></button>
           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', minWidth: 150, textAlign: 'center' }}>{fmtHeader()}</span>
@@ -274,9 +309,31 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
               {v === 'day' ? 'Dia' : v === 'week' ? 'Semana' : 'Mês'}
             </button>
           ))}
-          <Btn variant="outline" sm onClick={() => setModal({ date: dateStr, time: '09:00', blocked: true })}>
-            <Icon name="lock" size={12} color="var(--rose-deep)" /> Bloquear
-          </Btn>
+          {canUserEdit ? (
+            <Btn variant="outline" sm onClick={() => setModal({ date: dateStr, time: '09:00', blocked: true })}>
+              <Icon name="lock" size={12} color="var(--rose-deep)" /> Bloquear
+            </Btn>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onBlockedAction?.('Desbloqueie para criar agendamentos.')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                border: '1.5px solid var(--rose-deep)',
+                background: 'transparent',
+                color: 'var(--rose-deep)',
+                opacity: 0.7,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <Icon name="lock" size={12} color="var(--rose-deep)" /> Bloquear
+            </button>
+          )}
         </div>
       </div>
 
@@ -293,6 +350,10 @@ const Agenda = ({ appointments, clients, services, onNew, onEdit, onDelete, onMa
             services={services}
             onClose={() => setModal(null)}
             onSave={(form) => {
+              if (!canUserEdit) {
+                onBlockedAction?.('Desbloqueie para criar agendamentos.')
+                return
+              }
               const dur = Number(form.durationMinutes) || 60
               const clash = appointments.find((a) =>
                 apptIntervalsOverlap(form.date, form.time, dur, a.date, a.time, apptDurationMin(a))

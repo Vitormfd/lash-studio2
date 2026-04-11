@@ -1,7 +1,7 @@
 import Icon from './Icon'
 import { Btn } from './UI'
 
-const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDemo }) => (
+const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDemo, canUserEdit, onUpgrade }) => (
   <header
     style={{
       position: 'sticky', top: 0,
@@ -44,9 +44,34 @@ const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDem
           <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--rose-deep)', borderRadius: '50%', border: '2px solid var(--off-white)' }} />
         )}
       </button>
-      <Btn onClick={onNewAppt} sm disabled={isDemo}>
-        <Icon name="plus" size={14} color="#fff" /> Novo
-      </Btn>
+      {canUserEdit ? (
+        <Btn onClick={onNewAppt} sm>
+          <Icon name="plus" size={14} color="#fff" /> Novo
+        </Btn>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onUpgrade?.()}
+          className="lash-btn-press"
+          style={{
+            background: 'var(--rose-deep)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 10,
+            padding: '7px 14px',
+            fontSize: 12,
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            cursor: 'pointer',
+            opacity: 0.7,
+            filter: 'saturate(0.7)',
+          }}
+        >
+          <Icon name="lock" size={13} color="#fff" /> Novo
+        </button>
+      )}
     </div>
   </header>
 )

@@ -131,7 +131,17 @@ const getVisitPattern = (clientId, appointments) => {
   return 'Ainda sem visitas concluídas'
 }
 
-const Clients = ({ clients, setClients, appointments, services = [], addToast, onScheduleAfterCreate }) => {
+const Clients = ({
+  clients,
+  setClients,
+  appointments,
+  services = [],
+  addToast,
+  onScheduleAfterCreate,
+  canUserEdit,
+  onBlockedAction,
+  onUpgrade,
+}) => {
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
@@ -157,6 +167,10 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
   })
 
   const save = (andSchedule) => {
+    if (!canUserEdit) {
+      onBlockedAction?.('Desbloqueie para salvar clientes.')
+      return
+    }
     if (!form.name) return
     if (modal === 'new') {
       const newId = uid()
@@ -178,7 +192,14 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
   }
 
   const openEdit = (c) => { setForm({ name: c.name, phone: c.phone, notes: c.notes }); setModal(c) }
-  const openNew = () => { setForm({ name: '', phone: '', notes: '' }); setModal('new') }
+  const openNew = () => {
+    if (!canUserEdit) {
+      onBlockedAction?.('Desbloqueie para salvar clientes.')
+      return
+    }
+    setForm({ name: '', phone: '', notes: '' })
+    setModal('new')
+  }
   const getApptCount = (id) => appointments.filter((a) => a.clientId === id && a.status !== 'cancelled').length
 
   const getClientHistory = (clientId) =>
@@ -276,6 +297,15 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
 
   return (
     <div style={{ padding: 16 }}>
+      {!canUserEdit && (
+        <div style={{ marginBottom: 12, border: '1px solid var(--rose-light)', background: 'var(--rose-light)', borderRadius: 12, padding: 12 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--rose-dark)' }}>Desbloqueie para salvar clientes</p>
+          <p style={{ fontSize: 12, color: 'var(--text-mid)', marginTop: 2, marginBottom: 8 }}>Tenha acesso completo ao sistema 💅</p>
+          <Btn onClick={() => onUpgrade?.()} sm>
+            <Icon name="lock" size={12} color="#fff" /> Desbloquear agora
+          </Btn>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <Inp placeholder="Buscar por nome, telefone ou observações..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, flex: '1 1 220px', maxWidth: 360 }} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -289,7 +319,31 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
               Importar .vcf (iPhone)
             </Btn>
           )}
-          <Btn onClick={openNew}><Icon name="plus" size={14} color="#fff" /> Nova Cliente</Btn>
+          {canUserEdit ? (
+            <Btn onClick={openNew}><Icon name="plus" size={14} color="#fff" /> Nova Cliente</Btn>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onBlockedAction?.('Desbloqueie para salvar clientes.')}
+              className="lash-btn-press"
+              style={{
+                background: 'var(--rose-deep)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                padding: '11px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                opacity: 0.72,
+                filter: 'blur(0.2px)',
+              }}
+            >
+              <Icon name="lock" size={13} color="#fff" /> Nova Cliente
+            </button>
+          )}
         </div>
       </div>
 
@@ -366,7 +420,19 @@ const Clients = ({ clients, setClients, appointments, services = [], addToast, o
                   <Btn variant="ghost" sm onClick={() => setHistoryClient(c)} title="Histórico de atendimentos">
                     <Icon name="calendar" size={12} /> Histórico
                   </Btn>
-                  <Btn variant="ghost" sm onClick={() => openEdit(c)}><Icon name="edit" size={12} /></Btn>
+                  <Btn
+                    variant="ghost"
+                    sm
+                    onClick={() => {
+                      if (!canUserEdit) {
+                        onBlockedAction?.('Desbloqueie para editar clientes.')
+                        return
+                      }
+                      openEdit(c)
+                    }}
+                  >
+                    <Icon name={canUserEdit ? 'edit' : 'lock'} size={12} />
+                  </Btn>
                   <Btn variant="ghost" sm onClick={() => del(c.id)}><Icon name="trash" size={12} color="#C5515F" /></Btn>
                 </div>
               </div>

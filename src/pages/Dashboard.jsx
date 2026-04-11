@@ -19,6 +19,8 @@ const Dashboard = ({
   onGoAgenda,
   onNewAppointment,
   onGoClients,
+  canUserEdit,
+  onUpgrade,
 }) => {
   const now = new Date()
   const today = getTodayStr(now)
@@ -67,6 +69,16 @@ const Dashboard = ({
           {vibeLine}
         </p>
       </div>
+
+      {!canUserEdit && (
+        <div style={{ marginBottom: 14, border: '1px solid var(--rose-light)', background: 'linear-gradient(135deg, var(--rose-light) 0%, var(--surface) 100%)', borderRadius: 14, padding: 14 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--rose-dark)', marginBottom: 4 }}>Tenha acesso completo ao sistema 💅</p>
+          <p style={{ fontSize: 12, color: 'var(--text-mid)', marginBottom: 10 }}>Organize seu negocio sem limitacoes e salve tudo sem bloqueios.</p>
+          <Btn onClick={() => onUpgrade?.()}>
+            <Icon name="lock" size={14} color="#fff" /> Desbloquear agora
+          </Btn>
+        </div>
+      )}
 
       {/* Resumo de hoje */}
       <div style={{ marginBottom: 12 }}>
@@ -158,7 +170,33 @@ const Dashboard = ({
 
       {/* Atalhos */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-        <Btn onClick={onNewAppointment} touch full><Icon name="plus" size={14} color="#fff" /> Novo agendamento</Btn>
+        {canUserEdit ? (
+          <Btn onClick={onNewAppointment} touch full><Icon name="plus" size={14} color="#fff" /> Novo agendamento</Btn>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onUpgrade?.()}
+            className="lash-btn-press"
+            style={{
+              width: '100%',
+              minHeight: 48,
+              borderRadius: 10,
+              background: 'var(--rose-deep)',
+              color: '#fff',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '13px 22px',
+              fontSize: 14,
+              fontWeight: 600,
+              opacity: 0.72,
+              filter: 'blur(0.2px)',
+            }}
+          >
+            <Icon name="lock" size={14} color="#fff" /> Novo agendamento
+          </button>
+        )}
         <Btn variant="ghost" onClick={onGoAgenda} touch full><Icon name="calendar" size={14} /> Ver agenda</Btn>
         <Btn variant="outline" onClick={onGoClients} touch full><Icon name="users" size={14} /> Clientes</Btn>
       </div>

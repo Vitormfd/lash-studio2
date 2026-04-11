@@ -7,6 +7,8 @@ import { progressPushBody } from './lib/dayMessages'
 import { useLocalReminders } from './hooks/useLocalReminders'
 import { applyTheme, getSavedThemeId } from './lib/theme'
 import { useToast } from './hooks/useToast'
+import { CHECKOUT_URL, openCheckout } from './lib/billing'
+import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -15,6 +17,7 @@ import Toast from './components/Toast'
 import AppointmentForm from './components/AppointmentForm'
 import { Spinner } from './components/UI'
 import DashboardSkeleton from './components/DashboardSkeleton'
+import PaywallModal from './components/PaywallModal'
 
 import AuthScreen from './pages/AuthScreen'
 import Dashboard from './pages/Dashboard'
@@ -62,15 +65,26 @@ const AppMain = ({ session, onLogout }) => {
   const [config, setConfigState] = useState({ avgCost: 12.35 })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
+  const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
+  const [paywallOpen, setPaywallOpen] = useState(false)
+  const [paywallHint, setPaywallHint] = useState('')
 
   const { toasts, addToast, removeToast } = useToast()
   const [notifGate, setNotifGate] = useState(0)
 
-  const guardDemoWrite = useCallback(() => {
-    if (!isDemo) return false
-    addToast('Modo demonstracao: esta acao esta bloqueada no teste gratis.', 'warning')
+  const canUserEdit = canUserEditByLevel(accessProfile.accessLevel)
+
+  const openPaywall = useCallback((hint = '') => {
+    setPaywallHint(hint)
+    setPaywallOpen(true)
+  }, [])
+
+  const guardRestrictedWrite = useCallback((hint) => {
+    if (canUserEdit) return false
+    addToast(hint || 'Desbloqueie para continuar.', 'warning')
+    openPaywall(hint)
     return true
-  }, [isDemo, addToast])
+  }, [canUserEdit, addToast, openPaywall])
 
   useEffect(() => {
     if (!isDemo) return
@@ -134,47 +148,61 @@ const AppMain = ({ session, onLogout }) => {
   }, [reloadData])
 
   useEffect(() => {
+    let alive = true
+    fetchUserAccessProfile(userId, isDemo)
+      .then((profile) => {
+        if (!alive) return
+        setAccessProfile(profile)
+      })
+      .catch(() => {
+        if (!alive) return
+        setAccessProfile(defaultAccessProfile)
+      })
+    return () => { alive = false }
+  }, [userId, isDemo])
+
+  useEffect(() => {
     applyTheme(getSavedThemeId(userId))
   }, [userId])
 
   // ── CLIENTS ──
   const handleAddClient = async (client) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Desbloqueie para salvar clientes.')) return
     setClients((c) => [...c, client])
     const saved = await DB.saveClient(userId, { ...client, _new: true })
     setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleUpdateClient = async (client) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
     const saved = await DB.saveClient(userId, client)
     setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleDeleteClient = async (id) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
     await DB.deleteClient(userId, id)
     setClients((c) => c.filter((x) => x.id !== id))
   }
 
   // ── SERVICES ──
   const handleAddService = async (svc) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     const saved = await DB.saveService(userId, { ...svc, _new: true })
     setServices((s) => [...s, saved])
   }
   const handleUpdateService = async (svc) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     const saved = await DB.saveService(userId, svc)
     setServices((s) => s.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleDeleteService = async (id) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     await DB.deleteService(userId, id)
     setServices((s) => s.filter((x) => x.id !== id))
   }
 
   // ── APPOINTMENTS ──
   const saveAppt = async (form) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
     const dur = Number(form.durationMinutes) || 60
     const overlapsOther = (idToSkip) =>
       appointments.find((a) => {
@@ -199,14 +227,14 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const deleteAppt = async (id) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     await DB.deleteAppointment(userId, id)
     setAppointments((a) => a.filter((x) => x.id !== id))
     addToast('Removido.', 'success')
   }
 
   const markAppointmentStatus = async (appt, status) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Desbloqueie para marcar atendimento como concluido.')) return
     try {
       const prevStatus = appt.status
       const saved = await DB.saveAppointment(userId, { ...appt, status })
@@ -251,14 +279,14 @@ const AppMain = ({ session, onLogout }) => {
 
   // ── CONFIG ──
   const saveConfig = async (cfg) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Organize seu negocio sem limitacoes.')) return
     await DB.saveConfig(userId, cfg)
     setConfigState(cfg)
   }
 
   // ── INVENTORY ──
   const handleSaveInventoryItem = async (item) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     const saved = await DB.saveInventoryItem(userId, item)
     setInventoryItems((list) => {
       const exists = list.some((x) => x.id === saved.id)
@@ -267,20 +295,20 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const handleDeleteInventoryItem = async (id) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     await DB.deleteInventoryItem(userId, id)
     setInventoryItems((list) => list.filter((x) => x.id !== id))
   }
 
   const handleSaveInventoryMovement = async (movement) => {
-    if (guardDemoWrite()) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
     const saved = await DB.saveInventoryMovement(userId, movement)
     setInventoryMovements((list) => [saved, ...list])
   }
 
   // ── COMPAT SETTERS (para páginas que usam setClients/setServices como array-setter) ──
   const setClientsCompat = (valOrFn) => {
-    if (isDemo) { guardDemoWrite(); return }
+    if (!canUserEdit) { guardRestrictedWrite('Desbloqueie para salvar clientes.'); return }
     const next = typeof valOrFn === 'function' ? valOrFn(clients) : valOrFn
     const added = next.find((c) => !clients.find((x) => x.id === c.id))
     const removed = clients.find((c) => !next.find((x) => x.id === c.id))
@@ -292,7 +320,7 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const setServicesCompat = (valOrFn) => {
-    if (isDemo) { guardDemoWrite(); return }
+    if (!canUserEdit) { guardRestrictedWrite('Tenha acesso completo ao sistema 💅'); return }
     const next = typeof valOrFn === 'function' ? valOrFn(services) : valOrFn
     const added = next.find((s) => !services.find((x) => x.id === s.id))
     const removed = services.find((s) => !next.find((x) => x.id === s.id))
@@ -347,7 +375,17 @@ const AppMain = ({ session, onLogout }) => {
     )
   }
 
+  const accessValue = {
+    plan: accessProfile.plan,
+    accessLevel: accessProfile.accessLevel,
+    subscriptionExpiresAt: accessProfile.subscriptionExpiresAt,
+    canUserEdit,
+    checkoutUrl: CHECKOUT_URL,
+    openPaywall,
+  }
+
   return (
+    <AccessProvider value={accessValue}>
     <div style={{ display: 'flex', minHeight: '100vh', minWidth: 0, width: '100%', background: 'var(--off-white)' }}>
       <Sidebar
         active={page}
@@ -367,12 +405,14 @@ const AppMain = ({ session, onLogout }) => {
           notifs={todayNotifs}
           onBellClick={handleBellClick}
           onNewAppt={() => {
-            if (isDemo) { guardDemoWrite(); return }
+            if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
             setNewApptInitial(null)
             setNewApptModal(true)
           }}
           offline={!online}
-          isDemo={isDemo}
+          isDemo={!canUserEdit}
+          canUserEdit={canUserEdit}
+          onUpgrade={() => openPaywall('Organize seu negocio sem limitacoes')}
         />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -384,11 +424,13 @@ const AppMain = ({ session, onLogout }) => {
               config={config}
               onGoAgenda={() => setPage('agenda')}
               onNewAppointment={() => {
-                if (isDemo) { guardDemoWrite(); return }
+                if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
                 setNewApptInitial(null)
                 setNewApptModal(true)
               }}
               onGoClients={() => setPage('clients')}
+              canUserEdit={canUserEdit}
+              onUpgrade={() => openPaywall('Desbloqueie para salvar clientes')}
             />
           )}
           {page === 'agenda' && (
@@ -404,6 +446,9 @@ const AppMain = ({ session, onLogout }) => {
               onDelete={deleteAppt}
               onMarkStatus={markAppointmentStatus}
               addToast={addToast}
+              canUserEdit={canUserEdit}
+              onBlockedAction={guardRestrictedWrite}
+              onUpgrade={() => openPaywall('Desbloqueie para criar agendamentos')}
             />
           )}
           {page === 'clients' && (
@@ -414,10 +459,14 @@ const AppMain = ({ session, onLogout }) => {
               services={services}
               addToast={addToast}
               onScheduleAfterCreate={(clientId) => {
+                if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
                 setNewApptInitial({ clientId })
                 setNewApptModal(true)
                 setPage('dashboard')
               }}
+              canUserEdit={canUserEdit}
+              onBlockedAction={guardRestrictedWrite}
+              onUpgrade={() => openCheckout()}
             />
           )}
           {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
@@ -462,6 +511,7 @@ const AppMain = ({ session, onLogout }) => {
       </Modal>
 
       <Toast toasts={toasts} removeToast={removeToast} />
+      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} subtitle={paywallHint} />
 
       {/* PWA update banner */}
       {swUpdateReady && (
@@ -476,6 +526,7 @@ const AppMain = ({ session, onLogout }) => {
         </div>
       )}
     </div>
+    </AccessProvider>
   )
 }
 
