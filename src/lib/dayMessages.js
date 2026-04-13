@@ -2,8 +2,8 @@
 
 export const morningPushBody = (clientCount) => {
   if (clientCount > 0) {
-    const n = clientCount === 1 ? '1 cliente' : `${clientCount} clientes`
-    return `Bom dia! Hoje você tem ${n} agendadas 💅`
+    const n = clientCount === 1 ? '1 atendimento' : `${clientCount} atendimentos`
+    return `Bom dia! Hoje você tem ${n} na agenda ✨`
   }
   return 'Bom dia! Que tal organizar sua agenda hoje? ✨'
 }
@@ -26,6 +26,6 @@ export const getPersonalityMessage = (summary) => {
   if (count === 0) return 'Dia tranquilo hoje ✨'
   if (done >= 400 || (done >= 150 && scheduled === 0)) return 'Você está indo bem hoje 💪'
   if (done > 0) return 'Você está indo bem hoje 💪'
-  if (count >= 3) return 'Ótimo ritmo hoje — respira e arrasa 💅'
+  if (count >= 3) return 'Ótimo ritmo hoje. Respira e segue o fluxo ✨'
   return 'Ótimo dia para brilhar ✨'
 }

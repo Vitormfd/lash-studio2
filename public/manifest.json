@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Lash Studio — Gestão Profissional",
-  "short_name": "Lash Studio",
-  "description": "Agenda, clientes, financeiro e relatórios para lash designers.",
+  "name": "Studio Flow — Gestão Profissional",
+  "short_name": "Studio Flow",
+  "description": "Agenda, clientes, serviços, financeiro e relatórios para profissionais da beleza.",
   "lang": "pt-BR",
   "dir": "ltr",
   "start_url": "/",

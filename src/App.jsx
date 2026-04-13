@@ -9,6 +9,8 @@ import { applyTheme, getSavedThemeId } from './lib/theme'
 import { useToast } from './hooks/useToast'
 import { CHECKOUT_URL, openCheckout } from './lib/billing'
 import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
+import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE } from './lib/domain'
+import { ensureServiceCompatibility } from './lib/serviceCompatibility'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -134,7 +136,30 @@ const AppMain = ({ session, onLogout }) => {
         DB.getInventoryMovements(userId),
         DB.getConfig(userId),
       ])
-      setClients(c); setServices(s); setAppointments(a); setInventoryItems(invItems); setInventoryMovements(invMovs); setConfigState(cfg)
+      const compatibility = ensureServiceCompatibility({
+        services: s,
+        appointments: a,
+        createId: uid,
+      })
+      setClients(c)
+      setServices(compatibility.services)
+      setAppointments(compatibility.appointments)
+      setInventoryItems(invItems)
+      setInventoryMovements(invMovs)
+      setConfigState(cfg)
+
+      if (compatibility.createdService || compatibility.patchedAppointments.length > 0) {
+        Promise.resolve().then(async () => {
+          try {
+            if (compatibility.createdService) {
+              await DB.saveService(userId, { ...compatibility.createdService, _new: true })
+            }
+            for (const appointment of compatibility.patchedAppointments) {
+              await DB.saveAppointment(userId, appointment)
+            }
+          } catch {}
+        })
+      }
     } catch {
       setLoadError(true)
       addToast('Não foi possível carregar seus dados. Verifique a conexão e tente de novo.', 'error')
@@ -185,17 +210,17 @@ const AppMain = ({ session, onLogout }) => {
 
   // ── SERVICES ──
   const handleAddService = async (svc) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     const saved = await DB.saveService(userId, { ...svc, _new: true })
     setServices((s) => [...s, saved])
   }
   const handleUpdateService = async (svc) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     const saved = await DB.saveService(userId, svc)
     setServices((s) => s.map((x) => (x.id === saved.id ? saved : x)))
   }
   const handleDeleteService = async (id) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     await DB.deleteService(userId, id)
     setServices((s) => s.filter((x) => x.id !== id))
   }
@@ -227,7 +252,7 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const deleteAppt = async (id) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     await DB.deleteAppointment(userId, id)
     setAppointments((a) => a.filter((x) => x.id !== id))
     addToast('Removido.', 'success')
@@ -254,7 +279,7 @@ const AppMain = ({ session, onLogout }) => {
         ) {
           setTimeout(() => {
             try {
-              new Notification('Lash Studio', {
+              new Notification(APP_NAME, {
                 body: progressPushBody(totalDone),
                 icon: '/icon-192.png',
                 badge: '/icon-192.png',
@@ -279,14 +304,14 @@ const AppMain = ({ session, onLogout }) => {
 
   // ── CONFIG ──
   const saveConfig = async (cfg) => {
-    if (guardRestrictedWrite('Organize seu negocio sem limitacoes.')) return
+    if (guardRestrictedWrite('Organize seu negócio sem limitações.')) return
     await DB.saveConfig(userId, cfg)
     setConfigState(cfg)
   }
 
   // ── INVENTORY ──
   const handleSaveInventoryItem = async (item) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     const saved = await DB.saveInventoryItem(userId, item)
     setInventoryItems((list) => {
       const exists = list.some((x) => x.id === saved.id)
@@ -295,13 +320,13 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const handleDeleteInventoryItem = async (id) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     await DB.deleteInventoryItem(userId, id)
     setInventoryItems((list) => list.filter((x) => x.id !== id))
   }
 
   const handleSaveInventoryMovement = async (movement) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema 💅')) return
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
     const saved = await DB.saveInventoryMovement(userId, movement)
     setInventoryMovements((list) => [saved, ...list])
   }
@@ -320,7 +345,7 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const setServicesCompat = (valOrFn) => {
-    if (!canUserEdit) { guardRestrictedWrite('Tenha acesso completo ao sistema 💅'); return }
+    if (!canUserEdit) { guardRestrictedWrite('Tenha acesso completo ao sistema.'); return }
     const next = typeof valOrFn === 'function' ? valOrFn(services) : valOrFn
     const added = next.find((s) => !services.find((x) => x.id === s.id))
     const removed = services.find((s) => !next.find((x) => x.id === s.id))
@@ -379,6 +404,7 @@ const AppMain = ({ session, onLogout }) => {
     plan: accessProfile.plan,
     accessLevel: accessProfile.accessLevel,
     subscriptionExpiresAt: accessProfile.subscriptionExpiresAt,
+    professionalType: accessProfile.professionalType,
     canUserEdit,
     checkoutUrl: CHECKOUT_URL,
     openPaywall,
@@ -412,7 +438,7 @@ const AppMain = ({ session, onLogout }) => {
           offline={!online}
           isDemo={!canUserEdit}
           canUserEdit={canUserEdit}
-          onUpgrade={() => openPaywall('Organize seu negocio sem limitacoes')}
+          onUpgrade={() => openPaywall('Organize seu negócio sem limitações')}
         />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -440,7 +466,7 @@ const AppMain = ({ session, onLogout }) => {
               services={services}
               onNew={saveAppt}
               onEdit={(appt) => {
-                if (isDemo) { guardDemoWrite(); return }
+                if (guardRestrictedWrite('Desbloqueie para editar agendamentos.')) return
                 setEditAppt(appt)
               }}
               onDelete={deleteAppt}
@@ -488,6 +514,7 @@ const AppMain = ({ session, onLogout }) => {
               setConfig={saveConfig}
               addToast={addToast}
               session={session}
+              professionalType={accessProfile.professionalType || session.professionalType || DEFAULT_PROFESSIONAL_TYPE}
               onLogout={onLogout}
               isDemo={isDemo}
             />
@@ -546,13 +573,16 @@ const App = () => {
 
         const params = new URLSearchParams(window.location.search)
         const wantsDemo = params.get('demo') === '1' || params.get('trial') === '1'
+        const professionalType = params.get('professional_type') || params.get('area') || DEFAULT_PROFESSIONAL_TYPE
         if (!wantsDemo) return
 
-        const demoSession = await AUTH.createDemoSession()
+        const demoSession = await AUTH.createDemoSession(professionalType)
         AUTH.saveLocalSession(demoSession)
         setSession(demoSession)
         params.delete('demo')
         params.delete('trial')
+        params.delete('professional_type')
+        params.delete('area')
         const nextSearch = params.toString()
         const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`
         window.history.replaceState({}, document.title, nextUrl)

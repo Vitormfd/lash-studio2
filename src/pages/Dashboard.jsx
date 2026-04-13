@@ -72,8 +72,8 @@ const Dashboard = ({
 
       {!canUserEdit && (
         <div style={{ marginBottom: 14, border: '1px solid var(--rose-light)', background: 'linear-gradient(135deg, var(--rose-light) 0%, var(--surface) 100%)', borderRadius: 14, padding: 14 }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--rose-dark)', marginBottom: 4 }}>Tenha acesso completo ao sistema 💅</p>
-          <p style={{ fontSize: 12, color: 'var(--text-mid)', marginBottom: 10 }}>Organize seu negocio sem limitacoes e salve tudo sem bloqueios.</p>
+          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--rose-dark)', marginBottom: 4 }}>Tenha acesso completo ao sistema</p>
+          <p style={{ fontSize: 12, color: 'var(--text-mid)', marginBottom: 10 }}>Organize sua rotina, salve dados e trabalhe sem bloqueios.</p>
           <Btn onClick={() => onUpgrade?.()}>
             <Icon name="lock" size={14} color="#fff" /> Desbloquear agora
           </Btn>
@@ -162,7 +162,7 @@ const Dashboard = ({
         {todaySummary.count === 0 && (
           <EmptyState
             icon="💤"
-            title="Você não tem clientes hoje"
+            title="Você não tem atendimentos hoje"
             hint="Que tal agendar ou conferir a agenda da semana? Seu dia começa aqui."
           />
         )}

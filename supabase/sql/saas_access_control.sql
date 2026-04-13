@@ -5,10 +5,39 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   plan text not null default 'free' check (plan in ('free', 'active', 'canceled')),
   access_level text not null default 'demo' check (access_level in ('demo', 'full')),
+  professional_type text not null default 'lash' check (professional_type in ('lash', 'nail', 'sobrancelha', 'estetica')),
   subscription_expires_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles
+add column if not exists professional_type text;
+
+update public.profiles
+set professional_type = 'lash'
+where professional_type is null;
+
+alter table public.profiles
+alter column professional_type set default 'lash';
+
+alter table public.profiles
+alter column professional_type set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'profiles_professional_type_check'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_professional_type_check
+      check (professional_type in ('lash', 'nail', 'sobrancelha', 'estetica'));
+  end if;
+end;
+$$;
 
 create or replace function public.set_profiles_updated_at()
 returns trigger
@@ -32,8 +61,17 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, plan, access_level)
-  values (new.id, 'free', 'demo')
+  insert into public.profiles (id, plan, access_level, professional_type)
+  values (
+    new.id,
+    'free',
+    'demo',
+    case
+      when coalesce(new.raw_user_meta_data ->> 'professional_type', '') in ('lash', 'nail', 'sobrancelha', 'estetica')
+        then new.raw_user_meta_data ->> 'professional_type'
+      else 'lash'
+    end
+  )
   on conflict (id) do nothing;
   return new;
 end;
@@ -44,8 +82,16 @@ create trigger on_auth_user_created_profile
 after insert on auth.users
 for each row execute function public.handle_new_user_profile();
 
-insert into public.profiles (id, plan, access_level)
-select u.id, 'free', 'demo'
+insert into public.profiles (id, plan, access_level, professional_type)
+select
+  u.id,
+  'free',
+  'demo',
+  case
+    when coalesce(u.raw_user_meta_data ->> 'professional_type', '') in ('lash', 'nail', 'sobrancelha', 'estetica')
+      then u.raw_user_meta_data ->> 'professional_type'
+    else 'lash'
+  end
 from auth.users u
 left join public.profiles p on p.id = u.id
 where p.id is null;

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AUTH } from '../lib/auth'
 import { local, getSupabaseConfig } from '../lib/supabase'
 import Icon from '../components/Icon'
+import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE, PROFESSIONAL_TYPE_OPTIONS } from '../lib/domain'
 
 const AUTH_REMEMBER_KEY = 'lash_remember_login'
 
@@ -9,7 +10,7 @@ const AuthScreen = ({ onLogin }) => {
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState(() => {
     const s = local.get(AUTH_REMEMBER_KEY)
-    return { name: '', email: s?.email || '', password: s?.password || '', confirm: '' }
+    return { name: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE }
   })
   const [rememberMe, setRememberMe] = useState(() => {
     const s = local.get(AUTH_REMEMBER_KEY)
@@ -26,11 +27,11 @@ const AuthScreen = ({ onLogin }) => {
     setMode(m)
     setError('')
     if (m === 'register') {
-      setForm({ name: '', email: '', password: '', confirm: '' })
+      setForm({ name: '', email: '', password: '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
       setRememberMe(false)
     } else {
       const s = local.get(AUTH_REMEMBER_KEY)
-      setForm({ name: '', email: s?.email || '', password: s?.password || '', confirm: '' })
+      setForm({ name: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
       setRememberMe(!!(s && s.email))
     }
   }
@@ -46,7 +47,7 @@ const AuthScreen = ({ onLogin }) => {
     try {
       const session = mode === 'login'
         ? await AUTH.signIn(form.email, form.password)
-        : await AUTH.signUp(form.name, form.email, form.password)
+        : await AUTH.signUp(form.name, form.email, form.password, form.professionalType)
       if (mode === 'login') {
         if (rememberMe) local.set(AUTH_REMEMBER_KEY, { email: form.email, password: form.password })
         else local.del(AUTH_REMEMBER_KEY)
@@ -75,7 +76,7 @@ const AuthScreen = ({ onLogin }) => {
           <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, var(--rose) 0%, var(--rose-deep) 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, boxShadow: '0 8px 24px rgba(193,123,130,0.35)' }}>
             <Icon name="star" size={26} color="#fff" />
           </div>
-          <h1 className="serif" style={{ fontSize: 26, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>Lash Studio</h1>
+          <h1 className="serif" style={{ fontSize: 26, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>{APP_NAME}</h1>
           <p style={{ fontSize: 13, color: 'var(--text-light)' }}>
             {isSupabase ? '☁️ Conectado ao Supabase' : '💾 Modo local (sem nuvem)'}
           </p>
@@ -97,6 +98,16 @@ const AuthScreen = ({ onLogin }) => {
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seu nome</label>
                 <input className="auth-input" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Juliana Silva" style={inputBase} />
+              </div>
+            )}
+            {mode === 'register' && (
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Qual sua área de atuação?</label>
+                <select className="auth-input" value={form.professionalType} onChange={(e) => set('professionalType', e.target.value)} style={inputBase}>
+                  {PROFESSIONAL_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
               </div>
             )}
             <div>

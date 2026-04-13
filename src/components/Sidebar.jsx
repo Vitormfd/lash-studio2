@@ -1,4 +1,5 @@
 import Icon from './Icon'
+import { APP_NAME, APP_TAGLINE } from '../lib/domain'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'home' },
@@ -39,8 +40,8 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
             <Icon name="star" size={16} color="#fff" />
           </div>
           <div>
-            <div className="serif" style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', lineHeight: 1.2 }}>Lash Studio</div>
-            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 1 }}>Gestão Profissional</div>
+            <div className="serif" style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', lineHeight: 1.2 }}>{APP_NAME}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 1 }}>{APP_TAGLINE}</div>
           </div>
         </div>
       </div>

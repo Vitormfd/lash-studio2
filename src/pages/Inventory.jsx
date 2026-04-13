@@ -214,7 +214,7 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
       <Modal open={!!itemModal} onClose={() => setItemModal(null)} title={itemModal === 'new' ? 'Novo Item de Estoque' : 'Editar Item'}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Field label="Nome do item"><Inp value={itemForm.name} onChange={(e) => setItemForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Cola Premium" /></Field>
-          <Field label="Categoria"><Inp value={itemForm.category} onChange={(e) => setItemForm((f) => ({ ...f, category: e.target.value }))} placeholder="Ex: Cílios, Higiene..." /></Field>
+          <Field label="Categoria"><Inp value={itemForm.category} onChange={(e) => setItemForm((f) => ({ ...f, category: e.target.value }))} placeholder="Ex: Higiene, acabamento, skincare..." /></Field>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Field label="Unidade" half>

@@ -11,8 +11,9 @@ import {
   getExistingPushSubscription,
 } from '../lib/pushClient'
 import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
+import { APP_DESCRIPTION, APP_NAME, getProfessionalTypeMeta } from '../lib/domain'
 
-const Settings = ({ config, setConfig, addToast, session, onLogout, isDemo = false }) => {
+const Settings = ({ config, setConfig, addToast, session, professionalType, onLogout, isDemo = false }) => {
   const [cost, setCost] = useState(config.avgCost)
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
@@ -22,6 +23,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout, isDemo = fal
   const [pushBusy, setPushBusy] = useState(false)
   const [pushOn, setPushOn] = useState(false)
   const userId = session?.userId
+  const professionalMeta = getProfessionalTypeMeta(professionalType)
 
   const blockDemoAction = () => {
     if (!isDemo) return false
@@ -293,7 +295,7 @@ const Settings = ({ config, setConfig, addToast, session, onLogout, isDemo = fal
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>App no celular (PWA)</h3>
         {pwaStandalone ? (
           <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-            Você está usando o <strong>Lash Studio</strong> como aplicativo instalado.
+            Você está usando o <strong>{APP_NAME}</strong> como aplicativo instalado.
           </p>
         ) : (
           <>
@@ -316,7 +318,8 @@ const Settings = ({ config, setConfig, addToast, session, onLogout, isDemo = fal
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Sobre o Sistema</h3>
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-          <strong>Lash Studio</strong> — Gestão profissional para lash designers.<br />
+          <strong>{APP_NAME}</strong> — {APP_DESCRIPTION}<br />
+          Área atual: {professionalMeta.label}.<br />
           Versão 2.1 · PWA · Supabase (nuvem)
         </p>
       </div>

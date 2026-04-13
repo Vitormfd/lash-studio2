@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import { getClient, local } from './supabase'
+import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
 
 const FALLBACK_KEY = (userId) => `u_${userId}_access_profile`
 
@@ -19,6 +20,7 @@ export const defaultAccessProfile = {
   plan: 'free',
   accessLevel: 'demo',
   subscriptionExpiresAt: null,
+  professionalType: DEFAULT_PROFESSIONAL_TYPE,
 }
 
 export const fetchUserAccessProfile = async (userId, isDemo) => {
@@ -29,7 +31,7 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
   if (sb) {
     const { data, error } = await sb
       .from('profiles')
-      .select('plan, access_level, subscription_expires_at')
+      .select('plan, access_level, subscription_expires_at, professional_type')
       .eq('id', userId)
       .maybeSingle()
 
@@ -38,11 +40,17 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
         plan: normalizePlan(data.plan),
         accessLevel: normalizeAccessLevel(data.access_level),
         subscriptionExpiresAt: data.subscription_expires_at || null,
+        professionalType: normalizeProfessionalType(data.professional_type),
       }
     }
 
     if (!data) {
-      await sb.from('profiles').upsert({ id: userId, plan: 'free', access_level: 'demo' }, { onConflict: 'id' })
+      await sb.from('profiles').upsert({
+        id: userId,
+        plan: 'free',
+        access_level: 'demo',
+        professional_type: DEFAULT_PROFESSIONAL_TYPE,
+      }, { onConflict: 'id' })
       return defaultAccessProfile
     }
   }
@@ -57,6 +65,7 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
     plan: normalizePlan(stored.plan),
     accessLevel: normalizeAccessLevel(stored.accessLevel || stored.access_level),
     subscriptionExpiresAt: stored.subscriptionExpiresAt || stored.subscription_expires_at || null,
+    professionalType: normalizeProfessionalType(stored.professionalType || stored.professional_type),
   }
 }
 

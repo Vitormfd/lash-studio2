@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { getTodayStr, getNextAppointmentToday } from '../lib/dashboardStats'
 import { nextAppointmentPushBody } from '../lib/dayMessages'
+import { APP_NAME } from '../lib/domain'
 
 /**
  * Lembrete local do próximo horário (Notification API) enquanto o app está ativo.
@@ -35,7 +36,7 @@ export function useLocalReminders({ appointments, enabled, reminderMinutesBefore
         const id = setTimeout(() => {
           try {
             sessionStorage.setItem(notifyKey, '1')
-            new Notification('Lash Studio', {
+            new Notification(APP_NAME, {
               body: nextAppointmentPushBody(reminderMinutesBefore),
               icon: '/icon-192.png',
               badge: '/icon-192.png',

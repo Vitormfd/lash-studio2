@@ -300,7 +300,7 @@ const Clients = ({
       {!canUserEdit && (
         <div style={{ marginBottom: 12, border: '1px solid var(--rose-light)', background: 'var(--rose-light)', borderRadius: 12, padding: 12 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--rose-dark)' }}>Desbloqueie para salvar clientes</p>
-          <p style={{ fontSize: 12, color: 'var(--text-mid)', marginTop: 2, marginBottom: 8 }}>Tenha acesso completo ao sistema 💅</p>
+          <p style={{ fontSize: 12, color: 'var(--text-mid)', marginTop: 2, marginBottom: 8 }}>Tenha acesso completo ao sistema.</p>
           <Btn onClick={() => onUpgrade?.()} sm>
             <Icon name="lock" size={12} color="#fff" /> Desbloquear agora
           </Btn>
@@ -320,7 +320,7 @@ const Clients = ({
             </Btn>
           )}
           {canUserEdit ? (
-            <Btn onClick={openNew}><Icon name="plus" size={14} color="#fff" /> Nova Cliente</Btn>
+            <Btn onClick={openNew}><Icon name="plus" size={14} color="#fff" /> Novo cliente</Btn>
           ) : (
             <button
               type="button"

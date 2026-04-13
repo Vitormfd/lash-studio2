@@ -86,7 +86,7 @@ const Services = ({ services, setServices, appointments, addToast }) => {
 
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'new' ? 'Novo Serviço' : 'Editar Serviço'}>
         <Field label="Nome do serviço">
-          <Inp value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Volume Russo" />
+          <Inp value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Serviço premium" />
         </Field>
         <Field label="Preço padrão (R$)">
           <Inp type="number" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="0.00" />
