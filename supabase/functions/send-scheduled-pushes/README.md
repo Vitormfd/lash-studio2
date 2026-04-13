@@ -1,33 +1,66 @@
 # Envio de pushes agendados (Supabase Edge Functions)
 
-Este diretório documenta o **próximo passo** para notificações com o app fechado:
+Esta função já está implementada em `index.ts` para enviar lembretes com o app fechado.
 
-1. **Segredos no Supabase** (Project Settings → Edge Functions → Secrets):
-   - `VAPID_PUBLIC_KEY` — mesmo valor de `VITE_VAPID_PUBLIC_KEY` no front
-   - `VAPID_PRIVATE_KEY` — chave privada (nunca no cliente)
-   - `VAPID_SUBJECT` — ex.: `mailto:suporte@seudominio.com`
-   - `CRON_SECRET` — string forte; o cron envia `Authorization: Bearer <CRON_SECRET>`
+## O que a função faz
 
-2. **Gerar par VAPID** (na sua máquina):
+1. valida `CRON_SECRET` no header `Authorization: Bearer <CRON_SECRET>`;
+2. lê `push_subscriptions` com `SUPABASE_SERVICE_ROLE_KEY`;
+3. busca agendamentos de hoje (`appointments`) com lembrete ativo e ainda não enviados;
+4. dispara Web Push via VAPID;
+5. marca `reminder_sent_at` e `notification_status = 'sent'` quando houver sucesso;
+6. remove endpoints inválidos (status 404/410).
 
-   ```bash
-   npx web-push generate-vapid-keys
-   ```
+## Segredos obrigatórios
 
-   Copie a **public** para `VITE_VAPID_PUBLIC_KEY` no `.env` do app e a **private** para o segredo da função.
+Em Supabase Project Settings -> Edge Functions -> Secrets:
 
-3. **Deploy da função** (quando implementar o `index.ts` completo):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT` (ex.: `mailto:suporte@seudominio.com`)
+- `CRON_SECRET`
 
-   ```bash
-   supabase functions deploy send-scheduled-pushes --no-verify-jwt
-   ```
+No frontend, `VITE_VAPID_PUBLIC_KEY` deve ter o mesmo valor de `VAPID_PUBLIC_KEY`.
 
-4. **Agendamento**: use [pg_cron](https://supabase.com/docs/guides/database/extensions/pg_cron) ou o agendador da Vercel/cron externo chamando a URL da função com `CRON_SECRET`.
+## Gerar chaves VAPID
 
-A função deve:
-- validar `CRON_SECRET`;
-- listar `push_subscriptions` (com **service role**);
-- para cada `user_id`, buscar agendamentos do dia (`appointments`);
-- enviar payloads JSON via biblioteca `web-push` (corpo alinhado com `src/lib/dayMessages.js`).
+```bash
+npx web-push generate-vapid-keys
+```
 
-O **service worker** já exibe `push` com `event.data.json()` (`title`, `body`, `tag`).
+## Deploy
+
+```bash
+supabase functions deploy send-scheduled-pushes --no-verify-jwt
+```
+
+## Teste manual da função
+
+```bash
+curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes" \
+   -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+Resposta esperada: JSON com `sent`, `failed`, `staleSubscriptionsRemoved` e `remindersMarkedSent`.
+
+## Agendamento (a cada 5 minutos)
+
+Exemplo com `pg_cron` chamando a Edge Function:
+
+```sql
+select cron.schedule(
+   'send-scheduled-pushes-every-5m',
+   '*/5 * * * *',
+   $$
+   select
+      net.http_post(
+         url := 'https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes',
+         headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
+      );
+   $$
+);
+```
+
+Se preferir, use cron externo (Vercel Cron, GitHub Actions, etc.) fazendo POST para a mesma URL.
