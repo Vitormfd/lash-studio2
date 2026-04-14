@@ -20,6 +20,13 @@ type AppointmentRow = {
   reminder_minutes_before: number | null
 }
 
+type RequestBody = {
+  mode?: string
+  title?: string
+  body?: string
+  url?: string
+}
+
 const jsonHeaders = { 'Content-Type': 'application/json' }
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -57,6 +64,20 @@ const buildReminderBody = (minutesBefore: number) =>
     ? 'Falta 1h pro seu próximo atendimento ⏰'
     : `Faltam ${minutesBefore} min pro seu próximo atendimento ⏰`
 
+const sendPush = async (
+  sub: PushSubscriptionRow,
+  payload: string,
+) => webpush.sendNotification(
+  {
+    endpoint: sub.endpoint,
+    keys: {
+      p256dh: sub.keys_p256dh,
+      auth: sub.keys_auth,
+    },
+  },
+  payload,
+)
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json(405, { ok: false, error: 'POST only' })
 
@@ -73,6 +94,13 @@ Deno.serve(async (req) => {
 
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
+  let requestBody: RequestBody = {}
+  try {
+    requestBody = await req.json()
+  } catch {
+    requestBody = {}
+  }
+
   const sb = createClient(PROJECT_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
@@ -83,6 +111,55 @@ Deno.serve(async (req) => {
 
   if (subsError) return json(500, { ok: false, error: `push_subscriptions query failed: ${subsError.message}` })
   if (!subscriptions?.length) return json(200, { ok: true, sent: 0, reason: 'no_subscriptions' })
+
+  if (requestBody.mode === 'broadcast_test') {
+    const staleSubscriptionIds = new Set<string>()
+    let sent = 0
+    let failed = 0
+
+    const payload = JSON.stringify({
+      title: requestBody.title?.trim() || 'Teste de notificacao',
+      body: requestBody.body?.trim() || 'Seu envio push esta funcionando neste dispositivo.',
+      tag: 'broadcast-test',
+      data: { url: requestBody.url?.trim() || '/' },
+    })
+
+    for (const sub of subscriptions as PushSubscriptionRow[]) {
+      try {
+        await sendPush(sub, payload)
+        sent += 1
+      } catch (error) {
+        failed += 1
+        const statusCode = typeof error === 'object' && error && 'statusCode' in error
+          ? Number((error as { statusCode?: number }).statusCode)
+          : 0
+        if (statusCode === 404 || statusCode === 410) staleSubscriptionIds.add(sub.id)
+        console.error('[push] broadcast test failed', {
+          subscriptionId: sub.id,
+          userId: sub.user_id,
+          statusCode,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    if (staleSubscriptionIds.size > 0) {
+      const ids = [...staleSubscriptionIds]
+      const { error } = await sb.from('push_subscriptions').delete().in('id', ids)
+      if (error) {
+        console.error('[push] failed to prune stale subscriptions after broadcast', { count: ids.length, error: error.message })
+      }
+    }
+
+    return json(200, {
+      ok: true,
+      mode: 'broadcast_test',
+      subscriptions: subscriptions.length,
+      sent,
+      failed,
+      staleSubscriptionsRemoved: staleSubscriptionIds.size,
+    })
+  }
 
   const today = new Date().toISOString().slice(0, 10)
   const userIds = [...new Set(subscriptions.map((s) => s.user_id).filter(Boolean))]
@@ -143,16 +220,7 @@ Deno.serve(async (req) => {
     })
 
     try {
-      await webpush.sendNotification(
-        {
-          endpoint: sub.endpoint,
-          keys: {
-            p256dh: sub.keys_p256dh,
-            auth: sub.keys_auth,
-          },
-        },
-        payload,
-      )
+      await sendPush(sub, payload)
       sent += 1
       sentAppointmentIds.add(due.id)
     } catch (error) {

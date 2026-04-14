@@ -45,6 +45,24 @@ curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes"
 
 Resposta esperada: JSON com `sent`, `failed`, `staleSubscriptionsRemoved` e `remindersMarkedSent`.
 
+## Disparo de teste para todos os dispositivos inscritos
+
+Para enviar uma notificacao manual para todas as subscriptions salvas, envie um body JSON com `mode = broadcast_test`:
+
+```bash
+curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes" \
+   -H "Authorization: Bearer <CRON_SECRET>" \
+   -H "Content-Type: application/json" \
+   -d '{
+      "mode": "broadcast_test",
+      "title": "Teste de notificacao",
+      "body": "Seu envio push esta funcionando neste dispositivo.",
+      "url": "/"
+   }'
+```
+
+Isso ignora os filtros de agendamento do dia e tenta enviar para todos os endpoints em `push_subscriptions`.
+
 ## Agendamento (a cada 5 minutos)
 
 Exemplo com `pg_cron` chamando a Edge Function:
