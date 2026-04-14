@@ -15,12 +15,12 @@ Esta função já está implementada em `index.ts` para enviar lembretes com o a
 
 Em Supabase Project Settings -> Edge Functions -> Secrets:
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `VAPID_SUBJECT` (ex.: `mailto:suporte@seudominio.com`)
 - `CRON_SECRET`
+
+Variáveis com prefixo `SUPABASE_` são reservadas e já são fornecidas pela plataforma (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`). Não tente definir essas variáveis com `supabase secrets set`.
 
 No frontend, `VITE_VAPID_PUBLIC_KEY` deve ter o mesmo valor de `VAPID_PUBLIC_KEY`.
 
