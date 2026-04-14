@@ -25,6 +25,7 @@ type RequestBody = {
   title?: string
   body?: string
   url?: string
+  debug?: boolean
 }
 
 const jsonHeaders = { 'Content-Type': 'application/json' }
@@ -63,6 +64,16 @@ const buildReminderBody = (minutesBefore: number) =>
   minutesBefore === 60
     ? 'Falta 1h pro seu próximo atendimento ⏰'
     : `Faltam ${minutesBefore} min pro seu próximo atendimento ⏰`
+
+const maskEndpoint = (endpoint: string) => {
+  try {
+    const url = new URL(endpoint)
+    const tail = url.pathname.slice(-16)
+    return `${url.hostname}${tail ? `...${tail}` : ''}`
+  } catch {
+    return endpoint.slice(-24)
+  }
+}
 
 const sendPush = async (
   sub: PushSubscriptionRow,
@@ -116,6 +127,7 @@ Deno.serve(async (req) => {
     const staleSubscriptionIds = new Set<string>()
     let sent = 0
     let failed = 0
+    const results: Array<Record<string, unknown>> = []
 
     const payload = JSON.stringify({
       title: requestBody.title?.trim() || 'Teste de notificacao',
@@ -128,12 +140,30 @@ Deno.serve(async (req) => {
       try {
         await sendPush(sub, payload)
         sent += 1
+        if (requestBody.debug) {
+          results.push({
+            subscriptionId: sub.id,
+            userId: sub.user_id,
+            endpoint: maskEndpoint(sub.endpoint),
+            status: 'sent',
+          })
+        }
       } catch (error) {
         failed += 1
         const statusCode = typeof error === 'object' && error && 'statusCode' in error
           ? Number((error as { statusCode?: number }).statusCode)
           : 0
         if (statusCode === 404 || statusCode === 410) staleSubscriptionIds.add(sub.id)
+        if (requestBody.debug) {
+          results.push({
+            subscriptionId: sub.id,
+            userId: sub.user_id,
+            endpoint: maskEndpoint(sub.endpoint),
+            status: 'failed',
+            statusCode,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
         console.error('[push] broadcast test failed', {
           subscriptionId: sub.id,
           userId: sub.user_id,
@@ -158,6 +188,7 @@ Deno.serve(async (req) => {
       sent,
       failed,
       staleSubscriptionsRemoved: staleSubscriptionIds.size,
+      results: requestBody.debug ? results : undefined,
     })
   }
 
