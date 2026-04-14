@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from '../components/Modal'
 import AppointmentForm from '../components/AppointmentForm'
-import { Btn } from '../components/UI'
+import { Btn, Field, Inp, Textarea } from '../components/UI'
 import Icon from '../components/Icon'
 import {
   HOURS, DAYS_PT, MONTHS_PT,
@@ -28,10 +28,21 @@ const Agenda = ({
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
   const [modal, setModal] = useState(null)
+  const [paymentModal, setPaymentModal] = useState({ open: false, appt: null, method: '', value: '', notes: '' })
 
   const dateStr = toLocalYmd(current)
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Bloqueado'
   const getServiceName = (id) => services.find((s) => s.id === id)?.name || ''
+  const paymentMethods = [
+    { value: 'cash', label: 'Dinheiro', icon: '💵' },
+    { value: 'pix', label: 'Pix', icon: '💰' },
+    { value: 'credit_card', label: 'Cartão de crédito', icon: '💳' },
+    { value: 'debit_card', label: 'Cartão de débito', icon: '💳' },
+  ]
+
+  const paymentMethodLabel = (method) => paymentMethods.find((m) => m.value === method)?.label || ''
+  const paymentMethodIcon = (method) => paymentMethods.find((m) => m.value === method)?.icon || ''
+  const formatMoney = (v) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`
 
   const statusColor = (a) => {
     if (a.blocked) return { bg: '#F5E5E5', border: '#E8B4B4', text: '#C5515F' }
@@ -48,6 +59,16 @@ const Agenda = ({
         e.stopPropagation()
         if (!canUserEdit) {
           onBlockedAction?.('Desbloqueie para marcar atendimento como concluido.')
+          return
+        }
+        if (next === 'done') {
+          setPaymentModal({
+            open: true,
+            appt,
+            method: appt.paymentMethod || '',
+            value: String(appt.paymentValue != null ? appt.paymentValue : Number(appt.value || 0)),
+            notes: appt.paymentNotes || '',
+          })
           return
         }
         onMarkStatus(appt, next)
@@ -126,6 +147,11 @@ const Agenda = ({
                         <span style={{ fontWeight: 400, color: 'var(--text-light)', marginLeft: 6 }}>{String(appt.time).slice(0, 5)}–{endTimeLabel(appt.time, dm)}</span>
                       </div>
                       {!appt.blocked && <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{getServiceName(appt.serviceId)} · R$ {appt.value} · {formatDurationLabel(dm)}</div>}
+                      {!appt.blocked && appt.status === 'done' && appt.paymentMethod && (
+                        <div style={{ fontSize: 11, color: '#0F766E', marginTop: 2, fontWeight: 600 }}>
+                          {paymentMethodLabel(appt.paymentMethod)} {paymentMethodIcon(appt.paymentMethod)} · {formatMoney(appt.paymentValue != null ? appt.paymentValue : appt.value)}
+                        </div>
+                      )}
                       {appt.blocked && <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{formatDurationLabel(dm)}</div>}
                       {appt.notes && <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>{appt.notes}</div>}
                       {!appt.blocked && (
@@ -364,6 +390,96 @@ const Agenda = ({
             }}
           />
         )}
+      </Modal>
+
+      <Modal
+        open={paymentModal.open}
+        onClose={() => setPaymentModal({ open: false, appt: null, method: '', value: '', notes: '' })}
+        title="Finalizar atendimento 💅"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="Método de pagamento">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {paymentMethods.map((pm) => {
+                const active = paymentModal.method === pm.value
+                return (
+                  <button
+                    key={pm.value}
+                    type="button"
+                    onClick={() => setPaymentModal((prev) => ({ ...prev, method: pm.value }))}
+                    style={{
+                      minHeight: 52,
+                      borderRadius: 12,
+                      border: active ? '2px solid #0F766E' : '1.5px solid var(--border-mid)',
+                      background: active ? 'rgba(15,118,110,0.08)' : 'var(--surface)',
+                      color: active ? '#0F766E' : 'var(--text)',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      padding: '10px 8px',
+                    }}
+                  >
+                    <span>{pm.icon}</span>
+                    <span>{pm.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </Field>
+
+          <Field label="Valor pago">
+            <Inp
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={paymentModal.value}
+              onChange={(e) => setPaymentModal((prev) => ({ ...prev, value: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Observação (opcional)">
+            <Textarea
+              placeholder="Ex.: cliente pagou parte em Pix e parte no dinheiro"
+              value={paymentModal.notes}
+              onChange={(e) => setPaymentModal((prev) => ({ ...prev, notes: e.target.value }))}
+            />
+          </Field>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 2 }}>
+            <Btn
+              variant="ghost"
+              touch
+              onClick={() => setPaymentModal({ open: false, appt: null, method: '', value: '', notes: '' })}
+            >
+              Cancelar
+            </Btn>
+            <Btn
+              variant="success"
+              touch
+              onClick={() => {
+                if (!paymentModal.method) {
+                  addToast('Selecione o método de pagamento.', 'warning')
+                  return
+                }
+                const paidValue = Number(paymentModal.value || 0)
+                onMarkStatus(paymentModal.appt, 'done', {
+                  paymentMethod: paymentModal.method,
+                  paymentValue: Number.isFinite(paidValue) ? paidValue : 0,
+                  paymentNotes: paymentModal.notes || '',
+                })
+                setPaymentModal({ open: false, appt: null, method: '', value: '', notes: '' })
+              }}
+            >
+              Confirmar pagamento
+            </Btn>
+          </div>
+        </div>
       </Modal>
     </div>
   )

@@ -3,6 +3,7 @@ import { StatCard, Btn, Inp, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { MONTHS_PT } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
+import { toLocalYmd } from '../lib/dashboardStats'
 
 const Finance = ({ appointments, services, clients, config, setConfig }) => {
   const [editCost, setEditCost] = useState(false)
@@ -12,6 +13,14 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
   const target = new Date(); target.setMonth(target.getMonth() + monthOffset)
   const monthStr = target.toISOString().slice(0, 7)
   const monthLabel = `${MONTHS_PT[target.getMonth()]} ${target.getFullYear()}`
+  const todayStr = toLocalYmd(new Date())
+
+  const paymentMethodMeta = {
+    cash: { label: 'Dinheiro', icon: '💵' },
+    pix: { label: 'Pix', icon: '💰' },
+    credit_card: { label: 'Cartão de crédito', icon: '💳' },
+    debit_card: { label: 'Cartão de débito', icon: '💳' },
+  }
 
   const real = appointments.filter((a) => !a.blocked && a.date.startsWith(monthStr) && a.status !== 'cancelled')
   const revenue = real.reduce((s, a) => s + Number(a.value), 0)
@@ -19,6 +28,18 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
   const cost = count * config.avgCost
   const profit = revenue - cost
   const avg = count ? revenue / count : 0
+
+  const paidToday = appointments
+    .filter((a) => !a.blocked && a.status === 'done' && a.paidAt && toLocalYmd(new Date(a.paidAt)) === todayStr)
+    .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
+
+  const totalPaidToday = paidToday.reduce((sum, a) => sum + Number(a.paymentValue != null ? a.paymentValue : a.value || 0), 0)
+  const paidByMethod = paidToday.reduce((acc, a) => {
+    const key = a.paymentMethod || 'cash'
+    const value = Number(a.paymentValue != null ? a.paymentValue : a.value || 0)
+    acc[key] = (acc[key] || 0) + value
+    return acc
+  }, {})
 
   return (
     <div style={{ padding: 16 }}>
@@ -78,6 +99,53 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
             </div>
           )
         })}
+      </div>
+
+      {/* Caixa do dia */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Caixa do dia</h3>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0F766E' }}>
+            Total: R$ {totalPaidToday.toFixed(2).replace('.', ',')}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          {Object.keys(paymentMethodMeta).map((method) => {
+            const total = Number(paidByMethod[method] || 0)
+            const meta = paymentMethodMeta[method]
+            return (
+              <div key={method} style={{ border: '1px solid var(--rose-light)', borderRadius: 10, padding: '8px 10px', background: 'var(--off-white)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{meta.label} {meta.icon}</div>
+                <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 700 }}>R$ {total.toFixed(2).replace('.', ',')}</div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {paidToday.map((a) => {
+            const client = clients.find((c) => c.id === a.clientId)
+            const service = services.find((s) => s.id === a.serviceId)
+            const method = paymentMethodMeta[a.paymentMethod] || { label: 'Não informado', icon: '💰' }
+            const paid = Number(a.paymentValue != null ? a.paymentValue : a.value || 0)
+            return (
+              <div key={a.id} style={{ border: '1px solid var(--rose-light)', borderRadius: 10, padding: '9px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{client?.name || 'Cliente'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{service?.name || 'Serviço'} · {method.label} {method.icon}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E' }}>R$ {paid.toFixed(2).replace('.', ',')}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{new Date(a.paidAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              </div>
+            )
+          })}
+          {paidToday.length === 0 && (
+            <p style={{ textAlign: 'center', padding: 10, fontSize: 13, color: 'var(--text-light)' }}>Nenhum pagamento registrado hoje</p>
+          )}
+        </div>
       </div>
 
       {/* Appointments table */}

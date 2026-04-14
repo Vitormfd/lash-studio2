@@ -258,20 +258,31 @@ const AppMain = ({ session, onLogout }) => {
     addToast('Removido.', 'success')
   }
 
-  const markAppointmentStatus = async (appt, status) => {
+  const markAppointmentStatus = async (appt, status, paymentData) => {
     if (guardRestrictedWrite('Desbloqueie para marcar atendimento como concluido.')) return
     try {
       const prevStatus = appt.status
-      const saved = await DB.saveAppointment(userId, { ...appt, status })
+      const withPayment =
+        status === 'done' && paymentData
+          ? {
+              ...appt,
+              status,
+              paymentMethod: paymentData.paymentMethod,
+              paymentValue: Number(paymentData.paymentValue || 0),
+              paymentNotes: paymentData.paymentNotes || '',
+              paidAt: new Date().toISOString(),
+            }
+          : { ...appt, status }
+      const saved = await DB.saveAppointment(userId, withPayment)
       const merged = appointments.map((x) => (x.id === appt.id ? saved : x))
       setAppointments(merged)
       if (status === 'done' && prevStatus !== 'done') {
-        const v = Number(appt.value || 0)
-        addToast(`+ R$ ${v.toFixed(2).replace('.', ',')} adicionados hoje 💰`, 'success')
+        const v = Number(saved.paymentValue != null ? saved.paymentValue : saved.value || 0)
+        addToast(`+ R$${v.toFixed(2).replace('.', ',')} registrado 💰`, 'success')
         const todayStr = toLocalYmd(new Date())
         const totalDone = merged
           .filter((a) => a.date === todayStr && a.status === 'done')
-          .reduce((s, a) => s + Number(a.value || 0), 0)
+          .reduce((s, a) => s + Number(a.paymentValue != null ? a.paymentValue : a.value || 0), 0)
         if (
           totalDone >= 100 &&
           typeof Notification !== 'undefined' &&

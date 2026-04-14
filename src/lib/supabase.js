@@ -138,6 +138,10 @@ export const DB = {
           reminderMinutesBefore: a.reminder_minutes_before != null ? Number(a.reminder_minutes_before) : 60,
           notificationStatus: a.notification_status != null ? String(a.notification_status) : 'none',
           reminderSentAt: a.reminder_sent_at || null,
+          paymentMethod: a.payment_method || '',
+          paymentValue: a.payment_value != null ? Number(a.payment_value) : null,
+          paymentNotes: a.payment_notes || '',
+          paidAt: a.paid_at || null,
         }))
     }
     const raw = uget(userId, 'appointments') || []
@@ -145,6 +149,10 @@ export const DB = {
       ...a,
       notificationStatus: a.notificationStatus ?? 'none',
       reminderSentAt: a.reminderSentAt ?? null,
+      paymentMethod: a.paymentMethod ?? '',
+      paymentValue: a.paymentValue != null ? Number(a.paymentValue) : null,
+      paymentNotes: a.paymentNotes ?? '',
+      paidAt: a.paidAt ?? null,
     }))
   },
 
@@ -165,6 +173,10 @@ export const DB = {
       reminderMinutesBefore: a.reminder_minutes_before != null ? Number(a.reminder_minutes_before) : 60,
       notificationStatus: a.notification_status != null ? String(a.notification_status) : 'none',
       reminderSentAt: a.reminder_sent_at || null,
+      paymentMethod: a.payment_method || '',
+      paymentValue: a.payment_value != null ? Number(a.payment_value) : null,
+      paymentNotes: a.payment_notes || '',
+      paidAt: a.paid_at || null,
     })
     if (sb) {
       const defaultStatus = appt.blocked ? 'blocked' : 'pending'
@@ -186,6 +198,10 @@ export const DB = {
           ? Number(appt.reminderMinutesBefore) : 60,
         notification_status: appt.notificationStatus != null ? String(appt.notificationStatus) : 'none',
         reminder_sent_at: appt.reminderSentAt || null,
+        payment_method: appt.paymentMethod || null,
+        payment_value: appt.paymentValue != null ? Number(appt.paymentValue) : null,
+        payment_notes: appt.paymentNotes || null,
+        paid_at: appt.paidAt || null,
       }
       const run = async (r) =>
         appt._new
@@ -198,6 +214,10 @@ export const DB = {
           reminder_minutes_before: _rm,
           notification_status: _ns,
           reminder_sent_at: _rsa,
+          payment_method: _pm,
+          payment_value: _pv,
+          payment_notes: _pn,
+          paid_at: _pa,
           ...rest
         } = row
         const second = await run(rest)
