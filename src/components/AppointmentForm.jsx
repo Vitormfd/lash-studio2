@@ -29,7 +29,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
     time: initial?.time != null && String(initial.time).trim() !== ''
       ? String(initial.time).trim().slice(0, 5)
       : '09:00',
-    reminderEnabled: !!initial?.reminderEnabled,
+    reminderEnabled: initial?.reminderEnabled != null ? !!initial.reminderEnabled : true,
     reminderMinutesBefore: initial?.reminderMinutesBefore != null && Number(initial.reminderMinutesBefore) > 0
       ? Number(initial.reminderMinutesBefore) : 60,
   })

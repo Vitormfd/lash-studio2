@@ -36,6 +36,8 @@ const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') || ''
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:suporte@localhost'
 
 const WINDOW_MS = 10 * 60 * 1000
+// Brazil is UTC-3 (no DST for most states including SP/RJ).
+const BRT_OFFSET_MS = 3 * 60 * 60 * 1000
 
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders })
@@ -49,7 +51,9 @@ const parseAppointmentDate = (date: string, time: string) => {
   const minutes = Number(minutesRaw)
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
-  return new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`)
+  // Appointment date/time is stored in BRT (UTC-3). Suffix the offset so the
+  // JS engine converts to UTC correctly instead of treating it as UTC.
+  return new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00-03:00`)
 }
 
 const isAppointmentDue = (appt: AppointmentRow, minutesBefore: number, nowMs: number) => {
@@ -192,13 +196,17 @@ Deno.serve(async (req) => {
     })
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  // Use BRT date so we match appointment dates stored in Brazilian local time.
+  const todayBrt = new Date(Date.now() - BRT_OFFSET_MS).toISOString().slice(0, 10)
+  // Also look 1 day back because near midnight BRT the UTC date may differ.
+  const yesterdayBrt = new Date(Date.now() - BRT_OFFSET_MS - 86400000).toISOString().slice(0, 10)
+  const today = todayBrt
   const userIds = [...new Set(subscriptions.map((s) => s.user_id).filter(Boolean))]
   const { data: appointments, error: apptError } = await sb
     .from('appointments')
     .select('id,user_id,date,time,status,reminder_enabled,reminder_minutes_before')
     .in('user_id', userIds)
-    .eq('date', today)
+    .in('date', [today, yesterdayBrt])
     .eq('reminder_enabled', true)
     .in('status', ['pending', 'confirmed'])
     .is('reminder_sent_at', null)
