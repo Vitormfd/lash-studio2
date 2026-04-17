@@ -34,6 +34,13 @@ Opcionais:
 - `WHATSAPP_PROVIDER`: `mock` (default), `twilio`, `waba`
 - `WHATSAPP_API_URL`: endpoint custom para provider real
 
+## Numero remetente por profissional
+
+- A funcao busca `public.config.professional_whatsapp` para cada `user_id`.
+- Se o valor estiver em formato E.164, usa esse numero como remetente daquele profissional.
+- Se nao houver numero valido no `config`, usa fallback global `WHATSAPP_NUMBER`.
+- Se nenhum dos dois estiver valido, o envio daquele agendamento falha e entra em log.
+
 As variaveis abaixo sao injetadas pelo Supabase automaticamente:
 
 - `SUPABASE_URL`

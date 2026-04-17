@@ -249,15 +249,37 @@ export const DB = {
     const sb = getClient()
     if (sb) {
       const { data } = await sb.from('config').select('*').single()
-      if (data) return { avgCost: data.avg_cost }
+      if (data) {
+        return {
+          avgCost: Number(data.avg_cost ?? 12.35),
+          professionalWhatsapp: data.professional_whatsapp || '',
+        }
+      }
     }
-    return uget(userId, 'config') || { avgCost: 12.35 }
+    const stored = uget(userId, 'config')
+    return {
+      avgCost: Number(stored?.avgCost ?? 12.35),
+      professionalWhatsapp: stored?.professionalWhatsapp || '',
+    }
   },
 
   async saveConfig(userId, config) {
     const sb = getClient()
     if (sb) {
-      await sb.from('config').upsert({ user_id: userId, avg_cost: config.avgCost }, { onConflict: 'user_id' })
+      const row = {
+        user_id: userId,
+        avg_cost: config.avgCost,
+        professional_whatsapp: config.professionalWhatsapp || null,
+      }
+      let { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error) {
+        // Backward-compatible fallback for environments where the column
+        // professional_whatsapp has not been created yet.
+        const fallback = await sb
+          .from('config')
+          .upsert({ user_id: userId, avg_cost: config.avgCost }, { onConflict: 'user_id' })
+        error = fallback.error
+      }
     }
     uset(userId, 'config', config)
   },

@@ -155,7 +155,7 @@ const ensureDemoSeed = (professionalType = DEFAULT_PROFESSIONAL_TYPE) => {
   uset(DEMO_USER_ID, 'clients', clients)
   uset(DEMO_USER_ID, 'services', services)
   uset(DEMO_USER_ID, 'appointments', appointments)
-  uset(DEMO_USER_ID, 'config', { avgCost: 12.35 })
+  uset(DEMO_USER_ID, 'config', { avgCost: 12.35, professionalWhatsapp: '' })
   uset(DEMO_USER_ID, 'inventory_items', inventoryItems)
   uset(DEMO_USER_ID, 'inventory_movements', inventoryMovements)
   uset(DEMO_USER_ID, 'demo_seeded', true)
@@ -271,7 +271,7 @@ export const AUTH = {
     uset(userId, 'clients', seed.clients)
     uset(userId, 'services', seed.services)
     uset(userId, 'appointments', [seed.appointments[0]])
-    uset(userId, 'config', { avgCost: 12.35 })
+    uset(userId, 'config', { avgCost: 12.35, professionalWhatsapp: '' })
     return { userId, name, email: email.toLowerCase(), professionalType: normalizedType }
   },
 

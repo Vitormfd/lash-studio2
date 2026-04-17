@@ -24,6 +24,11 @@ type RequestBody = {
   dryRun?: boolean
 }
 
+type ConfigRow = {
+  user_id: string
+  professional_whatsapp: string | null
+}
+
 const jsonHeaders = { 'Content-Type': 'application/json' }
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -60,17 +65,27 @@ const buildReminderMessage = (clientName: string | null, startTimeIso: string) =
   return `Oi, ${firstName}! Passando para te lembrar do seu atendimento as ${hour} 💅`
 }
 
-const sendWhatsAppMessage = async (phone: string, message: string): Promise<SendResult> => {
-  if (!WHATSAPP_NUMBER) {
-    return { ok: false, error: 'Missing WHATSAPP_NUMBER' }
+const resolveSenderNumber = (professionalNumber?: string | null) => {
+  const candidate = (professionalNumber || '').trim()
+  if (isE164(candidate)) return candidate
+  return ''
+}
+
+const sendWhatsAppMessage = async (
+  phone: string,
+  message: string,
+  senderNumber: string,
+): Promise<SendResult> => {
+  if (!senderNumber) {
+    return { ok: false, error: 'Missing sender WhatsApp number (professional_whatsapp or WHATSAPP_NUMBER)' }
   }
 
   if (WHATSAPP_PROVIDER === 'mock') {
-    console.log('[whatsapp][mock] message prepared', { to: phone, from: WHATSAPP_NUMBER, message })
+    console.log('[whatsapp][mock] message prepared', { to: phone, from: senderNumber, message })
     return {
       ok: true,
       providerMessageId: `mock-${crypto.randomUUID()}`,
-      payload: { to: phone, from: WHATSAPP_NUMBER, provider: 'mock' },
+      payload: { to: phone, from: senderNumber, provider: 'mock' },
     }
   }
 
@@ -81,7 +96,7 @@ const sendWhatsAppMessage = async (phone: string, message: string): Promise<Send
   if (WHATSAPP_PROVIDER === 'twilio') {
     const endpoint = WHATSAPP_API_URL || 'https://api.twilio.com/2010-04-01/Accounts/messages.json'
     const body = new URLSearchParams({
-      From: `whatsapp:${WHATSAPP_NUMBER}`,
+      From: `whatsapp:${senderNumber}`,
       To: `whatsapp:${phone}`,
       Body: message,
     })
@@ -332,10 +347,28 @@ Deno.serve(async (req) => {
     })
   }
 
+  const userIds = [...new Set(upcoming.map((appt) => appt.user_id).filter(Boolean))]
+  const senderByUserId = new Map<string, string>()
+  if (userIds.length > 0) {
+    const { data: configRows, error: configError } = await sb
+      .from('config')
+      .select('user_id,professional_whatsapp')
+      .in('user_id', userIds)
+
+    if (configError) {
+      console.error('[whatsapp] failed to load config sender numbers', { error: configError.message })
+    } else {
+      for (const row of (configRows || []) as ConfigRow[]) {
+        senderByUserId.set(row.user_id, row.professional_whatsapp || '')
+      }
+    }
+  }
+
   let sent = 0
   let failed = 0
   let skippedNoPhone = 0
   let skippedInvalidPhone = 0
+  let skippedNoSender = 0
   let skippedClaimed = 0
 
   for (const appt of upcoming) {
@@ -375,12 +408,29 @@ Deno.serve(async (req) => {
     }
 
     const message = buildReminderMessage(clientName, startTimeIso)
+    const senderNumber = resolveSenderNumber(senderByUserId.get(appt.user_id))
+
+    if (!senderNumber) {
+      skippedNoSender += 1
+      await markFailed(sb, appt.id)
+      await insertLog(sb, {
+        userId: appt.user_id,
+        appointmentId: appt.id,
+        clientId: appt.client_id,
+        phone,
+        message,
+        status: 'failed',
+        error: 'Missing sender number: configure professional_whatsapp or WHATSAPP_NUMBER fallback',
+      })
+      continue
+    }
 
     if (requestBody.dryRun) {
       console.log('[whatsapp][dry-run] would send', {
         appointmentId: appt.id,
         userId: appt.user_id,
         phone,
+        from: senderNumber,
         message,
       })
 
@@ -394,12 +444,12 @@ Deno.serve(async (req) => {
         message,
         status: 'sent',
         providerMessageId: 'dry-run',
-        payload: { dryRun: true },
+        payload: { dryRun: true, from: senderNumber },
       })
       continue
     }
 
-    const result = await sendWhatsAppMessage(phone, message)
+    const result = await sendWhatsAppMessage(phone, message, senderNumber)
     if (result.ok) {
       sent += 1
       await markSent(sb, appt.id)
@@ -411,12 +461,13 @@ Deno.serve(async (req) => {
         message,
         status: 'sent',
         providerMessageId: result.providerMessageId,
-        payload: result.payload,
+        payload: { ...(result.payload || {}), from: senderNumber },
       })
       console.log('[whatsapp] sent', {
         appointmentId: appt.id,
         userId: appt.user_id,
         phone,
+        from: senderNumber,
         provider: WHATSAPP_PROVIDER,
       })
       continue
@@ -440,6 +491,7 @@ Deno.serve(async (req) => {
       userId: appt.user_id,
       phone,
       provider: WHATSAPP_PROVIDER,
+      from: senderNumber,
       error: result.error,
     })
   }
@@ -452,6 +504,7 @@ Deno.serve(async (req) => {
     failed,
     skippedNoPhone,
     skippedInvalidPhone,
+    skippedNoSender,
     skippedClaimed,
     windowMinutes: [WINDOW_MIN_START, WINDOW_MIN_END],
   })
