@@ -16,6 +16,7 @@ const Dashboard = ({
   clients,
   services,
   config,
+  isBarber,
   onGoAgenda,
   onNewAppointment,
   onGoClients,
@@ -55,6 +56,10 @@ const Dashboard = ({
 
   const h = now.getHours()
   const greetingLine = h >= 5 && h < 12 ? 'Bom dia! ✨' : h >= 12 && h < 18 ? 'Boa tarde! ✨' : 'Boa noite! 🌙'
+  const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
+  const appointmentsTodayLabel = isBarber ? 'Cortes hoje' : 'Atendimentos hoje'
+  const noAppointmentsTodayLabel = isBarber ? 'Você não tem cortes hoje' : 'Você não tem atendimentos hoje'
+  const todaySummaryTitle = isBarber ? 'Agenda de hoje' : 'Resumo de hoje'
 
   return (
     <div style={{ padding: '20px 16px' }}>
@@ -83,10 +88,10 @@ const Dashboard = ({
       {/* Resumo de hoje */}
       <div style={{ marginBottom: 12 }}>
         <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-          Resumo de hoje
+          {todaySummaryTitle}
         </h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-          <StatCard label="Atendimentos hoje" value={todaySummary.count} icon="check" color="var(--rose-deep)" />
+          <StatCard label={appointmentsTodayLabel} value={todaySummary.count} icon="check" color="var(--rose-deep)" />
           <StatCard
             label="Ganho do dia (realizado)"
             value={`R$ ${todaySummary.revenueDone.toFixed(2).replace('.', ',')}`}
@@ -162,7 +167,7 @@ const Dashboard = ({
         {todaySummary.count === 0 && (
           <EmptyState
             icon="💤"
-            title="Você não tem atendimentos hoje"
+            title={noAppointmentsTodayLabel}
             hint="Que tal agendar ou conferir a agenda da semana? Seu dia começa aqui."
           />
         )}
@@ -205,7 +210,7 @@ const Dashboard = ({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
         <StatCard label="Faturamento do mês" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" />
         <StatCard label="Lucro do mês" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} sub={`Custo: R$ ${cost.toFixed(2).replace('.', ',')}`} icon="chart" />
-        <StatCard label="Atendimentos" value={monthAppts.length} sub="este mês" icon="check" />
+        <StatCard label={appointmentsLabel} value={monthAppts.length} sub="este mês" icon="check" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" />
       </div>
 

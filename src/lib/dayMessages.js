@@ -1,17 +1,26 @@
 /** Mensagens dinâmicas — reutilizáveis no app e em Edge Functions (copiar texto se necessário) */
 
-export const morningPushBody = (clientCount) => {
+const isBarberType = (professionalType) => professionalType === 'barbeiro'
+
+export const morningPushBody = (clientCount, professionalType) => {
+  const isBarber = isBarberType(professionalType)
   if (clientCount > 0) {
-    const n = clientCount === 1 ? '1 atendimento' : `${clientCount} atendimentos`
+    const n = clientCount === 1
+      ? `1 ${isBarber ? 'corte' : 'atendimento'}`
+      : `${clientCount} ${isBarber ? 'cortes' : 'atendimentos'}`
     return `Bom dia! Hoje você tem ${n} na agenda ✨`
   }
   return 'Bom dia! Que tal organizar sua agenda hoje? ✨'
 }
 
-export const nextAppointmentPushBody = (minutesBefore = 60) =>
-  minutesBefore === 60
-    ? 'Falta 1h pro seu próximo atendimento ⏰'
-    : `Faltam ${minutesBefore} min pro seu próximo atendimento ⏰`
+export const nextAppointmentPushBody = (minutesBefore = 60, professionalType) =>
+  isBarberType(professionalType)
+    ? (minutesBefore === 60
+        ? 'Falta 1h pro seu próximo corte ⏰'
+        : `Faltam ${minutesBefore} min pro seu próximo corte ⏰`)
+    : (minutesBefore === 60
+        ? 'Falta 1h pro seu próximo atendimento ⏰'
+        : `Faltam ${minutesBefore} min pro seu próximo atendimento ⏰`)
 
 export const progressPushBody = (revenueDone) =>
   `Você já faturou R$${Number(revenueDone).toFixed(2).replace('.', ',')} hoje 💰`

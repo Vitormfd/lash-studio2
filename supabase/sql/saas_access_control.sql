@@ -5,7 +5,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   plan text not null default 'free' check (plan in ('free', 'active', 'canceled')),
   access_level text not null default 'demo' check (access_level in ('demo', 'full')),
-  professional_type text not null default 'lash' check (professional_type in ('lash', 'nail', 'sobrancelha', 'estetica')),
+  professional_type text not null default 'lash' check (professional_type in ('lash', 'nail', 'sobrancelha', 'estetica', 'barbeiro')),
   subscription_expires_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -26,16 +26,19 @@ alter column professional_type set not null;
 
 do $$
 begin
-  if not exists (
+  if exists (
     select 1
     from pg_constraint
     where conname = 'profiles_professional_type_check'
       and conrelid = 'public.profiles'::regclass
-  ) then
-    alter table public.profiles
-      add constraint profiles_professional_type_check
-      check (professional_type in ('lash', 'nail', 'sobrancelha', 'estetica'));
   end if;
+
+  alter table public.profiles
+    drop constraint if exists profiles_professional_type_check;
+
+  alter table public.profiles
+    add constraint profiles_professional_type_check
+    check (professional_type in ('lash', 'nail', 'sobrancelha', 'estetica', 'barbeiro'));
 end;
 $$;
 
@@ -67,7 +70,7 @@ begin
     'free',
     'demo',
     case
-      when coalesce(new.raw_user_meta_data ->> 'professional_type', '') in ('lash', 'nail', 'sobrancelha', 'estetica')
+      when coalesce(new.raw_user_meta_data ->> 'professional_type', '') in ('lash', 'nail', 'sobrancelha', 'estetica', 'barbeiro')
         then new.raw_user_meta_data ->> 'professional_type'
       else 'lash'
     end
@@ -88,7 +91,7 @@ select
   'free',
   'demo',
   case
-    when coalesce(u.raw_user_meta_data ->> 'professional_type', '') in ('lash', 'nail', 'sobrancelha', 'estetica')
+    when coalesce(u.raw_user_meta_data ->> 'professional_type', '') in ('lash', 'nail', 'sobrancelha', 'estetica', 'barbeiro')
       then u.raw_user_meta_data ->> 'professional_type'
     else 'lash'
   end

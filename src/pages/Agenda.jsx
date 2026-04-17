@@ -16,6 +16,7 @@ const Agenda = ({
   appointments,
   clients,
   services,
+  isBarber,
   onNew,
   onEdit,
   onDelete,
@@ -395,7 +396,7 @@ const Agenda = ({
       <Modal
         open={paymentModal.open}
         onClose={() => setPaymentModal({ open: false, appt: null, method: '', value: '', notes: '' })}
-        title="Finalizar atendimento 💅"
+        title={isBarber ? 'Finalizar corte ✂️' : 'Finalizar atendimento'}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Método de pagamento">

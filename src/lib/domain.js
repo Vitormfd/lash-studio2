@@ -10,6 +10,7 @@ export const PROFESSIONAL_TYPE_OPTIONS = [
   { value: 'nail', label: 'Nail designer', shortLabel: 'Nail', icon: '💅' },
   { value: 'sobrancelha', label: 'Designer de sobrancelha', shortLabel: 'Sobrancelha', icon: '🪄' },
   { value: 'estetica', label: 'Estética', shortLabel: 'Estética', icon: '🌿' },
+  { value: 'barbeiro', label: 'Barbeiro', shortLabel: 'Barbeiro', icon: '✂️' },
 ]
 
 const PROFESSIONAL_TYPE_VALUES = new Set(PROFESSIONAL_TYPE_OPTIONS.map((option) => option.value))

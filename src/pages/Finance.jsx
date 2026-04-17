@@ -5,7 +5,8 @@ import { MONTHS_PT } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
 
-const Finance = ({ appointments, services, clients, config, setConfig }) => {
+const Finance = ({ appointments, services, clients, config, setConfig, isBarber }) => {
+  const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const [editCost, setEditCost] = useState(false)
   const [costVal, setCostVal] = useState(config.avgCost)
   const [monthOffset, setMonthOffset] = useState(0)
@@ -74,7 +75,7 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
         <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" color="var(--rose-deep)" />
         <StatCard label="Custo total" value={`R$ ${cost.toFixed(2).replace('.', ',')}`} icon="settings" color="#D4915A" />
         <StatCard label="Lucro real" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} icon="chart" color="#7BAF7B" />
-        <StatCard label="Atendimentos" value={count} icon="check" color="var(--rose)" />
+        <StatCard label={appointmentsLabel} value={count} icon="check" color="var(--rose)" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" color="var(--rose-dark)" />
       </div>
 
@@ -150,7 +151,7 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
 
       {/* Appointments table */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Atendimentos do mês</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>{`${appointmentsLabel} do mês`}</h3>
         <div style={{ overflowX: 'auto', minWidth: 0, WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
             <thead>
@@ -182,7 +183,7 @@ const Finance = ({ appointments, services, clients, config, setConfig }) => {
               })}
             </tbody>
           </table>
-          {real.length === 0 && <p style={{ textAlign: 'center', padding: 30, fontSize: 13, color: 'var(--text-light)' }}>Nenhum atendimento este mês</p>}
+          {real.length === 0 && <p style={{ textAlign: 'center', padding: 30, fontSize: 13, color: 'var(--text-light)' }}>{`Nenhum ${isBarber ? 'corte' : 'atendimento'} este mês`}</p>}
         </div>
       </div>
     </div>

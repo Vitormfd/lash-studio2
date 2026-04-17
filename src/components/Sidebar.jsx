@@ -76,7 +76,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {session?.name || 'Usuária'}
+              {session?.name || 'Usuário'}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {session?.email || ''}

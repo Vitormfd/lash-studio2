@@ -28,6 +28,11 @@ type RequestBody = {
   debug?: boolean
 }
 
+type ProfileRow = {
+  id: string
+  professional_type: string | null
+}
+
 const jsonHeaders = { 'Content-Type': 'application/json' }
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -64,10 +69,12 @@ const isAppointmentDue = (appt: AppointmentRow, minutesBefore: number, nowMs: nu
   return delta >= 0 && delta <= WINDOW_MS
 }
 
-const buildReminderBody = (minutesBefore: number) =>
-  minutesBefore === 60
-    ? 'Falta 1h pro seu próximo atendimento ⏰'
-    : `Faltam ${minutesBefore} min pro seu próximo atendimento ⏰`
+const buildReminderBody = (minutesBefore: number, professionalType?: string | null) => {
+  const unit = professionalType === 'barbeiro' ? 'corte' : 'atendimento'
+  return minutesBefore === 60
+    ? `Falta 1h pro seu próximo ${unit} ⏰`
+    : `Faltam ${minutesBefore} min pro seu próximo ${unit} ⏰`
+}
 
 const maskEndpoint = (endpoint: string) => {
   try {
@@ -202,6 +209,16 @@ Deno.serve(async (req) => {
   const yesterdayBrt = new Date(Date.now() - BRT_OFFSET_MS - 86400000).toISOString().slice(0, 10)
   const today = todayBrt
   const userIds = [...new Set(subscriptions.map((s) => s.user_id).filter(Boolean))]
+  const { data: profiles } = await sb
+    .from('profiles')
+    .select('id,professional_type')
+    .in('id', userIds)
+
+  const professionalTypeByUserId = new Map<string, string>()
+  for (const profile of (profiles || []) as ProfileRow[]) {
+    professionalTypeByUserId.set(profile.id, profile.professional_type || 'lash')
+  }
+
   const { data: appointments, error: apptError } = await sb
     .from('appointments')
     .select('id,user_id,date,time,status,reminder_enabled,reminder_minutes_before')
@@ -253,7 +270,7 @@ Deno.serve(async (req) => {
 
     const payload = JSON.stringify({
       title: 'Lash Studio',
-      body: buildReminderBody(effectiveMinutes),
+      body: buildReminderBody(effectiveMinutes, professionalTypeByUserId.get(sub.user_id)),
       tag: `appt-${due.id}`,
       data: { url: '/agenda' },
     })

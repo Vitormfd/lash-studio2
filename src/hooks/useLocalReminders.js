@@ -7,7 +7,13 @@ import { APP_NAME } from '../lib/domain'
  * Lembrete local do próximo horário (Notification API) enquanto o app está ativo.
  * Push com app fechado: Edge Function + cron (ver supabase/functions).
  */
-export function useLocalReminders({ appointments, enabled, reminderMinutesBefore = 60, permissionVersion = 0 }) {
+export function useLocalReminders({
+  appointments,
+  enabled,
+  reminderMinutesBefore = 60,
+  permissionVersion = 0,
+  professionalType,
+}) {
   const timersRef = useRef([])
 
   useEffect(() => {
@@ -37,7 +43,7 @@ export function useLocalReminders({ appointments, enabled, reminderMinutesBefore
           try {
             sessionStorage.setItem(notifyKey, '1')
             new Notification(APP_NAME, {
-              body: nextAppointmentPushBody(reminderMinutesBefore),
+              body: nextAppointmentPushBody(reminderMinutesBefore, professionalType),
               icon: '/icon-192.png',
               badge: '/icon-192.png',
               tag: `next-${nextAppt.id}`,
@@ -49,5 +55,5 @@ export function useLocalReminders({ appointments, enabled, reminderMinutesBefore
     }
 
     return clearAll
-  }, [appointments, enabled, reminderMinutesBefore, permissionVersion])
+  }, [appointments, enabled, reminderMinutesBefore, permissionVersion, professionalType])
 }

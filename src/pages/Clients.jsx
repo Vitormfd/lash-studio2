@@ -136,12 +136,15 @@ const Clients = ({
   setClients,
   appointments,
   services = [],
+  isBarber,
   addToast,
   onScheduleAfterCreate,
   canUserEdit,
   onBlockedAction,
   onUpgrade,
 }) => {
+  const appointmentsLabel = isBarber ? 'cortes' : 'atendimentos'
+  const appointmentLabelSingular = isBarber ? 'corte' : 'atendimento'
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
@@ -341,7 +344,7 @@ const Clients = ({
                 filter: 'blur(0.2px)',
               }}
             >
-              <Icon name="lock" size={13} color="#fff" /> Nova Cliente
+              <Icon name="lock" size={13} color="#fff" /> Novo cliente
             </button>
           )}
         </div>
@@ -415,9 +418,9 @@ const Clients = ({
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{count} atendimentos</span>
+                <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{count} {appointmentsLabel}</span>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <Btn variant="ghost" sm onClick={() => setHistoryClient(c)} title="Histórico de atendimentos">
+                  <Btn variant="ghost" sm onClick={() => setHistoryClient(c)} title={`Histórico de ${appointmentsLabel}`}>
                     <Icon name="calendar" size={12} /> Histórico
                   </Btn>
                   <Btn
@@ -443,13 +446,13 @@ const Clients = ({
 
       {filtered.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-light)' }}>
-          <p style={{ fontSize: 16 }}>Nenhuma cliente encontrada</p>
+          <p style={{ fontSize: 16 }}>Nenhum cliente encontrado</p>
         </div>
       )}
 
-      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'new' ? 'Nova Cliente' : 'Editar Cliente'}>
+      <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'new' ? 'Novo cliente' : 'Editar cliente'}>
         <Field label="Nome completo">
-          <Inp value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nome da cliente" />
+          <Inp value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nome do cliente" />
         </Field>
         <Field label="Telefone">
           <Inp value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="(00) 00000-0000" />
@@ -476,11 +479,11 @@ const Clients = ({
         {historyClient && (
           <>
             <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 12 }}>
-              Atendimentos registrados (agendamentos não cancelados e bloqueios não aparecem como atendimento).
+              {`${isBarber ? 'Cortes' : 'Atendimentos'} registrados (agendamentos não cancelados e bloqueios não aparecem como ${appointmentLabelSingular}).`}
             </p>
             <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--rose-light)', borderRadius: 12 }}>
               {getClientHistory(historyClient.id).length === 0 ? (
-                <p style={{ padding: 16, fontSize: 13, color: 'var(--text-light)', margin: 0 }}>Nenhum atendimento ainda.</p>
+                <p style={{ padding: 16, fontSize: 13, color: 'var(--text-light)', margin: 0 }}>{`Nenhum ${appointmentLabelSingular} ainda.`}</p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>

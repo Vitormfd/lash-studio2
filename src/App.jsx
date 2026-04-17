@@ -47,6 +47,12 @@ const NAV_TITLES = {
 
 const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services', 'inventory', 'finance', 'reports', 'settings']
 
+const BARBER_STARTER_SERVICES = [
+  { name: 'Corte', price: 50, color: '#7BAF9A' },
+  { name: 'Barba', price: 35, color: '#9B8FB8' },
+  { name: 'Corte + Barba', price: 75, color: '#C17B82' },
+]
+
 // ─── APP MAIN (autenticado) ───────────────────────────────────────────────────
 const AppMain = ({ session, onLogout }) => {
   const userId = session.userId
@@ -70,6 +76,9 @@ const AppMain = ({ session, onLogout }) => {
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallHint, setPaywallHint] = useState('')
+
+  const professionalType = accessProfile.professionalType || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
+  const isBarber = professionalType === 'barbeiro'
 
   const { toasts, addToast, removeToast } = useToast()
   const [notifGate, setNotifGate] = useState(0)
@@ -108,6 +117,7 @@ const AppMain = ({ session, onLogout }) => {
     enabled: localNotifEnabled,
     reminderMinutesBefore: 60,
     permissionVersion: notifGate,
+    professionalType,
   })
 
   useEffect(() => {
@@ -141,8 +151,21 @@ const AppMain = ({ session, onLogout }) => {
         appointments: a,
         createId: uid,
       })
+      let nextServices = compatibility.services
+
+      if (isBarber && nextServices.length === 0) {
+        const created = []
+        for (const svc of BARBER_STARTER_SERVICES) {
+          try {
+            const saved = await DB.saveService(userId, { id: uid(), ...svc, _new: true })
+            created.push(saved)
+          } catch {}
+        }
+        if (created.length > 0) nextServices = created
+      }
+
       setClients(c)
-      setServices(compatibility.services)
+      setServices(nextServices)
       setAppointments(compatibility.appointments)
       setInventoryItems(invItems)
       setInventoryMovements(invMovs)
@@ -166,7 +189,7 @@ const AppMain = ({ session, onLogout }) => {
     } finally {
       setLoading(false)
     }
-  }, [userId, addToast])
+  }, [userId, addToast, isBarber])
 
   useEffect(() => {
     reloadData()
@@ -304,7 +327,7 @@ const AppMain = ({ session, onLogout }) => {
       } else if (status === 'confirmed' && prevStatus === 'pending') {
         addToast('Agendamento confirmado!', 'success')
       } else if (status === 'done') {
-        addToast('Atendimento atualizado.', 'success')
+        addToast(isBarber ? 'Corte atualizado.' : 'Atendimento atualizado.', 'success')
       } else {
         addToast('Status atualizado.', 'success')
       }
@@ -385,7 +408,12 @@ const AppMain = ({ session, onLogout }) => {
         'info',
       )
     } else {
-      addToast('Nenhum atendimento nos próximos 30 min. Toque em Configurações para ativar lembretes no celular.', 'info')
+      addToast(
+        isBarber
+          ? 'Nenhum corte nos próximos 30 min. Toque em Configurações para ativar lembretes no celular.'
+          : 'Nenhum atendimento nos próximos 30 min. Toque em Configurações para ativar lembretes no celular.',
+        'info',
+      )
     }
   }
 
@@ -459,6 +487,7 @@ const AppMain = ({ session, onLogout }) => {
               clients={clients}
               services={services}
               config={config}
+              isBarber={isBarber}
               onGoAgenda={() => setPage('agenda')}
               onNewAppointment={() => {
                 if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
@@ -475,6 +504,7 @@ const AppMain = ({ session, onLogout }) => {
               appointments={appointments}
               clients={clients}
               services={services}
+              isBarber={isBarber}
               onNew={saveAppt}
               onEdit={(appt) => {
                 if (guardRestrictedWrite('Desbloqueie para editar agendamentos.')) return
@@ -494,6 +524,7 @@ const AppMain = ({ session, onLogout }) => {
               setClients={setClientsCompat}
               appointments={appointments}
               services={services}
+              isBarber={isBarber}
               addToast={addToast}
               onScheduleAfterCreate={(clientId) => {
                 if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
@@ -517,15 +548,15 @@ const AppMain = ({ session, onLogout }) => {
               addToast={addToast}
             />
           )}
-          {page === 'finance' && <Finance appointments={appointments} services={services} clients={clients} config={config} setConfig={saveConfig} />}
-          {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} />}
+          {page === 'finance' && <Finance appointments={appointments} services={services} clients={clients} config={config} setConfig={saveConfig} isBarber={isBarber} />}
+          {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} isBarber={isBarber} />}
           {page === 'settings' && (
             <Settings
               config={config}
               setConfig={saveConfig}
               addToast={addToast}
               session={session}
-              professionalType={accessProfile.professionalType || session.professionalType || DEFAULT_PROFESSIONAL_TYPE}
+              professionalType={professionalType}
               onLogout={onLogout}
               isDemo={isDemo}
             />

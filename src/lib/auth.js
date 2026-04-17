@@ -58,6 +58,19 @@ const STARTER_CONTENT_BY_TYPE = {
     ],
     inventoryItem: { name: 'Máscara facial calmante', category: 'Skincare', supplier: 'BeautyLab', costPrice: 42 },
   },
+  barbeiro: {
+    clients: [
+      { name: 'Lucas Almeida', phone: '(11) 98888-1001', notes: 'Prefere corte social com acabamento na navalha' },
+      { name: 'Rafael Souza', phone: '(11) 97777-2222', notes: 'Costuma agendar no horário do almoço' },
+      { name: 'Bruno Martins', phone: '(11) 96666-3333', notes: 'Faz manutenção de barba quinzenal' },
+    ],
+    services: [
+      { name: 'Corte', price: 50, color: '#7BAF9A' },
+      { name: 'Barba', price: 35, color: '#9B8FB8' },
+      { name: 'Corte + Barba', price: 75, color: '#C17B82' },
+    ],
+    inventoryItem: { name: 'Pomada modeladora', category: 'Finalização', supplier: 'BarberLab', costPrice: 29 },
+  },
 }
 
 const buildStarterSeed = (professionalType = DEFAULT_PROFESSIONAL_TYPE) => {

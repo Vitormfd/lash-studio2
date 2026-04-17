@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { StatCard } from '../components/UI'
 
-const Reports = ({ appointments, services, clients }) => {
+const Reports = ({ appointments, services, clients, isBarber }) => {
+  const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const [period, setPeriod] = useState('month')
   const now = new Date()
   const real = appointments.filter((a) => !a.blocked && a.status !== 'cancelled')
@@ -41,7 +42,7 @@ const Reports = ({ appointments, services, clients }) => {
       {/* Stats */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" />
-        <StatCard label="Atendimentos" value={filtered.length} icon="check" />
+        <StatCard label={appointmentsLabel} value={filtered.length} icon="check" />
         <StatCard label="Ticket médio" value={`R$ ${filtered.length ? (revenue / filtered.length).toFixed(2).replace('.', ',') : '0,00'}`} icon="star" />
       </div>
 
