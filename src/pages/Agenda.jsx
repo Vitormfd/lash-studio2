@@ -33,6 +33,7 @@ const Agenda = ({
 
   const dateStr = toLocalYmd(current)
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Bloqueado'
+  const getClient = (id) => clients.find((c) => c.id === id) || null
   const getServiceName = (id) => services.find((s) => s.id === id)?.name || ''
   const paymentMethods = [
     { value: 'cash', label: 'Dinheiro', icon: '💵' },
@@ -44,6 +45,26 @@ const Agenda = ({
   const paymentMethodLabel = (method) => paymentMethods.find((m) => m.value === method)?.label || ''
   const paymentMethodIcon = (method) => paymentMethods.find((m) => m.value === method)?.icon || ''
   const formatMoney = (v) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`
+
+  const openWhatsappReminder = (appt) => {
+    const client = getClient(appt.clientId)
+    const rawPhone = client?.phone || ''
+    const digits = String(rawPhone).replace(/\D/g, '')
+
+    if (!digits) {
+      addToast('Cliente sem telefone cadastrado.', 'warning')
+      return
+    }
+
+    const phone = digits.startsWith('55') ? digits : `55${digits}`
+    const firstName = (client?.name || '').trim().split(/\s+/)[0] || 'tudo bem'
+    const dateLabel = new Date(`${appt.date}T12:00:00`).toLocaleDateString('pt-BR')
+    const timeLabel = String(appt.time).slice(0, 5)
+    const text = `Oi, ${firstName}! Passando para te lembrar do seu atendimento no dia ${dateLabel} às ${timeLabel}. Te espero 💅`
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   const statusColor = (a) => {
     if (a.blocked) return { bg: '#F5E5E5', border: '#E8B4B4', text: '#C5515F' }
@@ -160,6 +181,19 @@ const Agenda = ({
                       )}
                     </div>
                     <div style={{ display: 'flex', gap: 4, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end', alignSelf: 'flex-start' }}>
+                      {!appt.blocked && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openWhatsappReminder(appt)
+                          }}
+                          title="Enviar lembrete pelo WhatsApp"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#128C7E' }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>Whats</span>
+                        </button>
+                      )}
                       {!appt.blocked && (
                         <button
                           type="button"

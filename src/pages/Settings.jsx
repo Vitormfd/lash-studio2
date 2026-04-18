@@ -15,7 +15,6 @@ import { APP_DESCRIPTION, APP_NAME, getProfessionalTypeMeta } from '../lib/domai
 
 const Settings = ({ config, setConfig, addToast, session, professionalType, onLogout, isDemo = false }) => {
   const [cost, setCost] = useState(config.avgCost)
-  const [professionalWhatsapp, setProfessionalWhatsapp] = useState(config.professionalWhatsapp || '')
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
@@ -25,16 +24,6 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
   const [pushOn, setPushOn] = useState(false)
   const userId = session?.userId
   const professionalMeta = getProfessionalTypeMeta(professionalType)
-
-  const normalizeWhatsappInput = (value) => {
-    const raw = (value || '').trim()
-    if (!raw) return ''
-    const digits = raw.replace(/\D/g, '')
-    if (!digits) return ''
-    if (digits.startsWith('55')) return `+${digits}`
-    if (digits.length === 10 || digits.length === 11) return `+55${digits}`
-    return raw.startsWith('+') ? raw : `+${digits}`
-  }
 
   const blockDemoAction = () => {
     if (!isDemo) return false
@@ -73,8 +62,7 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
 
   useEffect(() => {
     setCost(config.avgCost)
-    setProfessionalWhatsapp(config.professionalWhatsapp || '')
-  }, [config.avgCost, config.professionalWhatsapp])
+  }, [config.avgCost])
 
   const enablePushNotifications = async () => {
     if (blockDemoAction()) return
@@ -197,25 +185,10 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
             Usado para calcular o lucro real de cada atendimento
           </p>
         </Field>
-        <Field label="WhatsApp da profissional">
-          <Inp
-            value={professionalWhatsapp}
-            onChange={(e) => setProfessionalWhatsapp(e.target.value)}
-            placeholder="+5511999999999"
-            disabled={isDemo}
-          />
-          <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 5 }}>
-            Numero usado na integracao de WhatsApp. Ex.: +5511999999999
-          </p>
-        </Field>
         <Btn
           onClick={() => {
             if (blockDemoAction()) return
-            setConfig({
-              ...config,
-              avgCost: Number(cost),
-              professionalWhatsapp: normalizeWhatsappInput(professionalWhatsapp),
-            })
+            setConfig({ ...config, avgCost: Number(cost) })
             addToast('Configurações salvas!', 'success')
           }}
           disabled={isDemo}

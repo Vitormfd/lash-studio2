@@ -234,7 +234,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
               Quero registrar lembrete para este horário
             </label>
             <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 6, lineHeight: 1.45 }}>
-              O envio automático (ex.: WhatsApp) será ligado depois; os dados já ficam salvos para disparar no futuro.
+              Marque se quiser identificar este horário como lembrete dentro da agenda.
             </p>
             {form.reminderEnabled && (
               <Sel
