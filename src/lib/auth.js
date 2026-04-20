@@ -185,6 +185,10 @@ export const AUTH = {
         options: { data: { name, professional_type: normalizedType } },
       })
       if (error) throw new Error(error.message)
+      if (!data.session) {
+        const signedIn = await AUTH.signIn(email, password)
+        return { ...signedIn, professionalType: normalizedType }
+      }
       return { userId: data.user.id, name, email, professionalType: normalizedType }
     }
     return AUTH._localRegister(name, email, password, normalizedType)
@@ -225,7 +229,12 @@ export const AUTH = {
           professionalType: normalizeProfessionalType(u.user_metadata?.professional_type),
         }
       }
-      return null
+      const localSession = local.get('ls_session')
+      if (!localSession) return null
+      return {
+        ...localSession,
+        professionalType: normalizeProfessionalType(localSession.professionalType),
+      }
     }
     const session = local.get('ls_session')
     if (!session) return null

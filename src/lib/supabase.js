@@ -44,7 +44,7 @@ export const DB = {
   async getClients(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('clients').select('*').order('name')
+      const { data, error } = await sb.from('clients').select('*').eq('user_id', userId).order('name')
       if (!error) return data
     }
     return uget(userId, 'clients') || []
@@ -63,7 +63,7 @@ export const DB = {
       }
       const { data, error } = client._new
         ? await sb.from('clients').insert(row).select().single()
-        : await sb.from('clients').update(row).eq('id', client.id).select().single()
+        : await sb.from('clients').update(row).eq('id', client.id).eq('user_id', userId).select().single()
       if (!error) return data
     }
     const all = uget(userId, 'clients') || []
@@ -75,7 +75,7 @@ export const DB = {
 
   async deleteClient(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('clients').delete().eq('id', id); return }
+    if (sb) { await sb.from('clients').delete().eq('id', id).eq('user_id', userId); return }
     uset(userId, 'clients', (uget(userId, 'clients') || []).filter((c) => c.id !== id))
   },
 
@@ -83,7 +83,7 @@ export const DB = {
   async getServices(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('services').select('*').order('name')
+      const { data, error } = await sb.from('services').select('*').eq('user_id', userId).order('name')
       if (!error) return data.map((s) => ({ id: s.id, name: s.name, price: Number(s.price), color: s.color || '' }))
     }
     return uget(userId, 'services') || []
@@ -101,7 +101,7 @@ export const DB = {
       }
       const { data, error } = service._new
         ? await sb.from('services').insert(row).select().single()
-        : await sb.from('services').update(row).eq('id', service.id).select().single()
+        : await sb.from('services').update(row).eq('id', service.id).eq('user_id', userId).select().single()
       if (!error && data) return { id: data.id, name: data.name, price: Number(data.price), color: data.color || '' }
     }
     const all = uget(userId, 'services') || []
@@ -113,7 +113,7 @@ export const DB = {
 
   async deleteService(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('services').delete().eq('id', id); return }
+    if (sb) { await sb.from('services').delete().eq('id', id).eq('user_id', userId); return }
     uset(userId, 'services', (uget(userId, 'services') || []).filter((s) => s.id !== id))
   },
 
@@ -121,7 +121,7 @@ export const DB = {
   async getAppointments(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('appointments').select('*').order('date').order('time')
+      const { data, error } = await sb.from('appointments').select('*').eq('user_id', userId).order('date').order('time')
       if (!error)
         return data.map((a) => ({
           id: a.id,
@@ -206,7 +206,7 @@ export const DB = {
       const run = async (r) =>
         appt._new
           ? sb.from('appointments').insert(r).select().single()
-          : sb.from('appointments').update(r).eq('id', appt.id).select().single()
+          : sb.from('appointments').update(r).eq('id', appt.id).eq('user_id', userId).select().single()
       let { data, error } = await run(row)
       if (error) {
         const {
@@ -240,7 +240,7 @@ export const DB = {
 
   async deleteAppointment(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('appointments').delete().eq('id', id); return }
+    if (sb) { await sb.from('appointments').delete().eq('id', id).eq('user_id', userId); return }
     uset(userId, 'appointments', (uget(userId, 'appointments') || []).filter((a) => a.id !== id))
   },
 
@@ -248,7 +248,7 @@ export const DB = {
   async getConfig(userId) {
     const sb = getClient()
     if (sb) {
-      const { data } = await sb.from('config').select('*').single()
+      const { data } = await sb.from('config').select('*').eq('user_id', userId).single()
       if (data) return { avgCost: Number(data.avg_cost ?? 12.35) }
     }
     const stored = uget(userId, 'config')
@@ -267,7 +267,7 @@ export const DB = {
   async getInventoryItems(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('inventory_items').select('*').order('name')
+      const { data, error } = await sb.from('inventory_items').select('*').eq('user_id', userId).order('name')
       if (!error) {
         return data.map((i) => ({
           id: i.id,
@@ -308,7 +308,7 @@ export const DB = {
       }
       const { data, error } = item._new
         ? await sb.from('inventory_items').insert(row).select().single()
-        : await sb.from('inventory_items').update(row).eq('id', item.id).select().single()
+        : await sb.from('inventory_items').update(row).eq('id', item.id).eq('user_id', userId).select().single()
       if (!error && data) {
         return {
           id: data.id,
@@ -335,14 +335,14 @@ export const DB = {
 
   async deleteInventoryItem(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('inventory_items').delete().eq('id', id); return }
+    if (sb) { await sb.from('inventory_items').delete().eq('id', id).eq('user_id', userId); return }
     uset(userId, 'inventory_items', (uget(userId, 'inventory_items') || []).filter((i) => i.id !== id))
   },
 
   async getInventoryMovements(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('inventory_movements').select('*').order('created_at', { ascending: false })
+      const { data, error } = await sb.from('inventory_movements').select('*').eq('user_id', userId).order('created_at', { ascending: false })
       if (!error) {
         return data.map((m) => ({
           id: m.id,
