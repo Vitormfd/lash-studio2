@@ -61,20 +61,41 @@ const toE164Phone = (value) => {
   // Already in international format.
   if (raw.startsWith('+')) {
     const digits = raw.slice(1).replace(/\D/g, '')
-    return digits ? `+${digits}` : null
+    if (!digits) return null
+    const candidate = `+${digits}`
+    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
   }
 
-  const digits = raw.replace(/\D/g, '')
+  let digits = raw.replace(/\D/g, '')
   if (!digits) return null
 
   // International prefix 00XXXXXXXX -> +XXXXXXXX
-  if (digits.startsWith('00') && digits.length > 2) return `+${digits.slice(2)}`
+  if (digits.startsWith('00') && digits.length > 2) {
+    const candidate = `+${digits.slice(2)}`
+    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  }
+
+  // Remove trunk leading zeros used in local dialing.
+  digits = digits.replace(/^0+/, '')
+  if (!digits) return null
+
+  // Brazil full number without plus.
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    const candidate = `+${digits}`
+    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  }
 
   // Brazil local numbers (10/11 digits) -> +55XXXXXXXXXXX
-  if (digits.length === 10 || digits.length === 11) return `+55${digits}`
+  if (digits.length === 10 || digits.length === 11) {
+    const candidate = `+55${digits}`
+    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  }
 
   // Looks like a full country+number without plus.
-  if (digits.length >= 12 && digits.length <= 15) return `+${digits}`
+  if (digits.length >= 12 && digits.length <= 15) {
+    const candidate = `+${digits}`
+    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  }
 
   return null
 }
@@ -106,9 +127,21 @@ export const DB = {
         notes: client.notes || '',
         created_at: client.createdAt || new Date().toISOString(),
       }
-      const { data, error } = client._new
+      let { data, error } = client._new
         ? await sb.from('clients').insert(row).select().single()
         : await sb.from('clients').update(row).eq('id', client.id).eq('user_id', userId).select().single()
+
+      // If DB rejects phone format, retry without phone to avoid blocking client creation.
+      const isPhoneCheckError = error?.code === '23514' && String(error?.message || '').includes('clients_phone_e164_check')
+      if (isPhoneCheckError) {
+        const rowNoPhone = { ...row, phone: null }
+        const second = client._new
+          ? await sb.from('clients').insert(rowNoPhone).select().single()
+          : await sb.from('clients').update(rowNoPhone).eq('id', client.id).eq('user_id', userId).select().single()
+        data = second.data
+        error = second.error
+      }
+
       if (!error && data) {
         const normalized = normalizeClient(data)
         const all = uget(userId, 'clients') || []
@@ -272,6 +305,17 @@ export const DB = {
           ? sb.from('appointments').insert(r).select().single()
           : sb.from('appointments').update(r).eq('id', appt.id).eq('user_id', userId).select().single()
       let { data, error } = await run(row)
+      const isMissingClientFk = error?.code === '23503' && String(error?.message || '').includes('appointments_client_id_fkey')
+      if (isMissingClientFk && appt.clientId) {
+        const localClients = uget(userId, 'clients') || []
+        const missingClient = localClients.find((c) => c.id === appt.clientId)
+        if (missingClient) {
+          await DB.saveClient(userId, { ...missingClient, _new: true })
+          const third = await run(row)
+          data = third.data
+          error = third.error
+        }
+      }
       if (error) {
         const {
           reminder_enabled: _re,
