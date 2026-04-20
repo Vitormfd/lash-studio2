@@ -193,27 +193,28 @@ const Agenda = ({
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 5,
-                            border: '1px solid #93D6BC',
+                            border: '1px solid #0E8A64',
                             borderRadius: 999,
                             cursor: 'pointer',
                             padding: '4px 9px',
-                            color: '#0F766E',
-                            background: 'linear-gradient(180deg, #F0FFF8 0%, #DDF8EC 100%)',
+                            color: '#FFFFFF',
+                            background: 'linear-gradient(180deg, #1ECB78 0%, #10A867 100%)',
                             fontSize: 11,
                             fontWeight: 700,
-                            letterSpacing: 0.1,
+                            letterSpacing: 0.2,
                             lineHeight: 1,
-                            boxShadow: '0 1px 3px rgba(15,118,110,0.14)',
+                            textShadow: '0 1px 1px rgba(0,0,0,0.18)',
+                            boxShadow: '0 2px 6px rgba(16,168,103,0.35)',
                             transition: 'transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease',
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.transform = 'translateY(-1px)'
-                            e.currentTarget.style.boxShadow = '0 3px 8px rgba(15,118,110,0.2)'
-                            e.currentTarget.style.filter = 'saturate(1.06)'
+                            e.currentTarget.style.boxShadow = '0 5px 12px rgba(16,168,103,0.42)'
+                            e.currentTarget.style.filter = 'brightness(1.02) saturate(1.05)'
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.transform = 'translateY(0)'
-                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(15,118,110,0.14)'
+                            e.currentTarget.style.boxShadow = '0 2px 6px rgba(16,168,103,0.35)'
                             e.currentTarget.style.filter = 'none'
                           }}
                           onMouseDown={(e) => {
