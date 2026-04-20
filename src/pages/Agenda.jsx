@@ -189,9 +189,42 @@ const Agenda = ({
                             openWhatsappReminder(appt)
                           }}
                           title="Enviar lembrete pelo WhatsApp"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#128C7E' }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            border: '1px solid #93D6BC',
+                            borderRadius: 999,
+                            cursor: 'pointer',
+                            padding: '4px 9px',
+                            color: '#0F766E',
+                            background: 'linear-gradient(180deg, #F0FFF8 0%, #DDF8EC 100%)',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: 0.1,
+                            lineHeight: 1,
+                            boxShadow: '0 1px 3px rgba(15,118,110,0.14)',
+                            transition: 'transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                            e.currentTarget.style.boxShadow = '0 3px 8px rgba(15,118,110,0.2)'
+                            e.currentTarget.style.filter = 'saturate(1.06)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)'
+                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(15,118,110,0.14)'
+                            e.currentTarget.style.filter = 'none'
+                          }}
+                          onMouseDown={(e) => {
+                            e.currentTarget.style.transform = 'scale(0.98)'
+                          }}
+                          onMouseUp={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                          }}
                         >
-                          <span style={{ fontSize: 12, fontWeight: 700 }}>Whats</span>
+                          <span style={{ fontSize: 12, lineHeight: 1 }}>💬</span>
+                          <span>WhatsApp</span>
                         </button>
                       )}
                       {!appt.blocked && (
