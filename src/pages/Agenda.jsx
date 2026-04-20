@@ -60,7 +60,7 @@ const Agenda = ({
     const firstName = (client?.name || '').trim().split(/\s+/)[0] || 'tudo bem'
     const dateLabel = new Date(`${appt.date}T12:00:00`).toLocaleDateString('pt-BR')
     const timeLabel = String(appt.time).slice(0, 5)
-    const text = `Oi, ${firstName}! Passando para te lembrar do seu atendimento no dia ${dateLabel} às ${timeLabel}. Te espero 💅`
+    const text = `Oi, ${firstName}! Passando para te lembrar do seu atendimento no dia ${dateLabel} às ${timeLabel}.`
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
 
     window.open(url, '_blank', 'noopener,noreferrer')
