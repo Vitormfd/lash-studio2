@@ -54,6 +54,31 @@ const normalizeService = (s) => ({
   color: s.color || '',
 })
 
+const toE164Phone = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+
+  // Already in international format.
+  if (raw.startsWith('+')) {
+    const digits = raw.slice(1).replace(/\D/g, '')
+    return digits ? `+${digits}` : null
+  }
+
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return null
+
+  // International prefix 00XXXXXXXX -> +XXXXXXXX
+  if (digits.startsWith('00') && digits.length > 2) return `+${digits.slice(2)}`
+
+  // Brazil local numbers (10/11 digits) -> +55XXXXXXXXXXX
+  if (digits.length === 10 || digits.length === 11) return `+55${digits}`
+
+  // Looks like a full country+number without plus.
+  if (digits.length >= 12 && digits.length <= 15) return `+${digits}`
+
+  return null
+}
+
 // ─── DB LAYER (Supabase com cache write-through no localStorage) ──────────────
 export const DB = {
   // ── Clientes ──
@@ -77,7 +102,7 @@ export const DB = {
         id: client.id,
         user_id: userId,
         name: client.name,
-        phone: client.phone || '',
+        phone: toE164Phone(client.phone),
         notes: client.notes || '',
         created_at: client.createdAt || new Date().toISOString(),
       }
