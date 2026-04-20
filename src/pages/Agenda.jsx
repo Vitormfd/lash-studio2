@@ -224,7 +224,7 @@ const Agenda = ({
                             e.currentTarget.style.transform = 'translateY(-1px)'
                           }}
                         >
-                          <span style={{ fontSize: 12, lineHeight: 1 }}>💬</span>
+                          <Icon name="whatsapp" size={13} color="#FFFFFF" />
                           <span>WhatsApp</span>
                         </button>
                       )}
