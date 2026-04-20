@@ -38,14 +38,34 @@ const userKey = (userId, key) => `u_${userId}_${key}`
 const uget = (userId, key) => local.get(userKey(userId, key))
 const uset = (userId, key, val) => local.set(userKey(userId, key), val)
 
-// ─── DB LAYER (Supabase com fallback para localStorage) ──────────────────────
+// ─── NORMALIZADORES ──────────────────────────────────────────────────────────
+const normalizeClient = (c) => ({
+  id: c.id,
+  name: c.name || '',
+  phone: c.phone || '',
+  notes: c.notes || '',
+  createdAt: c.created_at || c.createdAt || new Date().toISOString(),
+})
+
+const normalizeService = (s) => ({
+  id: s.id,
+  name: s.name,
+  price: Number(s.price),
+  color: s.color || '',
+})
+
+// ─── DB LAYER (Supabase com cache write-through no localStorage) ──────────────
 export const DB = {
   // ── Clientes ──
   async getClients(userId) {
     const sb = getClient()
     if (sb) {
       const { data, error } = await sb.from('clients').select('*').eq('user_id', userId).order('name')
-      if (!error) return data
+      if (!error && data) {
+        const normalized = data.map(normalizeClient)
+        uset(userId, 'clients', normalized)
+        return normalized
+      }
     }
     return uget(userId, 'clients') || []
   },
@@ -64,18 +84,24 @@ export const DB = {
       const { data, error } = client._new
         ? await sb.from('clients').insert(row).select().single()
         : await sb.from('clients').update(row).eq('id', client.id).eq('user_id', userId).select().single()
-      if (!error) return data
+      if (!error && data) {
+        const normalized = normalizeClient(data)
+        const all = uget(userId, 'clients') || []
+        const exists = all.find((c) => c.id === normalized.id)
+        uset(userId, 'clients', exists ? all.map((c) => (c.id === normalized.id ? normalized : c)) : [...all, normalized])
+        return normalized
+      }
     }
+    const normalized = normalizeClient({ ...client, created_at: client.createdAt })
     const all = uget(userId, 'clients') || []
-    const exists = all.find((c) => c.id === client.id)
-    const updated = exists ? all.map((c) => (c.id === client.id ? client : c)) : [...all, client]
-    uset(userId, 'clients', updated)
-    return client
+    const exists = all.find((c) => c.id === normalized.id)
+    uset(userId, 'clients', exists ? all.map((c) => (c.id === normalized.id ? normalized : c)) : [...all, normalized])
+    return normalized
   },
 
   async deleteClient(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('clients').delete().eq('id', id).eq('user_id', userId); return }
+    if (sb) { await sb.from('clients').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'clients', (uget(userId, 'clients') || []).filter((c) => c.id !== id))
   },
 
@@ -84,7 +110,11 @@ export const DB = {
     const sb = getClient()
     if (sb) {
       const { data, error } = await sb.from('services').select('*').eq('user_id', userId).order('name')
-      if (!error) return data.map((s) => ({ id: s.id, name: s.name, price: Number(s.price), color: s.color || '' }))
+      if (!error && data) {
+        const normalized = data.map(normalizeService)
+        uset(userId, 'services', normalized)
+        return normalized
+      }
     }
     return uget(userId, 'services') || []
   },
@@ -102,18 +132,24 @@ export const DB = {
       const { data, error } = service._new
         ? await sb.from('services').insert(row).select().single()
         : await sb.from('services').update(row).eq('id', service.id).eq('user_id', userId).select().single()
-      if (!error && data) return { id: data.id, name: data.name, price: Number(data.price), color: data.color || '' }
+      if (!error && data) {
+        const normalized = normalizeService(data)
+        const all = uget(userId, 'services') || []
+        const exists = all.find((s) => s.id === normalized.id)
+        uset(userId, 'services', exists ? all.map((s) => (s.id === normalized.id ? normalized : s)) : [...all, normalized])
+        return normalized
+      }
     }
+    const normalized = normalizeService(service)
     const all = uget(userId, 'services') || []
-    const exists = all.find((s) => s.id === service.id)
-    const updated = exists ? all.map((s) => (s.id === service.id ? service : s)) : [...all, service]
-    uset(userId, 'services', updated)
-    return service
+    const exists = all.find((s) => s.id === normalized.id)
+    uset(userId, 'services', exists ? all.map((s) => (s.id === normalized.id ? normalized : s)) : [...all, normalized])
+    return normalized
   },
 
   async deleteService(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('services').delete().eq('id', id).eq('user_id', userId); return }
+    if (sb) { await sb.from('services').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'services', (uget(userId, 'services') || []).filter((s) => s.id !== id))
   },
 
@@ -122,8 +158,8 @@ export const DB = {
     const sb = getClient()
     if (sb) {
       const { data, error } = await sb.from('appointments').select('*').eq('user_id', userId).order('date').order('time')
-      if (!error)
-        return data.map((a) => ({
+      if (!error && data) {
+        const normalized = data.map((a) => ({
           id: a.id,
           clientId: a.client_id,
           serviceId: a.service_id,
@@ -143,6 +179,9 @@ export const DB = {
           paymentNotes: a.payment_notes || '',
           paidAt: a.paid_at || null,
         }))
+        uset(userId, 'appointments', normalized)
+        return normalized
+      }
     }
     const raw = uget(userId, 'appointments') || []
     return raw.map((a) => ({
@@ -224,23 +263,29 @@ export const DB = {
         data = second.data
         error = second.error
       }
-      if (!error && data) return { ...mapRow(data), _new: undefined }
+      if (!error && data) {
+        const normalized = { ...mapRow(data), _new: undefined }
+        const all = uget(userId, 'appointments') || []
+        const exists = all.find((a) => a.id === normalized.id)
+        uset(userId, 'appointments', exists ? all.map((a) => (a.id === normalized.id ? normalized : a)) : [...all, normalized])
+        return normalized
+      }
+    }
+    const { _new: __n, ...apptClean } = appt
+    const fallback = {
+      ...apptClean,
+      notificationStatus: apptClean.notificationStatus ?? 'none',
+      reminderSentAt: apptClean.reminderSentAt ?? null,
     }
     const all = uget(userId, 'appointments') || []
-    const exists = all.find((a) => a.id === appt.id)
-    const merged = exists ? all.map((a) => (a.id === appt.id ? appt : a)) : [...all, appt]
-    uset(userId, 'appointments', merged)
-    const { _new: __n, ...rest } = appt
-    return {
-      ...rest,
-      notificationStatus: rest.notificationStatus ?? 'none',
-      reminderSentAt: rest.reminderSentAt ?? null,
-    }
+    const exists = all.find((a) => a.id === fallback.id)
+    uset(userId, 'appointments', exists ? all.map((a) => (a.id === fallback.id ? fallback : a)) : [...all, fallback])
+    return fallback
   },
 
   async deleteAppointment(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('appointments').delete().eq('id', id).eq('user_id', userId); return }
+    if (sb) { await sb.from('appointments').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'appointments', (uget(userId, 'appointments') || []).filter((a) => a.id !== id))
   },
 
@@ -268,8 +313,8 @@ export const DB = {
     const sb = getClient()
     if (sb) {
       const { data, error } = await sb.from('inventory_items').select('*').eq('user_id', userId).order('name')
-      if (!error) {
-        return data.map((i) => ({
+      if (!error && data) {
+        const normalized = data.map((i) => ({
           id: i.id,
           name: i.name,
           category: i.category || '',
@@ -283,6 +328,8 @@ export const DB = {
           createdAt: i.created_at || new Date().toISOString(),
           updatedAt: i.updated_at || i.created_at || new Date().toISOString(),
         }))
+        uset(userId, 'inventory_items', normalized)
+        return normalized
       }
     }
     return uget(userId, 'inventory_items') || []
@@ -310,7 +357,7 @@ export const DB = {
         ? await sb.from('inventory_items').insert(row).select().single()
         : await sb.from('inventory_items').update(row).eq('id', item.id).eq('user_id', userId).select().single()
       if (!error && data) {
-        return {
+        const normalized = {
           id: data.id,
           name: data.name,
           category: data.category || '',
@@ -324,18 +371,21 @@ export const DB = {
           createdAt: data.created_at || new Date().toISOString(),
           updatedAt: data.updated_at || new Date().toISOString(),
         }
+        const all = uget(userId, 'inventory_items') || []
+        const exists = all.find((i) => i.id === normalized.id)
+        uset(userId, 'inventory_items', exists ? all.map((i) => (i.id === normalized.id ? normalized : i)) : [...all, normalized])
+        return normalized
       }
     }
     const all = uget(userId, 'inventory_items') || []
     const exists = all.find((i) => i.id === item.id)
-    const updated = exists ? all.map((i) => (i.id === item.id ? item : i)) : [...all, item]
-    uset(userId, 'inventory_items', updated)
+    uset(userId, 'inventory_items', exists ? all.map((i) => (i.id === item.id ? item : i)) : [...all, item])
     return item
   },
 
   async deleteInventoryItem(userId, id) {
     const sb = getClient()
-    if (sb) { await sb.from('inventory_items').delete().eq('id', id).eq('user_id', userId); return }
+    if (sb) { await sb.from('inventory_items').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'inventory_items', (uget(userId, 'inventory_items') || []).filter((i) => i.id !== id))
   },
 
@@ -343,8 +393,8 @@ export const DB = {
     const sb = getClient()
     if (sb) {
       const { data, error } = await sb.from('inventory_movements').select('*').eq('user_id', userId).order('created_at', { ascending: false })
-      if (!error) {
-        return data.map((m) => ({
+      if (!error && data) {
+        const normalized = data.map((m) => ({
           id: m.id,
           itemId: m.item_id,
           type: m.type || 'in',
@@ -352,6 +402,8 @@ export const DB = {
           reason: m.reason || '',
           createdAt: m.created_at || new Date().toISOString(),
         }))
+        uset(userId, 'inventory_movements', normalized)
+        return normalized
       }
     }
     return uget(userId, 'inventory_movements') || []
@@ -371,7 +423,7 @@ export const DB = {
       }
       const { data, error } = await sb.from('inventory_movements').insert(row).select().single()
       if (!error && data) {
-        return {
+        const normalized = {
           id: data.id,
           itemId: data.item_id,
           type: data.type || 'in',
@@ -379,11 +431,13 @@ export const DB = {
           reason: data.reason || '',
           createdAt: data.created_at || new Date().toISOString(),
         }
+        const all = uget(userId, 'inventory_movements') || []
+        uset(userId, 'inventory_movements', [normalized, ...all])
+        return normalized
       }
     }
     const all = uget(userId, 'inventory_movements') || []
-    const updated = [movement, ...all]
-    uset(userId, 'inventory_movements', updated)
+    uset(userId, 'inventory_movements', [movement, ...all])
     return movement
   },
 
