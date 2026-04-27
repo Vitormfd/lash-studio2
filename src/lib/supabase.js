@@ -69,6 +69,8 @@ const normalizeService = (s) => ({
   color: s.color || '',
 })
 
+const isE164Phone = (value) => /^\+[1-9]\d{7,14}$/.test(value)
+
 const toE164Phone = (value) => {
   const raw = String(value || '').trim()
   if (!raw) return null
@@ -78,7 +80,7 @@ const toE164Phone = (value) => {
     const digits = raw.slice(1).replace(/\D/g, '')
     if (!digits) return null
     const candidate = `+${digits}`
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+    return isE164Phone(candidate) ? candidate : null
   }
 
   let digits = raw.replace(/\D/g, '')
@@ -86,37 +88,32 @@ const toE164Phone = (value) => {
 
   // International prefix 00XXXXXXXX -> +XXXXXXXX
   if (digits.startsWith('00') && digits.length > 2) {
-    const candidate = `+${digits.slice(2)}`
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+    digits = digits.slice(2)
   }
 
   // Remove trunk leading zeros used in local dialing.
   digits = digits.replace(/^0+/, '')
   if (!digits) return null
 
-  // Brazil full number without plus.
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
-    const candidate = `+${digits}`
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  const candidates = []
+
+  // Numbers that already include country code without plus.
+  if (digits.startsWith('55')) {
+    candidates.push(`+${digits}`)
   }
 
-  // Brazil local numbers (10/11 digits) -> +55XXXXXXXXXXX
-  if (digits.length === 10 || digits.length === 11) {
-    const candidate = `+55${digits}`
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  // Common BR local formats (subscriber only, with DDD, etc.).
+  if (digits.length >= 8 && digits.length <= 11) {
+    candidates.push(`+55${digits}`)
   }
 
-  // Some users type only the subscriber number (without area code).
-  // Persist it with +55 prefix instead of silently dropping the phone.
-  if (digits.length === 8 || digits.length === 9) {
-    const candidate = `+55${digits}`
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
-  }
-
-  // Looks like a full country+number without plus.
+  // Any other international-like number without plus.
   if (digits.length >= 12 && digits.length <= 15) {
-    const candidate = `+${digits}`
-    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+    candidates.push(`+${digits}`)
+  }
+
+  for (const candidate of candidates) {
+    if (isE164Phone(candidate)) return candidate
   }
 
   return null
@@ -141,11 +138,15 @@ export const DB = {
   async saveClient(userId, client) {
     const sb = getClient()
     if (sb) {
+      const phoneRaw = String(client.phone || '').trim()
+      const phoneDigits = phoneRaw.replace(/\D/g, '')
+      const phonePrimary = toE164Phone(phoneRaw)
+      const phoneFallback = phoneDigits ? toE164Phone(phoneDigits) : null
       const row = {
         id: client.id,
         user_id: userId,
         name: client.name,
-        phone: toE164Phone(client.phone),
+        phone: phonePrimary || phoneFallback,
         notes: client.notes || '',
         created_at: client.createdAt || new Date().toISOString(),
       }
