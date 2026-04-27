@@ -71,20 +71,23 @@ const normalizeService = (s) => ({
 
 const isE164Phone = (value) => /^\+[1-9]\d{7,14}$/.test(value)
 
-const toE164Phone = (value) => {
+const toE164PhoneCandidates = (value) => {
   const raw = String(value || '').trim()
-  if (!raw) return null
+  if (!raw) return []
+
+  const candidates = []
+  const pushCandidate = (candidate) => {
+    if (isE164Phone(candidate) && !candidates.includes(candidate)) candidates.push(candidate)
+  }
 
   // Already in international format.
   if (raw.startsWith('+')) {
-    const digits = raw.slice(1).replace(/\D/g, '')
-    if (!digits) return null
-    const candidate = `+${digits}`
-    return isE164Phone(candidate) ? candidate : null
+    const digitsPlus = raw.slice(1).replace(/\D/g, '')
+    if (digitsPlus) pushCandidate(`+${digitsPlus}`)
   }
 
   let digits = raw.replace(/\D/g, '')
-  if (!digits) return null
+  if (!digits) return candidates
 
   // International prefix 00XXXXXXXX -> +XXXXXXXX
   if (digits.startsWith('00') && digits.length > 2) {
@@ -93,30 +96,29 @@ const toE164Phone = (value) => {
 
   // Remove trunk leading zeros used in local dialing.
   digits = digits.replace(/^0+/, '')
-  if (!digits) return null
-
-  const candidates = []
+  if (!digits) return candidates
 
   // Numbers that already include country code without plus.
   if (digits.startsWith('55')) {
-    candidates.push(`+${digits}`)
+    pushCandidate(`+${digits}`)
   }
 
   // Common BR local formats (subscriber only, with DDD, etc.).
   if (digits.length >= 8 && digits.length <= 11) {
-    candidates.push(`+55${digits}`)
+    pushCandidate(`+55${digits}`)
   }
 
   // Any other international-like number without plus.
   if (digits.length >= 12 && digits.length <= 15) {
-    candidates.push(`+${digits}`)
+    pushCandidate(`+${digits}`)
   }
 
-  for (const candidate of candidates) {
-    if (isE164Phone(candidate)) return candidate
-  }
+  return candidates
+}
 
-  return null
+const toE164Phone = (value) => {
+  const candidates = toE164PhoneCandidates(value)
+  return candidates[0] || null
 }
 
 // ─── DB LAYER (Supabase com cache write-through no localStorage) ──────────────
@@ -140,6 +142,7 @@ export const DB = {
     if (sb) {
       const phoneRaw = String(client.phone || '').trim()
       const phoneDigits = phoneRaw.replace(/\D/g, '')
+      const phoneCandidates = toE164PhoneCandidates(phoneRaw)
       const phonePrimary = toE164Phone(phoneRaw)
       const phoneFallback = phoneDigits ? toE164Phone(phoneDigits) : null
       const row = {
@@ -157,12 +160,28 @@ export const DB = {
       // If DB rejects phone format, retry without phone to avoid blocking client creation.
       const isPhoneCheckError = error?.code === '23514' && String(error?.message || '').includes('clients_phone_e164_check')
       if (isPhoneCheckError) {
-        const rowNoPhone = { ...row, phone: null }
-        const second = client._new
-          ? await sb.from('clients').insert(rowNoPhone).select().single()
-          : await sb.from('clients').update(rowNoPhone).eq('id', client.id).eq('user_id', userId).select().single()
-        data = second.data
-        error = second.error
+        // Try alternative normalized candidates before dropping the phone.
+        const alternatives = phoneCandidates.filter((candidate) => candidate !== row.phone)
+        for (const candidate of alternatives) {
+          const retriedRow = { ...row, phone: candidate }
+          const retry = client._new
+            ? await sb.from('clients').insert(retriedRow).select().single()
+            : await sb.from('clients').update(retriedRow).eq('id', client.id).eq('user_id', userId).select().single()
+          data = retry.data
+          error = retry.error
+          if (!error) break
+        }
+
+        const stillPhoneCheckError = error?.code === '23514' && String(error?.message || '').includes('clients_phone_e164_check')
+        // Only allow null fallback when the user did not provide any digits.
+        if (stillPhoneCheckError && !phoneDigits) {
+          const rowNoPhone = { ...row, phone: null }
+          const second = client._new
+            ? await sb.from('clients').insert(rowNoPhone).select().single()
+            : await sb.from('clients').update(rowNoPhone).eq('id', client.id).eq('user_id', userId).select().single()
+          data = second.data
+          error = second.error
+        }
       }
 
       if (!error && data) {
@@ -172,6 +191,8 @@ export const DB = {
         uset(userId, 'clients', exists ? all.map((c) => (c.id === normalized.id ? normalized : c)) : [...all, normalized])
         return normalized
       }
+
+      if (error) throw error
     }
     const normalized = normalizeClient({ ...client, created_at: client.createdAt })
     const all = uget(userId, 'clients') || []

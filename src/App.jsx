@@ -217,13 +217,22 @@ const AppMain = ({ session, onLogout }) => {
   const handleAddClient = async (client) => {
     if (guardRestrictedWrite('Desbloqueie para salvar clientes.')) return
     setClients((c) => [...c, client])
-    const saved = await DB.saveClient(userId, { ...client, _new: true })
-    setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
+    try {
+      const saved = await DB.saveClient(userId, { ...client, _new: true })
+      setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
+    } catch {
+      setClients((c) => c.filter((x) => x.id !== client.id))
+      addToast('Não foi possível salvar o celular do cliente no banco.', 'error')
+    }
   }
   const handleUpdateClient = async (client) => {
     if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
-    const saved = await DB.saveClient(userId, client)
-    setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
+    try {
+      const saved = await DB.saveClient(userId, client)
+      setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
+    } catch {
+      addToast('Não foi possível atualizar o celular do cliente no banco.', 'error')
+    }
   }
   const handleDeleteClient = async (id) => {
     if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
