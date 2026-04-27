@@ -42,10 +42,25 @@ const uset = (userId, key, val) => local.set(userKey(userId, key), val)
 const normalizeClient = (c) => ({
   id: c.id,
   name: c.name || '',
-  phone: c.phone || '',
+  phone: toAppPhone(c.phone),
   notes: c.notes || '',
   createdAt: c.created_at || c.createdAt || new Date().toISOString(),
 })
+
+const toAppPhone = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  // DB stores BR phones as +55..., but the UI should keep the local format users type.
+  if (raw.startsWith('+55')) {
+    const digits = raw.slice(1).replace(/\D/g, '')
+    if (digits.length === 12 || digits.length === 13) {
+      return digits.slice(2)
+    }
+  }
+
+  return raw
+}
 
 const normalizeService = (s) => ({
   id: s.id,
@@ -87,6 +102,13 @@ const toE164Phone = (value) => {
 
   // Brazil local numbers (10/11 digits) -> +55XXXXXXXXXXX
   if (digits.length === 10 || digits.length === 11) {
+    const candidate = `+55${digits}`
+    return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
+  }
+
+  // Some users type only the subscriber number (without area code).
+  // Persist it with +55 prefix instead of silently dropping the phone.
+  if (digits.length === 8 || digits.length === 9) {
     const candidate = `+55${digits}`
     return /^\+[1-9]\d{7,14}$/.test(candidate) ? candidate : null
   }
