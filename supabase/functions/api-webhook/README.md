@@ -16,30 +16,50 @@ Defina no Supabase:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+
+Opcional (legado):
+
 - `PAYMENT_WEBHOOK_SECRET`
 
 ## Assinatura do webhook
+
+### Stripe (principal)
+
+A funcao valida o header:
+
+- `stripe-signature`
+
+com `STRIPE_WEBHOOK_SECRET`.
+
+### Gateway legado (compatibilidade)
 
 A função valida o header:
 
 - `x-webhook-signature`
 
-Esperado: `hex(hmac_sha256(rawBody, PAYMENT_WEBHOOK_SECRET))`
+Esperado: `hex(hmac_sha256(rawBody, PAYMENT_WEBHOOK_SECRET))`.
 
 ## Eventos suportados
 
-Aprovado (libera):
+Stripe aprovado/libera:
 
-- `payment.approved`
-- `checkout.completed`
-- `invoice.paid`
-- `subscription.active`
+- `checkout.session.completed`
+- `invoice.payment_succeeded`
+- `customer.subscription.created`
+- `customer.subscription.updated` (status `active`, `trialing`, `past_due`)
 
-Cancelado/expirado (bloqueia):
+Stripe cancelado/bloqueia:
 
-- `subscription.canceled`
-- `subscription.cancelled`
+- `customer.subscription.deleted`
 - `invoice.payment_failed`
+- `customer.subscription.updated` (status `canceled`, `unpaid`, `incomplete_expired`)
+
+Legado (mantido):
+
+- `payment.approved`, `checkout.completed`, `invoice.paid`, `subscription.active`
+- `subscription.canceled`, `subscription.cancelled`, `invoice.payment_failed`
 
 ## Atualizacao no Supabase
 

@@ -84,6 +84,34 @@ const SUPABASE_KEY = 'sb_publishable_...'
 
 Para trocar de projeto Supabase, edite essas duas constantes.
 
+### Stripe (assinatura)
+
+O projeto agora suporta checkout de assinatura via Stripe com duas Edge Functions:
+
+- `create-checkout-session`: cria a sessao de checkout para o usuario logado.
+- `api-webhook`: recebe eventos do Stripe e atualiza `public.profiles`.
+
+Variaveis no Supabase (Functions Secrets):
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_PRICE_ID`
+- `STRIPE_WEBHOOK_SECRET`
+
+Deploy:
+
+```bash
+supabase functions deploy create-checkout-session --no-verify-jwt
+supabase functions deploy api-webhook --no-verify-jwt
+```
+
+No frontend, opcionalmente voce pode manter um Payment Link direto:
+
+- `VITE_CHECKOUT_URL=https://buy.stripe.com/...`
+
+Sem `VITE_CHECKOUT_URL`, o app usa checkout dinamico via `create-checkout-session`.
+
 ### SQL para criar as tabelas (cole no Supabase → SQL Editor):
 
 ```sql

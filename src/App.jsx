@@ -90,6 +90,17 @@ const AppMain = ({ session, onLogout }) => {
     setPaywallOpen(true)
   }, [])
 
+  const handleUpgrade = useCallback(async () => {
+    try {
+      await openCheckout({ userId, email: session?.email })
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Nao foi possivel abrir o checkout agora.'
+      addToast(message, 'error')
+    }
+  }, [userId, session?.email, addToast])
+
   const guardRestrictedWrite = useCallback((hint) => {
     if (canUserEdit) return false
     addToast(hint || 'Desbloqueie para continuar.', 'warning')
@@ -212,6 +223,26 @@ const AppMain = ({ session, onLogout }) => {
   useEffect(() => {
     applyTheme(getSavedThemeId(userId))
   }, [userId])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const checkoutStatus = params.get('checkout')
+    if (!checkoutStatus) return
+
+    if (checkoutStatus === 'success') {
+      addToast('Pagamento confirmado. Atualizando seu acesso...', 'success')
+      fetchUserAccessProfile(userId, isDemo)
+        .then((profile) => setAccessProfile(profile))
+        .catch(() => {})
+    } else if (checkoutStatus === 'canceled') {
+      addToast('Checkout cancelado. Voce pode tentar novamente quando quiser.', 'warning')
+    }
+
+    params.delete('checkout')
+    const nextSearch = params.toString()
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`
+    window.history.replaceState({}, document.title, nextUrl)
+  }, [addToast, userId, isDemo])
 
   // ── CLIENTS ──
   const handleAddClient = async (client) => {
@@ -543,7 +574,7 @@ const AppMain = ({ session, onLogout }) => {
               }}
               canUserEdit={canUserEdit}
               onBlockedAction={guardRestrictedWrite}
-              onUpgrade={() => openCheckout()}
+              onUpgrade={handleUpgrade}
             />
           )}
           {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
@@ -589,7 +620,12 @@ const AppMain = ({ session, onLogout }) => {
       </Modal>
 
       <Toast toasts={toasts} removeToast={removeToast} />
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} subtitle={paywallHint} />
+      <PaywallModal
+        open={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        subtitle={paywallHint}
+        onUpgrade={handleUpgrade}
+      />
 
       {/* PWA update banner */}
       {swUpdateReady && (
