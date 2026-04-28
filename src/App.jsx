@@ -221,6 +221,33 @@ const AppMain = ({ session, onLogout }) => {
   }, [userId, isDemo])
 
   useEffect(() => {
+    if (isDemo) return undefined
+
+    const refreshAccess = () => {
+      fetchUserAccessProfile(userId, isDemo)
+        .then((profile) => {
+          setAccessProfile(profile)
+          if (canUserEditByLevel(profile.accessLevel)) {
+            setPaywallOpen(false)
+          }
+        })
+        .catch(() => {})
+    }
+
+    const onFocus = () => refreshAccess()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshAccess()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [userId, isDemo])
+
+  useEffect(() => {
     applyTheme(getSavedThemeId(userId))
   }, [userId])
 

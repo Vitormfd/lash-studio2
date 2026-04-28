@@ -47,6 +47,9 @@ export const openCheckout = async ({ userId, email } = {}) => {
       if (email && typeof email === 'string' && email.trim()) {
         url.searchParams.set('prefilled_email', email.trim().toLowerCase())
       }
+      if (userId && typeof userId === 'string' && userId.trim()) {
+        url.searchParams.set('client_reference_id', userId.trim())
+      }
       redirectTo(url.toString())
       return { ok: true, mode: 'payment_link', url: url.toString() }
     } catch {
