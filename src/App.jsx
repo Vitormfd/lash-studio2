@@ -54,6 +54,12 @@ const BARBER_STARTER_SERVICES = [
 ]
 
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
+const PASSWORD_RESET_PATH = '/reset-password'
+
+const isPasswordResetPath = () => {
+  if (typeof window === 'undefined') return false
+  return window.location.pathname === PASSWORD_RESET_PATH
+}
 
 const hasRecoveryParams = () => {
   if (typeof window === 'undefined') return false
@@ -63,7 +69,7 @@ const hasRecoveryParams = () => {
 }
 
 const isRecoveryFlowActive = () => {
-  if (hasRecoveryParams()) return true
+  if (isPasswordResetPath() || hasRecoveryParams()) return true
   try {
     return sessionStorage.getItem(RECOVERY_SESSION_KEY) === '1'
   } catch {
@@ -83,7 +89,7 @@ const clearRecoveryUrl = () => {
   const params = new URLSearchParams(window.location.search)
   params.delete('type')
   const nextSearch = params.toString()
-  window.history.replaceState({}, document.title, `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`)
+  window.history.replaceState({}, document.title, `${isPasswordResetPath() ? '/' : window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`)
 }
 
 // ─── APP MAIN (autenticado) ───────────────────────────────────────────────────

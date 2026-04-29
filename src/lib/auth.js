@@ -6,6 +6,7 @@ const uset = (userId, key, val) => local.set(`u_${userId}_${key}`, val)
 const DEMO_USER_ID = 'demo_user'
 const SYNC_STRIPE_FUNCTION = (import.meta.env.VITE_STRIPE_SYNC_FUNCTION || 'sync-stripe-access').trim()
 const PUBLIC_APP_URL = (import.meta.env.VITE_PUBLIC_APP_URL || '').trim().replace(/\/$/, '')
+const PASSWORD_RESET_PATH = '/reset-password'
 
 const getPublicAppUrl = () => {
   if (/^https?:\/\//i.test(PUBLIC_APP_URL)) return PUBLIC_APP_URL
@@ -259,7 +260,7 @@ export const AUTH = {
   async requestPasswordReset(email) {
     const sb = getClient()
     if (sb) {
-      const redirectTo = getPublicAppUrl()
+      const redirectTo = `${getPublicAppUrl().replace(/\/$/, '')}${PASSWORD_RESET_PATH}`
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo })
       if (error) throw new Error(error.message)
       return
