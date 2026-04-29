@@ -29,19 +29,28 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
 
   const sb = getClient()
   if (sb) {
-    const { data, error } = await sb
+    const loadProfile = async () => sb
       .from('profiles')
       .select('plan, access_level, subscription_expires_at, professional_type')
       .eq('id', userId)
       .maybeSingle()
 
+    let { data, error } = await loadProfile()
+    if (error) {
+      const retry = await loadProfile()
+      data = retry.data
+      error = retry.error
+    }
+
     if (!error && data) {
-      return {
+      const normalized = {
         plan: normalizePlan(data.plan),
         accessLevel: normalizeAccessLevel(data.access_level),
         subscriptionExpiresAt: data.subscription_expires_at || null,
         professionalType: normalizeProfessionalType(data.professional_type),
       }
+      local.set(FALLBACK_KEY(userId), normalized)
+      return normalized
     }
 
     if (!data) {
@@ -51,6 +60,7 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
         access_level: 'demo',
         professional_type: DEFAULT_PROFESSIONAL_TYPE,
       }, { onConflict: 'id' })
+      local.set(FALLBACK_KEY(userId), defaultAccessProfile)
       return defaultAccessProfile
     }
   }

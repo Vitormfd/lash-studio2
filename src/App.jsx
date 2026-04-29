@@ -234,15 +234,21 @@ const AppMain = ({ session, onLogout }) => {
         .catch(() => {})
     }
 
+    refreshAccess()
     const onFocus = () => refreshAccess()
+    const onOnline = () => refreshAccess()
     const onVisibility = () => {
       if (document.visibilityState === 'visible') refreshAccess()
     }
+    const intervalId = window.setInterval(refreshAccess, 60_000)
 
     window.addEventListener('focus', onFocus)
+    window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
+      window.clearInterval(intervalId)
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [userId, isDemo])
