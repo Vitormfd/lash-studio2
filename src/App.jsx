@@ -53,6 +53,39 @@ const BARBER_STARTER_SERVICES = [
   { name: 'Corte + Barba', price: 75, color: '#C17B82' },
 ]
 
+const RECOVERY_SESSION_KEY = 'lash-password-recovery'
+
+const hasRecoveryParams = () => {
+  if (typeof window === 'undefined') return false
+  const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''))
+  const searchParams = new URLSearchParams(window.location.search)
+  return hashParams.get('type') === 'recovery' || searchParams.get('type') === 'recovery'
+}
+
+const isRecoveryFlowActive = () => {
+  if (hasRecoveryParams()) return true
+  try {
+    return sessionStorage.getItem(RECOVERY_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const setRecoveryFlowActive = (active) => {
+  try {
+    if (active) sessionStorage.setItem(RECOVERY_SESSION_KEY, '1')
+    else sessionStorage.removeItem(RECOVERY_SESSION_KEY)
+  } catch {}
+}
+
+const clearRecoveryUrl = () => {
+  if (typeof window === 'undefined') return
+  const params = new URLSearchParams(window.location.search)
+  params.delete('type')
+  const nextSearch = params.toString()
+  window.history.replaceState({}, document.title, `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`)
+}
+
 // ─── APP MAIN (autenticado) ───────────────────────────────────────────────────
 const AppMain = ({ session, onLogout }) => {
   const userId = session.userId
@@ -786,15 +819,113 @@ const AppMain = ({ session, onLogout }) => {
 }
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
+const PasswordRecoveryScreen = ({ onBackToLogin }) => {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const submit = async () => {
+    if (!password) { setError('Preencha a nova senha.'); return }
+    if (password.length < 6) { setError('A senha deve ter ao menos 6 caracteres.'); return }
+    if (password !== confirm) { setError('As senhas não coincidem.'); return }
+
+    setLoading(true)
+    setError('')
+    try {
+      await AUTH.changePassword(password)
+      await AUTH.signOut()
+      AUTH.clearLocalSession()
+      clearRecoveryUrl()
+      setRecoveryFlowActive(false)
+      setDone(true)
+    } catch (e) {
+      setError(e?.message || 'Nao foi possivel redefinir sua senha.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--off-white)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div className="auth-card" style={{ width: '100%', maxWidth: 420 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, var(--rose) 0%, var(--rose-deep) 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, boxShadow: '0 8px 24px rgba(193,123,130,0.35)', color: '#fff', fontSize: 24 }}>
+            ★
+          </div>
+          <h1 className="serif" style={{ fontSize: 26, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>{APP_NAME}</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-light)', lineHeight: 1.6 }}>
+            {done ? 'Senha atualizada com sucesso.' : 'Crie sua nova senha para voltar ao app.'}
+          </p>
+        </div>
+
+        <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '28px 28px 24px', border: '1px solid var(--rose-light)', boxShadow: '0 4px 40px rgba(139,77,85,0.08)' }}>
+          {done ? (
+            <>
+              <div style={{ padding: '12px 14px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, fontSize: 13, color: '#065F46', lineHeight: 1.6 }}>
+                Sua senha foi redefinida. Agora entre com a nova senha.
+              </div>
+              <button onClick={onBackToLogin} style={{ width: '100%', marginTop: 18, padding: '12px 0', borderRadius: 12, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--rose-deep)', color: '#fff' }}>
+                Ir para login
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nova senha</label>
+                  <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setError('') }} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Minimo 6 caracteres" style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-mid)', borderRadius: 10, fontSize: 14, color: 'var(--text)', background: 'var(--surface)', fontFamily: 'inherit' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Confirmar senha</label>
+                  <input type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setError('') }} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Repita a nova senha" style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-mid)', borderRadius: 10, fontSize: 14, color: 'var(--text)', background: 'var(--surface)', fontFamily: 'inherit' }} />
+                </div>
+              </div>
+
+              {error && (
+                <div style={{ marginTop: 12, padding: '9px 14px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, fontSize: 13, color: '#991B1B' }}>
+                  {error}
+                </div>
+              )}
+
+              <button onClick={submit} disabled={loading} style={{ width: '100%', marginTop: 20, padding: '12px 0', borderRadius: 12, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', background: loading ? 'var(--rose)' : 'var(--rose-deep)', color: '#fff' }}>
+                {loading ? 'Salvando...' : 'Salvar nova senha'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const App = () => {
   const [session, setSession] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [recoveryMode, setRecoveryMode] = useState(() => isRecoveryFlowActive())
 
   useEffect(() => {
-    initSupabase(SUPABASE_URL, SUPABASE_KEY)
+    const sb = initSupabase(SUPABASE_URL, SUPABASE_KEY)
+    if (isRecoveryFlowActive()) {
+      setRecoveryFlowActive(true)
+      setRecoveryMode(true)
+    }
+
+    const authSubscription = sb?.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryFlowActive(true)
+        setRecoveryMode(true)
+      }
+    })
+
     AUTH.getSession()
       .then(async (s) => {
         if (s) {
+          if (isRecoveryFlowActive()) {
+            setRecoveryMode(true)
+            return
+          }
           setSession(s)
           return
         }
@@ -816,9 +947,24 @@ const App = () => {
         window.history.replaceState({}, document.title, nextUrl)
       })
       .finally(() => setChecking(false))
+
+    return () => {
+      authSubscription?.data?.subscription?.unsubscribe?.()
+    }
   }, [])
 
   if (checking) return <Spinner text="Carregando..." />
+
+  if (recoveryMode) {
+    return (
+      <PasswordRecoveryScreen
+        onBackToLogin={() => {
+          setSession(null)
+          setRecoveryMode(false)
+        }}
+      />
+    )
+  }
 
   if (!session) {
     return (
