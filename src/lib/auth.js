@@ -1,9 +1,40 @@
-import { getClient, local, uid } from './supabase'
+import { getClient, getSupabaseConfig, local, uid } from './supabase'
 import { toLocalYmd } from './dashboardStats'
 import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
 
 const uset = (userId, key, val) => local.set(`u_${userId}_${key}`, val)
 const DEMO_USER_ID = 'demo_user'
+const SYNC_STRIPE_FUNCTION = (import.meta.env.VITE_STRIPE_SYNC_FUNCTION || 'sync-stripe-access').trim()
+
+const getFunctionsBaseUrl = () => {
+  const explicit = (import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || '').trim().replace(/\/$/, '')
+  if (explicit) return explicit
+  const { url } = getSupabaseConfig()
+  if (!url || typeof url !== 'string') return ''
+  return url.replace('.supabase.co', '.functions.supabase.co')
+}
+
+const syncStripeAccessByEmail = async (sb) => {
+  if (!sb) return
+  try {
+    const { data, error } = await sb.auth.getSession()
+    if (error || !data?.session?.access_token) return
+
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) return
+
+    await fetch(`${baseUrl}/${SYNC_STRIPE_FUNCTION}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
+      body: '{}',
+    })
+  } catch {
+    // Best-effort sync only. Login/signup must not fail because of Stripe sync.
+  }
+}
 
 const STARTER_CONTENT_BY_TYPE = {
   lash: {
@@ -189,6 +220,7 @@ export const AUTH = {
         const signedIn = await AUTH.signIn(email, password)
         return { ...signedIn, professionalType: normalizedType }
       }
+      await syncStripeAccessByEmail(sb)
       return { userId: data.user.id, name, email, professionalType: normalizedType }
     }
     return AUTH._localRegister(name, email, password, normalizedType)
@@ -199,6 +231,7 @@ export const AUTH = {
     if (sb) {
       const { data, error } = await sb.auth.signInWithPassword({ email, password })
       if (error) throw new Error('E-mail ou senha incorretos.')
+      await syncStripeAccessByEmail(sb)
       const name = data.user.user_metadata?.name || email.split('@')[0]
       return {
         userId: data.user.id,
@@ -234,6 +267,7 @@ export const AUTH = {
     if (sb) {
       const { data } = await sb.auth.getSession()
       if (data?.session?.user) {
+        await syncStripeAccessByEmail(sb)
         const u = data.session.user
         return {
           userId: u.id,
