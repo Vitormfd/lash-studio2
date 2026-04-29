@@ -216,6 +216,19 @@ export const AUTH = {
     local.del('ls_session')
   },
 
+  async requestPasswordReset(email) {
+    const sb = getClient()
+    if (sb) {
+      const redirectTo = typeof window !== 'undefined'
+        ? `${window.location.origin}${window.location.pathname}`
+        : undefined
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo })
+      if (error) throw new Error(error.message)
+      return
+    }
+    throw new Error('Recuperacao de senha disponivel apenas com conta em nuvem (Supabase).')
+  },
+
   async getSession() {
     const sb = getClient()
     if (sb) {

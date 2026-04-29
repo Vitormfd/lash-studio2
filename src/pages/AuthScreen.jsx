@@ -17,18 +17,22 @@ const AuthScreen = ({ onLogin }) => {
     return !!(s && s.email)
   })
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
   const isSupabase = !!getSupabaseConfig()
 
-  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setError('') }
+  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setError(''); setNotice('') }
 
   const switchMode = (m) => {
     setMode(m)
     setError('')
+    setNotice('')
     if (m === 'register') {
       setForm({ name: '', email: '', password: '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
       setRememberMe(false)
+    } else if (m === 'forgot') {
+      setForm((prev) => ({ ...prev, password: '', confirm: '' }))
     } else {
       const s = local.get(AUTH_REMEMBER_KEY)
       setForm({ name: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
@@ -37,14 +41,25 @@ const AuthScreen = ({ onLogin }) => {
   }
 
   const handle = async () => {
-    if (!form.email || !form.password) { setError('Preencha e-mail e senha.'); return }
+    if (mode === 'forgot') {
+      if (!form.email) { setError('Preencha seu e-mail.'); return }
+    } else if (!form.email || !form.password) {
+      setError('Preencha e-mail e senha.'); return
+    }
     if (mode === 'register') {
       if (!form.name) { setError('Preencha seu nome.'); return }
       if (form.password.length < 6) { setError('Senha deve ter ao menos 6 caracteres.'); return }
       if (form.password !== form.confirm) { setError('As senhas não coincidem.'); return }
     }
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setNotice('')
     try {
+      if (mode === 'forgot') {
+        await AUTH.requestPasswordReset(form.email)
+        setNotice('Se o e-mail existir, enviaremos um link para redefinir sua senha.')
+        setMode('login')
+        return
+      }
+
       const session = mode === 'login'
         ? await AUTH.signIn(form.email, form.password)
         : await AUTH.signUp(form.name, form.email, form.password, form.professionalType)
@@ -93,6 +108,12 @@ const AuthScreen = ({ onLogin }) => {
             ))}
           </div>
 
+          {mode === 'forgot' && (
+            <p style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
+              Informe seu e-mail e enviaremos um link de recuperacao de senha.
+            </p>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {mode === 'register' && (
               <div>
@@ -114,8 +135,20 @@ const AuthScreen = ({ onLogin }) => {
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>E-mail</label>
               <input className="auth-input" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handle()} placeholder="seu@email.com" style={inputBase} />
             </div>
+            {mode !== 'forgot' && (
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Senha</label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Senha</label>
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    style={{ background: 'none', border: 'none', color: 'var(--rose-dark)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                  >
+                    Esqueci minha senha
+                  </button>
+                )}
+              </div>
               <div style={{ position: 'relative' }}>
                 <input className="auth-input" type={showPass ? 'text' : 'password'} value={form.password} onChange={(e) => set('password', e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handle()} placeholder={mode === 'register' ? 'Mínimo 6 caracteres' : '••••••••'} style={{ ...inputBase, padding: '10px 40px 10px 14px' }} />
                 <button onClick={() => setShowPass((s) => !s)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', display: 'flex', padding: 2 }}>
@@ -123,6 +156,7 @@ const AuthScreen = ({ onLogin }) => {
                 </button>
               </div>
             </div>
+            )}
             {mode === 'register' && (
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Confirmar senha</label>
@@ -130,12 +164,29 @@ const AuthScreen = ({ onLogin }) => {
               </div>
             )}
             {mode === 'login' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none', marginTop: 2 }}>
-                <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--rose-deep)', cursor: 'pointer' }} />
-                <span style={{ fontSize: 13, color: 'var(--text-mid)' }}>Lembrar e-mail e senha neste aparelho</span>
-              </label>
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none', marginTop: 2 }}>
+                  <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--rose-deep)', cursor: 'pointer' }} />
+                  <span style={{ fontSize: 13, color: 'var(--text-mid)' }}>Lembrar e-mail e senha neste aparelho</span>
+                </label>
+              </>
+            )}
+            {mode === 'forgot' && (
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                style={{ alignSelf: 'flex-start', marginTop: -2, background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+              >
+                Voltar para login
+              </button>
             )}
           </div>
+
+          {notice && (
+            <div style={{ marginTop: 12, padding: '9px 14px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, fontSize: 13, color: '#065F46' }}>
+              {notice}
+            </div>
+          )}
 
           {error && (
             <div style={{ marginTop: 12, padding: '9px 14px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, fontSize: 13, color: '#991B1B' }}>
@@ -144,7 +195,7 @@ const AuthScreen = ({ onLogin }) => {
           )}
 
           <button onClick={handle} disabled={loading} style={{ width: '100%', marginTop: 20, padding: '12px 0', borderRadius: 12, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', background: loading ? 'var(--rose)' : 'var(--rose-deep)', color: '#fff', transition: 'background 0.2s' }}>
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar conta' : 'Enviar link de recuperacao'}
           </button>
         </div>
 
