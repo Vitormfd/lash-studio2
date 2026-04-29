@@ -27,7 +27,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
     )}
     <aside
       style={{
-        position: 'fixed', top: 0, left: open ? 0 : -280, width: 240, height: '100vh',
+        position: 'fixed', top: 0, left: open ? 0 : -280, width: 240, height: '100dvh',
         background: 'var(--surface)', borderRight: '1px solid var(--rose-light)', zIndex: 50,
         display: 'flex', flexDirection: 'column', transition: 'left 0.3s ease',
         boxShadow: open ? '4px 0 30px rgba(139,77,85,0.12)' : 'none',
@@ -47,7 +47,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
       </div>
 
       {/* Nav items */}
-      <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
+      <nav style={{ flex: 1, minHeight: 0, padding: '12px 10px', overflowY: 'auto' }}>
         {navItems.map((n) => (
           <button
             key={n.id}
@@ -69,7 +69,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
       </nav>
 
       {/* User footer */}
-      <div style={{ padding: '14px 20px', borderTop: '1px solid var(--rose-light)' }}>
+      <div style={{ padding: '14px 20px calc(14px + env(safe-area-inset-bottom))', borderTop: '1px solid var(--rose-light)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--nude)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, color: 'var(--rose-dark)', flexShrink: 0 }}>
             {session?.name ? session.name[0].toUpperCase() : 'U'}
