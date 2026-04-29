@@ -168,7 +168,7 @@ export const AUTH = {
     return {
       userId: DEMO_USER_ID,
       name: 'Conta Demonstracao',
-      email: 'demo@lashstudio.app',
+      email: 'demo@easystudio.com.br',
       isDemo: true,
       professionalType: normalizedType,
       demoExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 2).toISOString(),

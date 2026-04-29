@@ -1,6 +1,6 @@
-# Lash Studio — Gestão Profissional
+# Easy Studio — Gestão Profissional
 
-Sistema de agendamento e faturamento para lash designers.  
+Sistema de agendamento e faturamento para profissionais da beleza.  
 Migrado de HTML único para **React + Vite**, mantendo 100% da lógica e visual original.
 
 ---

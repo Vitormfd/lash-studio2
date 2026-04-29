@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
         : minutesBefore
 
     const payload = JSON.stringify({
-      title: 'Lash Studio',
+      title: 'Easy Studio',
       body: buildReminderBody(effectiveMinutes, professionalTypeByUserId.get(sub.user_id)),
       tag: `appt-${due.id}`,
       data: { url: '/agenda' },

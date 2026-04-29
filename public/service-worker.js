@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lash-studio-pwa-v3';
+const CACHE_NAME = 'easy-studio-pwa-v4';
 const PRECACHE_URLS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -23,7 +23,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'Lash Studio', body: 'Você tem uma atualização.', tag: 'lash-push' };
+  let payload = { title: 'Easy Studio', body: 'Você tem uma atualização.', tag: 'lash-push' };
   if (event.data) {
     try {
       const j = event.data.json();
