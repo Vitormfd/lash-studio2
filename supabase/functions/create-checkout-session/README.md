@@ -36,8 +36,8 @@ Body (opcional):
 ```json
 {
   "priceId": "price_...",
-  "successUrl": "https://seu-dominio.com/?checkout=success",
-  "cancelUrl": "https://seu-dominio.com/?checkout=canceled"
+  "successUrl": "https://easystudio.com.br/?checkout=success",
+  "cancelUrl": "https://easystudio.com.br/?checkout=canceled"
 }
 ```
 
