@@ -3,7 +3,7 @@ import { Btn } from '../components/UI'
 import Icon from '../components/Icon'
 import EmptyState from '../components/EmptyState'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
-import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin } from '../lib/utils'
+import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin, getAppointmentCost } from '../lib/utils'
 import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList, toLocalYmd } from '../lib/dashboardStats'
 import { getPersonalityMessage } from '../lib/dayMessages'
 
@@ -34,7 +34,7 @@ const Dashboard = ({
   const real = appointments.filter((a) => !a.blocked)
   const monthAppts = real.filter((a) => a.date.startsWith(monthStr) && a.status !== 'cancelled')
   const revenue = monthAppts.reduce((s, a) => s + Number(a.value), 0)
-  const cost = monthAppts.length * config.avgCost
+  const cost = monthAppts.reduce((sum, a) => sum + getAppointmentCost(a, services, config.avgCost), 0)
   const profit = revenue - cost
   const avg = monthAppts.length ? revenue / monthAppts.length : 0
 

@@ -6,26 +6,35 @@ import { uid } from '../lib/supabase'
 import { normalizeServiceColor, SERVICE_COLOR_PRESETS } from '../lib/utils'
 
 const Services = ({ services, setServices, appointments, addToast }) => {
+  const parseOptionalNumber = (value) => {
+    if (value == null) return null
+    if (typeof value === 'string' && value.trim() === '') return null
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+  }
+
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
-  const [form, setForm] = useState({ name: '', price: '', color: '' })
+  const [form, setForm] = useState({ name: '', price: '', costPerClient: '', color: '' })
 
   const q = search.trim().toLowerCase()
   const filtered = services.filter((s) => {
     if (!q) return true
     const name = (s.name || '').toLowerCase()
     const priceStr = String(s.price ?? '')
-    return name.includes(q) || priceStr.includes(search.trim())
+    const costStr = String(s.costPerClient ?? '')
+    return name.includes(q) || priceStr.includes(search.trim()) || costStr.includes(search.trim())
   })
 
   const save = () => {
     if (!form.name || !form.price) return
     const colorClean = normalizeServiceColor(form.color) || ''
+    const costPerClient = parseOptionalNumber(form.costPerClient)
     if (modal === 'new') {
-      setServices([...services, { ...form, price: Number(form.price), color: colorClean, id: uid() }])
+      setServices([...services, { ...form, price: Number(form.price), costPerClient, color: colorClean, id: uid() }])
       addToast('Serviço criado!', 'success')
     } else {
-      setServices(services.map((s) => s.id === modal.id ? { ...s, ...form, price: Number(form.price), color: colorClean } : s))
+      setServices(services.map((s) => s.id === modal.id ? { ...s, ...form, price: Number(form.price), costPerClient, color: colorClean } : s))
       addToast('Serviço atualizado!', 'success')
     }
     setModal(null)
@@ -48,7 +57,7 @@ const Services = ({ services, setServices, appointments, addToast }) => {
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...inputStyle, flex: '1 1 220px', maxWidth: 360 }}
         />
-        <Btn onClick={() => { setForm({ name: '', price: '', color: '' }); setModal('new') }}>
+        <Btn onClick={() => { setForm({ name: '', price: '', costPerClient: '', color: '' }); setModal('new') }}>
           <Icon name="plus" size={14} color="#fff" /> Novo Serviço
         </Btn>
       </div>
@@ -61,7 +70,7 @@ const Services = ({ services, setServices, appointments, addToast }) => {
                 <Icon name="star" size={16} color={normalizeServiceColor(s.color) ? '#2C1A1E' : 'var(--rose-deep)'} />
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
-                <Btn variant="ghost" sm onClick={() => { setForm({ name: s.name, price: s.price, color: s.color || '' }); setModal(s) }}>
+                <Btn variant="ghost" sm onClick={() => { setForm({ name: s.name, price: s.price, costPerClient: s.costPerClient ?? '', color: s.color || '' }); setModal(s) }}>
                   <Icon name="edit" size={12} />
                 </Btn>
                 <Btn variant="ghost" sm onClick={() => del(s.id)}>
@@ -72,6 +81,9 @@ const Services = ({ services, setServices, appointments, addToast }) => {
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{s.name}</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--rose-deep)', marginTop: 2 }}>R$ {s.price}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>
+                Custo: {s.costPerClient != null ? `R$ ${Number(s.costPerClient).toFixed(2).replace('.', ',')}` : 'usa custo padrão'}
+              </div>
               <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>{getCount(s.id)} realizados</div>
             </div>
           </div>
@@ -90,6 +102,14 @@ const Services = ({ services, setServices, appointments, addToast }) => {
         </Field>
         <Field label="Preço padrão (R$)">
           <Inp type="number" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="0.00" />
+        </Field>
+        <Field label="Custo do serviço (R$, opcional)">
+          <Inp
+            type="number"
+            value={form.costPerClient}
+            onChange={(e) => setForm((f) => ({ ...f, costPerClient: e.target.value }))}
+            placeholder="Vazio = usa custo padrão"
+          />
         </Field>
         <Field label="Cor na agenda">
           <p style={{ fontSize: 11, color: 'var(--text-light)', marginBottom: 10 }}>

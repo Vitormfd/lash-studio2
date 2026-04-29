@@ -66,6 +66,7 @@ const normalizeService = (s) => ({
   id: s.id,
   name: s.name,
   price: Number(s.price),
+  costPerClient: s.service_cost != null ? Number(s.service_cost) : (s.costPerClient != null ? Number(s.costPerClient) : null),
   color: s.color || '',
 })
 
@@ -213,7 +214,16 @@ export const DB = {
     if (sb) {
       const { data, error } = await sb.from('services').select('*').eq('user_id', userId).order('name')
       if (!error && data) {
-        const normalized = data.map(normalizeService)
+        const cached = uget(userId, 'services') || []
+        const hasServiceCostColumn = data.length === 0 || Object.prototype.hasOwnProperty.call(data[0], 'service_cost')
+        const normalized = data.map((serviceRow) => {
+          const service = normalizeService(serviceRow)
+          if (hasServiceCostColumn) return service
+          const cachedService = cached.find((c) => c.id === service.id)
+          return cachedService?.costPerClient != null
+            ? { ...service, costPerClient: Number(cachedService.costPerClient) }
+            : service
+        })
         uset(userId, 'services', normalized)
         return normalized
       }
@@ -224,18 +234,34 @@ export const DB = {
   async saveService(userId, service) {
     const sb = getClient()
     if (sb) {
-      const row = {
+      const rowBase = {
         id: service.id,
         user_id: userId,
         name: service.name,
         price: service.price,
         color: service.color && String(service.color).trim() ? String(service.color).trim() : null,
       }
-      const { data, error } = service._new
-        ? await sb.from('services').insert(row).select().single()
-        : await sb.from('services').update(row).eq('id', service.id).eq('user_id', userId).select().single()
+      const rowWithCost = {
+        ...rowBase,
+        cost_per_client: service.costPerClient != null ? Number(service.costPerClient) : null,
+      }
+      const run = (row) =>
+        service._new
+          ? sb.from('services').insert(row).select().single()
+          : sb.from('services').update(row).eq('id', service.id).eq('user_id', userId).select().single()
+
+      let { data, error } = await run(rowWithCost)
+      const isMissingCostColumn = String(error?.message || '').includes('cost_per_client')
+      if (isMissingCostColumn) {
+        const second = await run(rowBase)
+        data = second.data
+        error = second.error
+      }
       if (!error && data) {
-        const normalized = normalizeService(data)
+        const normalized = {
+          ...normalizeService(data),
+          costPerClient: service.costPerClient != null ? Number(service.costPerClient) : null,
+        }
         const all = uget(userId, 'services') || []
         const exists = all.find((s) => s.id === normalized.id)
         uset(userId, 'services', exists ? all.map((s) => (s.id === normalized.id ? normalized : s)) : [...all, normalized])

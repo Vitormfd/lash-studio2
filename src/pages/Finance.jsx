@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { StatCard, Btn, Inp, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
-import { MONTHS_PT } from '../lib/utils'
+import { MONTHS_PT, getAppointmentCost } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
 
@@ -26,7 +26,7 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
   const real = appointments.filter((a) => !a.blocked && a.date.startsWith(monthStr) && a.status !== 'cancelled')
   const revenue = real.reduce((s, a) => s + Number(a.value), 0)
   const count = real.length
-  const cost = count * config.avgCost
+  const cost = real.reduce((sum, a) => sum + getAppointmentCost(a, services, config.avgCost), 0)
   const profit = revenue - cost
   const avg = count ? revenue / count : 0
 
@@ -56,7 +56,7 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>Custo médio por cliente:</span>
+          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>Custo padrão por cliente:</span>
           {editCost ? (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <Inp type="number" value={costVal} onChange={(e) => setCostVal(e.target.value)} style={{ ...inputStyle, width: 90 }} />

@@ -43,6 +43,24 @@ export const endTimeLabel = (startTime, durM) => {
   return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`
 }
 
+const toFiniteNumberOrNull = (value) => {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim() === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+export const resolveServiceCost = (service, defaultCost = 0) => {
+  const fallback = Number(defaultCost) || 0
+  const specific = toFiniteNumberOrNull(service?.costPerClient)
+  return specific != null ? specific : fallback
+}
+
+export const getAppointmentCost = (appointment, services, defaultCost = 0) => {
+  const svc = services.find((s) => s.id === appointment.serviceId)
+  return resolveServiceCost(svc, defaultCost)
+}
+
 // ─── COLOR HELPERS ───────────────────────────────────────────────────────────
 export const normalizeServiceColor = (c) => {
   if (c == null || String(c).trim() === '') return null

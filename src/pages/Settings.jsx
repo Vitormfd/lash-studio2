@@ -179,10 +179,10 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
       {/* Financial settings */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Configurações Financeiras</h3>
-        <Field label="Custo médio por cliente (R$)">
+        <Field label="Custo padrão por cliente (R$)">
           <Inp type="number" value={cost} onChange={(e) => setCost(e.target.value)} step="0.01" disabled={isDemo} />
           <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 5 }}>
-            Usado para calcular o lucro real de cada atendimento
+            Usado quando o serviço não tem custo próprio cadastrado
           </p>
         </Field>
         <Btn
