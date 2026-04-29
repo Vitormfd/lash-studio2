@@ -73,6 +73,9 @@ const AppMain = ({ session, onLogout }) => {
   const [config, setConfigState] = useState({ avgCost: 12.35 })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
+  const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
+  const [pwaCanInstall, setPwaCanInstall] = useState(false)
+  const [isIosDevice, setIsIosDevice] = useState(false)
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallHint, setPaywallHint] = useState('')
@@ -144,6 +147,65 @@ const AppMain = ({ session, onLogout }) => {
       window.removeEventListener('lash-pwa-update-ready', onSwUpdate)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const isStandalone =
+      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      window.navigator?.standalone === true
+    if (isStandalone) return undefined
+
+    const storageKey = `lash-pwa-onboarding-seen:${userId}`
+    let seen = false
+    try {
+      seen = localStorage.getItem(storageKey) === '1'
+    } catch {}
+    if (seen) return undefined
+
+    const ua = window.navigator?.userAgent || ''
+    const ios = /iPhone|iPad|iPod/i.test(ua)
+    setIsIosDevice(ios)
+    setPwaCanInstall(!!window.__lashPwa?.getInstallPrompt?.())
+    setPwaOnboardingOpen(true)
+
+    const handleInstallReady = () => setPwaCanInstall(true)
+    window.addEventListener('lash-pwa-install-ready', handleInstallReady)
+
+    return () => {
+      window.removeEventListener('lash-pwa-install-ready', handleInstallReady)
+    }
+  }, [userId])
+
+  const dismissPwaOnboarding = useCallback(() => {
+    try {
+      localStorage.setItem(`lash-pwa-onboarding-seen:${userId}`, '1')
+    } catch {}
+    setPwaOnboardingOpen(false)
+  }, [userId])
+
+  const installFromOnboarding = useCallback(async () => {
+    const prompt = window.__lashPwa?.getInstallPrompt?.()
+    if (!prompt) {
+      setPage('settings')
+      addToast('Abra Configuracoes para ver os passos de instalacao.', 'info')
+      dismissPwaOnboarding()
+      return
+    }
+
+    prompt.prompt()
+    const { outcome } = await prompt.userChoice
+    window.__lashPwa?.clearInstallPrompt?.()
+    setPwaCanInstall(false)
+
+    if (outcome === 'accepted') {
+      addToast('App instalado com sucesso!', 'success')
+      dismissPwaOnboarding()
+      return
+    }
+
+    addToast('Instalacao cancelada. Voce pode tentar novamente em Configuracoes.', 'warning')
+  }, [addToast, dismissPwaOnboarding])
 
   const reloadData = useCallback(async () => {
     setLoading(true)
@@ -650,6 +712,52 @@ const AppMain = ({ session, onLogout }) => {
       </Modal>
       <Modal open={!!editAppt} onClose={() => setEditAppt(null)} title="Editar Agendamento">
         {editAppt && <AppointmentForm initial={editAppt} clients={clients} services={services} onClose={() => setEditAppt(null)} onSave={saveAppt} />}
+      </Modal>
+
+      <Modal open={pwaOnboardingOpen} onClose={dismissPwaOnboarding} title="Instale o app no celular">
+        <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 12 }}>
+          Em poucos passos, voce coloca o {APP_NAME} na tela inicial e abre como aplicativo.
+        </p>
+
+        {isIosDevice ? (
+          <ol style={{ margin: '0 0 14px 18px', color: 'var(--text)', lineHeight: 1.7, fontSize: 13 }}>
+            <li>Toque no botao Compartilhar do Safari.</li>
+            <li>Role o menu e toque em Adicionar a Tela de Inicio.</li>
+            <li>Confirme em Adicionar para criar o icone do app.</li>
+          </ol>
+        ) : (
+          <ol style={{ margin: '0 0 14px 18px', color: 'var(--text)', lineHeight: 1.7, fontSize: 13 }}>
+            <li>Toque no menu do navegador (tres pontos).</li>
+            <li>Escolha Instalar app ou Adicionar a tela inicial.</li>
+            <li>Confirme para finalizar a instalacao.</li>
+          </ol>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {pwaCanInstall && !isIosDevice && (
+            <button
+              type="button"
+              onClick={() => { installFromOnboarding() }}
+              style={{ background: 'var(--rose-deep)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Instalar agora
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => { setPage('settings'); dismissPwaOnboarding() }}
+            style={{ background: 'var(--surface)', color: 'var(--rose-dark)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Ver em Configuracoes
+          </button>
+          <button
+            type="button"
+            onClick={dismissPwaOnboarding}
+            style={{ background: 'transparent', color: 'var(--text-light)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Entendi
+          </button>
+        </div>
       </Modal>
 
       <Toast toasts={toasts} removeToast={removeToast} />
