@@ -167,11 +167,11 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
         </div>
       )}
 
-      {/* Supabase status */}
+      {/* Cloud status */}
       <div style={{ background: '#D1FAE5', borderRadius: 12, padding: '12px 16px', border: '1px solid #A7F3D0', maxWidth: 480, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#059669', flexShrink: 0 }} />
         <div>
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#065F46' }}>Conectado ao Supabase ☁️</p>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#065F46' }}>Conectado na nuvem ☁️</p>
           <p style={{ fontSize: 11, color: '#047857', marginTop: 1 }}>Dados salvos com segurança na nuvem</p>
         </div>
       </div>
@@ -296,7 +296,7 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
           </div>
         )}
         <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 12, lineHeight: 1.5 }}>
-          O envio com app fechado usa o servidor (Supabase). Rode o SQL em <code style={{ fontSize: 10 }}>supabase/sql/push_subscriptions.sql</code> e configure a Edge Function conforme{' '}
+          O envio com app fechado usa o servidor na nuvem. Rode o SQL em <code style={{ fontSize: 10 }}>supabase/sql/push_subscriptions.sql</code> e configure a Edge Function conforme{' '}
           <code style={{ fontSize: 10 }}>supabase/functions/send-scheduled-pushes/README.md</code>.
         </p>
       </div>
@@ -331,7 +331,7 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6 }}>
           <strong>{APP_NAME}</strong> — {APP_DESCRIPTION}<br />
           Área atual: {professionalMeta.label}.<br />
-          Versão 2.1 · PWA · Supabase (nuvem)
+          Versão 2.1 · PWA · Nuvem
         </p>
       </div>
     </div>

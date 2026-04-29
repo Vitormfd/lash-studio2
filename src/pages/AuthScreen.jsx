@@ -93,7 +93,7 @@ const AuthScreen = ({ onLogin }) => {
           </div>
           <h1 className="serif" style={{ fontSize: 26, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>{APP_NAME}</h1>
           <p style={{ fontSize: 13, color: 'var(--text-light)' }}>
-            {isSupabase ? '☁️ Conectado ao Supabase' : '💾 Modo local (sem nuvem)'}
+            {isSupabase ? '☁️ Conta conectada na nuvem' : '💾 Modo local (sem nuvem)'}
           </p>
         </div>
 

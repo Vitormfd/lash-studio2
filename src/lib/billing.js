@@ -60,7 +60,7 @@ export const openCheckout = async ({ userId, email } = {}) => {
 
   const sb = getClient()
   if (!sb) {
-    throw new Error('Supabase indisponivel para iniciar checkout.')
+    throw new Error('Servico de autenticacao indisponivel para iniciar checkout.')
   }
 
   const { data, error } = await sb.auth.getSession()

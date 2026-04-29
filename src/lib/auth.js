@@ -265,7 +265,7 @@ export const AUTH = {
       if (error) throw new Error(error.message)
       return
     }
-    throw new Error('Recuperacao de senha disponivel apenas com conta em nuvem (Supabase).')
+    throw new Error('Recuperacao de senha disponivel apenas para contas em nuvem.')
   },
 
   async getSession() {
