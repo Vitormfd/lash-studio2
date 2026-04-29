@@ -5,6 +5,13 @@ import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
 const uset = (userId, key, val) => local.set(`u_${userId}_${key}`, val)
 const DEMO_USER_ID = 'demo_user'
 const SYNC_STRIPE_FUNCTION = (import.meta.env.VITE_STRIPE_SYNC_FUNCTION || 'sync-stripe-access').trim()
+const PUBLIC_APP_URL = (import.meta.env.VITE_PUBLIC_APP_URL || '').trim().replace(/\/$/, '')
+
+const getPublicAppUrl = () => {
+  if (/^https?:\/\//i.test(PUBLIC_APP_URL)) return PUBLIC_APP_URL
+  if (typeof window === 'undefined') return ''
+  return `${window.location.origin}${window.location.pathname}`
+}
 
 const getFunctionsBaseUrl = () => {
   const explicit = (import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || '').trim().replace(/\/$/, '')
@@ -252,9 +259,7 @@ export const AUTH = {
   async requestPasswordReset(email) {
     const sb = getClient()
     if (sb) {
-      const redirectTo = typeof window !== 'undefined'
-        ? `${window.location.origin}${window.location.pathname}`
-        : undefined
+      const redirectTo = getPublicAppUrl()
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo })
       if (error) throw new Error(error.message)
       return
