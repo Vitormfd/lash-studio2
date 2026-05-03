@@ -14,6 +14,11 @@ type WebhookPayload = {
 type ProfilePlan = 'active' | 'canceled'
 type ProfileAccess = 'full' | 'demo'
 
+type ProfileSnapshot = {
+  plan: 'free' | ProfilePlan
+  access_level: ProfileAccess
+} | null
+
 const corsHeaders = {
   'Content-Type': 'application/json',
 }
@@ -138,6 +143,33 @@ const mapStripeStatusToAccess = (status: string): { plan: ProfilePlan, access: P
   return null
 }
 
+const getProfileSnapshot = async (
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<ProfileSnapshot> => {
+  const { data, error } = await sb
+    .from('profiles')
+    .select('plan, access_level')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  const plan = data.plan === 'active' || data.plan === 'canceled' ? data.plan : 'free'
+  const access_level = data.access_level === 'full' ? 'full' : 'demo'
+  return { plan, access_level }
+}
+
+const shouldProtectManualFullAccess = (
+  currentProfile: ProfileSnapshot,
+  nextPlan: ProfilePlan,
+  nextAccess: ProfileAccess,
+) => {
+  if (nextPlan !== 'canceled' || nextAccess !== 'demo') return false
+  if (!currentProfile) return false
+  return currentProfile.plan === 'free' && currentProfile.access_level === 'full'
+}
+
 const handleStripeWebhook = async (
   sb: ReturnType<typeof createClient>,
   rawBody: string,
@@ -177,6 +209,18 @@ const handleStripeWebhook = async (
   }
 
   if (event.type === 'invoice.payment_failed' || event.type === 'customer.subscription.deleted') {
+    const currentProfile = await getProfileSnapshot(sb, userId)
+    if (shouldProtectManualFullAccess(currentProfile, 'canceled', 'demo')) {
+      return json(200, {
+        ok: true,
+        provider: 'stripe',
+        event: event.type,
+        userId,
+        protected: true,
+        reason: 'Manual full access profile was preserved',
+      })
+    }
+
     const expiresAt = toIso(object.current_period_end)
     const { error } = await updateProfileAccess(sb, userId, 'canceled', 'demo', expiresAt)
     if (error) return json(500, { ok: false, error: error.message })
@@ -188,6 +232,19 @@ const handleStripeWebhook = async (
     const mapped = mapStripeStatusToAccess(status)
     if (!mapped) {
       return json(200, { ok: true, ignored: true, provider: 'stripe', event: event.type, status })
+    }
+
+    const currentProfile = await getProfileSnapshot(sb, userId)
+    if (shouldProtectManualFullAccess(currentProfile, mapped.plan, mapped.access)) {
+      return json(200, {
+        ok: true,
+        provider: 'stripe',
+        event: event.type,
+        status,
+        userId,
+        protected: true,
+        reason: 'Manual full access profile was preserved',
+      })
     }
 
     const expiresAt = toIso(object.current_period_end)
@@ -294,6 +351,17 @@ Deno.serve(async (req) => {
   }
 
   const expiresAt = payload.subscription_expires_at || payload.expires_at || null
+
+  const currentProfile = await getProfileSnapshot(sb, userId)
+  if (shouldProtectManualFullAccess(currentProfile, nextPlan, nextAccess)) {
+    return json(200, {
+      ok: true,
+      event,
+      userId,
+      protected: true,
+      reason: 'Manual full access profile was preserved',
+    })
+  }
 
   const { error } = await sb
     .from('profiles')
