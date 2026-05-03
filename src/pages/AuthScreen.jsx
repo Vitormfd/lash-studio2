@@ -202,6 +202,22 @@ const AuthScreen = ({ onLogin }) => {
         <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-light)', marginTop: 16 }}>
           {isSupabase ? 'Dados salvos com segurança na nuvem ☁️' : 'Dados salvos localmente neste navegador'}
         </p>
+
+        <div style={{ textAlign: 'center', marginTop: 20 }}>
+          <a
+            href="https://geteasystudio.com.br"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 12, border: '1.5px solid var(--rose-light)', background: 'var(--surface)', color: 'var(--rose-dark)', fontSize: 13, fontWeight: 600, textDecoration: 'none', transition: 'border-color 0.2s, box-shadow 0.2s', boxShadow: '0 2px 8px rgba(139,77,85,0.06)', fontFamily: 'inherit' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--rose)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(139,77,85,0.14)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--rose-light)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(139,77,85,0.06)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+            Conheça o Easy Studio
+          </a>
+        </div>
       </div>
     </div>
   )
