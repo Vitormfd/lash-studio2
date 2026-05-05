@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { StatCard } from '../components/UI'
 
+const formatMoney = (value) => `R$ ${Number(value).toFixed(2).replace('.', ',')}`
+
 const Reports = ({ appointments, services, clients, isBarber }) => {
   const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const [period, setPeriod] = useState('month')
@@ -23,6 +25,7 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
   filtered.forEach((a) => { dailyMap[a.date] = (dailyMap[a.date] || 0) + Number(a.value) })
   const daily = Object.entries(dailyMap).sort(([a], [b]) => a.localeCompare(b)).slice(-14)
   const maxDaily = Math.max(...daily.map(([, v]) => v), 1)
+  const peakDaily = daily.reduce((maxEntry, entry) => (!maxEntry || entry[1] > maxEntry[1] ? entry : maxEntry), null)
 
   // By service
   const svcMap = {}
@@ -52,17 +55,58 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
         {daily.length === 0 ? (
           <p style={{ textAlign: 'center', padding: 20, color: 'var(--text-light)', fontSize: 13 }}>Sem dados</p>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 100, paddingBottom: 24, position: 'relative' }}>
-            {daily.map(([date, val]) => {
-              const h = Math.max((val / maxDaily) * 80, 4)
-              const d = new Date(date + 'T12:00')
-              return (
-                <div key={date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <div title={`R$ ${val}`} style={{ width: '100%', height: h, background: 'linear-gradient(180deg, var(--rose-deep) 0%, var(--rose) 100%)', borderRadius: '3px 3px 0 0', transition: 'height 0.3s ease', cursor: 'default' }} />
-                  <div style={{ fontSize: 8, color: 'var(--text-light)', whiteSpace: 'nowrap', position: 'absolute', bottom: 0 }}>{d.getDate()}/{d.getMonth() + 1}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Tendência do período</p>
+                <p style={{ margin: '4px 0 0', fontSize: 18, fontWeight: 700, color: 'var(--rose-dark)' }}>{formatMoney(revenue)}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ padding: '6px 10px', borderRadius: 999, background: 'linear-gradient(135deg, rgba(233, 30, 140, 0.1), rgba(233, 30, 140, 0.18))', color: 'var(--rose-dark)', fontSize: 11, fontWeight: 600 }}>
+                  {daily.length} {daily.length === 1 ? 'dia com movimento' : 'dias com movimento'}
                 </div>
-              )
-            })}
+                {peakDaily && (
+                  <div style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.85)', color: 'var(--text-mid)', fontSize: 11, fontWeight: 600, border: '1px solid rgba(233, 30, 140, 0.12)' }}>
+                    Pico: {formatMoney(peakDaily[1])}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ borderRadius: 16, background: 'linear-gradient(180deg, rgba(233, 30, 140, 0.06) 0%, rgba(233, 30, 140, 0.015) 100%)', padding: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${daily.length}, minmax(0, 1fr))`, alignItems: 'end', gap: daily.length > 7 ? 6 : 10, minHeight: 180 }}>
+                {daily.map(([date, value]) => {
+                  const height = Math.max((value / maxDaily) * 110, 20)
+                  const day = new Date(date + 'T12:00')
+                  const isPeak = peakDaily?.[0] === date
+                  return (
+                    <div key={date} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isPeak ? 'var(--rose-dark)' : 'var(--text-light)', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                        {formatMoney(value).replace('R$ ', '')}
+                      </span>
+                      <div style={{ width: '100%', maxWidth: 44, height: 124, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <div
+                          title={`${day.getDate()}/${day.getMonth() + 1} - ${formatMoney(value)}`}
+                          style={{
+                            width: '100%',
+                            height,
+                            borderRadius: 14,
+                            background: isPeak
+                              ? 'linear-gradient(180deg, var(--rose-deep) 0%, var(--rose) 100%)'
+                              : 'linear-gradient(180deg, rgba(233, 30, 140, 0.82) 0%, rgba(233, 30, 140, 0.42) 100%)',
+                            boxShadow: isPeak ? '0 10px 24px rgba(233, 30, 140, 0.22)' : 'none',
+                            transition: 'height 0.25s ease',
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: 10, color: 'var(--text-light)', whiteSpace: 'nowrap' }}>
+                        {`${day.getDate()}/${day.getMonth() + 1}`}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
