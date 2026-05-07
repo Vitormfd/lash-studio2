@@ -53,7 +53,8 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
       return normalized
     }
 
-    if (!data) {
+    // Profile genuinely doesn't exist in DB (no error, no row) → create with defaults
+    if (!error && !data) {
       await sb.from('profiles').upsert({
         id: userId,
         plan: 'free',
@@ -63,6 +64,8 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
       local.set(FALLBACK_KEY(userId), defaultAccessProfile)
       return defaultAccessProfile
     }
+
+    // Network/auth error → fall through to localStorage cache below
   }
 
   const stored = local.get(FALLBACK_KEY(userId))
