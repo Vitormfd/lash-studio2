@@ -1,6 +1,7 @@
 import { getClient, getSupabaseConfig, local, uid } from './supabase'
 import { toLocalYmd } from './dashboardStats'
 import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
+import { trackCompleteRegistration } from './facebookPixel'
 
 const uset = (userId, key, val) => local.set(`u_${userId}_${key}`, val)
 const DEMO_USER_ID = 'demo_user'
@@ -226,12 +227,16 @@ export const AUTH = {
       if (error) throw new Error(error.message)
       if (!data.session) {
         const signedIn = await AUTH.signIn(email, password)
+        trackCompleteRegistration()
         return { ...signedIn, professionalType: normalizedType }
       }
       await syncStripeAccessByEmail(sb)
+      trackCompleteRegistration()
       return { userId: data.user.id, name, email, professionalType: normalizedType }
     }
-    return AUTH._localRegister(name, email, password, normalizedType)
+    const result = AUTH._localRegister(name, email, password, normalizedType)
+    trackCompleteRegistration()
+    return result
   },
 
   async signIn(email, password) {
