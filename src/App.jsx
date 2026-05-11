@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { initSupabase, DB, uid } from './lib/supabase'
+import { initSupabase, DB, uid, getClient } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
 import { toLocalYmd } from './lib/dashboardStats'
@@ -608,8 +608,20 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const copyBookingLink = async () => {
-    const link = `${window.location.origin}/booking/${userId}`
     try {
+      let professionalId = userId
+      const sb = getClient()
+      if (sb) {
+        const { data } = await sb.auth.getUser()
+        if (data?.user?.id) professionalId = data.user.id
+      }
+
+      if (!professionalId || professionalId === 'demo_user') {
+        addToast('Link de agendamento indisponivel no modo de teste.', 'warning')
+        return
+      }
+
+      const link = `${window.location.origin}/booking/${professionalId}`
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link)
       } else {

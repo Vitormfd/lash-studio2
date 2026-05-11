@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getClient, uid } from '../lib/supabase'
+import { getClient } from '../lib/supabase'
 import { Btn, Field, Inp } from '../components/UI'
-import { apptIntervalsOverlap, endTimeLabel, formatDurationLabel, timeToMins } from '../lib/utils'
+import { apptIntervalsOverlap, formatDurationLabel, timeToMins } from '../lib/utils'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -20,13 +20,6 @@ const maskPhoneBr = (value) => {
   if (d.length <= 2) return `(${d}`
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`
-}
-
-const phoneToE164 = (value) => {
-  const digits = normalizePhoneDigits(value)
-  if (!digits) return null
-  if (digits.startsWith('55') && digits.length >= 12) return `+${digits}`
-  return `+55${digits}`
 }
 
 const toIsoDateLabel = (ymd) => {
@@ -171,16 +164,6 @@ const PublicBooking = ({ professionalId }) => {
   useEffect(() => {
     let alive = true
 
-    const loadProfile = async () => {
-      if (!sb || !professionalId) return
-      const { data } = await sb.from('profiles').select('*').eq('id', professionalId).maybeSingle()
-      if (!alive || !data) return
-      const nameCandidate = data.display_name || data.business_name || data.full_name || data.name || ''
-      if (nameCandidate && String(nameCandidate).trim()) {
-        setProfessionalName(String(nameCandidate).trim())
-      }
-    }
-
     const loadServices = async () => {
       setLoadingServices(true)
       setErrorMsg('')
@@ -189,11 +172,9 @@ const PublicBooking = ({ professionalId }) => {
           setServices([])
           return
         }
-        const { data, error } = await sb
-          .from('services')
-          .select('*')
-          .eq('user_id', professionalId)
-          .order('name')
+        const { data, error } = await sb.rpc('get_public_booking_services', {
+          p_professional_id: professionalId,
+        })
         if (error) throw error
         const list = (data || []).map((row) => ({
           id: row.id,
@@ -212,7 +193,6 @@ const PublicBooking = ({ professionalId }) => {
       }
     }
 
-    loadProfile()
     loadServices()
     return () => { alive = false }
   }, [sb, professionalId])
@@ -227,18 +207,14 @@ const PublicBooking = ({ professionalId }) => {
         return
       }
 
-      const [appointmentsRes, configRes] = await Promise.all([
-        sb
-          .from('appointments')
-          .select('id, date, time, duration_minutes, status, blocked')
-          .eq('user_id', professionalId)
-          .eq('date', dateYmd)
-          .neq('status', 'cancelled'),
-        sb
-          .from('config')
-          .select('*')
-          .eq('user_id', professionalId)
-          .maybeSingle(),
+      const [appointmentsRes, windowRes] = await Promise.all([
+        sb.rpc('get_public_booking_occupied_slots', {
+          p_professional_id: professionalId,
+          p_date: dateYmd,
+        }),
+        sb.rpc('get_public_booking_window', {
+          p_professional_id: professionalId,
+        }),
       ])
 
       if (appointmentsRes.error) throw appointmentsRes.error
@@ -246,12 +222,13 @@ const PublicBooking = ({ professionalId }) => {
       const dayAppointments = (appointmentsRes.data || []).map((a) => ({
         id: a.id,
         date: a.date,
-        time: String(a.time).slice(0, 5),
+          time: String(a.slot_time || a.time).slice(0, 5),
         durationMinutes: Number(a.duration_minutes) > 0 ? Number(a.duration_minutes) : 60,
         blocked: !!a.blocked,
       }))
 
-      const nextWindow = resolveWindow(configRes.data || null)
+      const windowRow = Array.isArray(windowRes.data) ? windowRes.data[0] : windowRes.data
+      const nextWindow = resolveWindow(windowRow || null)
       setWorkWindow(nextWindow)
 
       const generated = buildSlots({
@@ -285,35 +262,6 @@ const PublicBooking = ({ professionalId }) => {
     setStep(3)
   }
 
-  const ensureClient = async () => {
-    const phoneE164 = phoneToE164(clientPhone)
-    const normalizedName = String(clientName || '').trim()
-    if (!normalizedName || !phoneE164 || !sb) return null
-
-    const findExisting = await sb
-      .from('clients')
-      .select('id')
-      .eq('user_id', professionalId)
-      .eq('phone', phoneE164)
-      .limit(1)
-      .maybeSingle()
-
-    if (!findExisting.error && findExisting.data?.id) return findExisting.data.id
-
-    const row = {
-      id: uid(),
-      user_id: professionalId,
-      name: normalizedName,
-      phone: phoneE164,
-      notes: 'Criado via agendamento público.',
-      created_at: new Date().toISOString(),
-    }
-
-    const insertRes = await sb.from('clients').insert(row).select('id').single()
-    if (insertRes.error) return null
-    return insertRes.data?.id || null
-  }
-
   const confirmBooking = async () => {
     if (!selectedService || !selectedDate || !selectedTime) return
 
@@ -333,59 +281,26 @@ const PublicBooking = ({ professionalId }) => {
     try {
       if (!sb || !professionalId) throw new Error('Sem conexão')
 
-      const latest = await sb
-        .from('appointments')
-        .select('id, date, time, duration_minutes, status')
-        .eq('user_id', professionalId)
-        .eq('date', selectedDate)
-        .neq('status', 'cancelled')
+      const rpc = await sb.rpc('create_public_booking', {
+        p_professional_id: professionalId,
+        p_service_id: selectedService.id,
+        p_date: selectedDate,
+        p_time: selectedTime,
+        p_client_name: cleanName,
+        p_client_phone: clientPhone,
+      })
 
-      if (latest.error) throw latest.error
+      if (rpc.error) throw rpc.error
 
-      const hasConflict = (latest.data || []).some((a) =>
-        apptIntervalsOverlap(
-          selectedDate,
-          selectedTime,
-          selectedService.durationMinutes,
-          a.date,
-          String(a.time).slice(0, 5),
-          Number(a.duration_minutes) || 60,
-        )
-      )
-
-      if (hasConflict) {
+      const result = rpc.data || {}
+      const ok = result?.ok === true
+      if (!ok && result?.reason === 'conflict') {
         setErrorMsg('Este horário acabou de ser reservado. Por favor, escolha outro horário.')
         setStep(2)
         await loadSlots(selectedDate, selectedService)
         return
       }
-
-      const clientId = await ensureClient()
-      const endTime = endTimeLabel(selectedTime, selectedService.durationMinutes)
-      const notePhone = maskPhoneBr(clientPhone)
-      const noteName = cleanName
-
-      const row = {
-        id: uid(),
-        user_id: professionalId,
-        client_id: clientId,
-        service_id: selectedService.id,
-        date: selectedDate,
-        time: selectedTime,
-        end_time: endTime,
-        value: selectedService.price,
-        notes: `Agendamento público · Cliente: ${noteName} · Telefone: ${notePhone}`,
-        status: 'pending',
-        blocked: false,
-        duration_minutes: selectedService.durationMinutes,
-      }
-
-      let insert = await sb.from('appointments').insert(row)
-      if (insert.error && String(insert.error.message || '').toLowerCase().includes('end_time')) {
-        const { end_time: _ignored, ...withoutEndTime } = row
-        insert = await sb.from('appointments').insert(withoutEndTime)
-      }
-      if (insert.error) throw insert.error
+      if (!ok) throw new Error(String(result?.reason || 'booking_error'))
 
       setSuccess({
         serviceName: selectedService.name,
