@@ -22,6 +22,7 @@ const Dashboard = ({
   onGoClients,
   canUserEdit,
   onUpgrade,
+  onCopyBookingLink,
 }) => {
   const now = new Date()
   const today = getTodayStr(now)
@@ -204,6 +205,7 @@ const Dashboard = ({
         )}
         <Btn variant="ghost" onClick={onGoAgenda} touch full><Icon name="calendar" size={14} /> Ver agenda</Btn>
         <Btn variant="outline" onClick={onGoClients} touch full><Icon name="users" size={14} /> Clientes</Btn>
+        <Btn variant="outline" onClick={onCopyBookingLink} touch full><Icon name="calendar" size={14} /> Copiar link de agendamento</Btn>
       </div>
 
       {/* Stats do mês */}

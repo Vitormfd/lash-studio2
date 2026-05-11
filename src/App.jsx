@@ -30,6 +30,7 @@ import Inventory from './pages/Inventory'
 import Finance from './pages/Finance'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
+import PublicBooking from './pages/PublicBooking'
 
 const SUPABASE_URL = 'https://mbxfswxjrdikdyzpukmw.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_X8Pu3A3o_MfOKR0octLAyw_p_SzMKO3'
@@ -55,6 +56,15 @@ const BARBER_STARTER_SERVICES = [
 
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
+const BOOKING_PATH_PREFIX = '/booking/'
+
+const getBookingProfessionalIdFromPath = () => {
+  if (typeof window === 'undefined') return ''
+  const path = window.location.pathname || ''
+  if (!path.startsWith(BOOKING_PATH_PREFIX)) return ''
+  const id = decodeURIComponent(path.slice(BOOKING_PATH_PREFIX.length)).split('/')[0]
+  return id || ''
+}
 
 const isPasswordResetPath = () => {
   if (typeof window === 'undefined') return false
@@ -591,6 +601,28 @@ const AppMain = ({ session, onLogout }) => {
     }
   }
 
+  const copyBookingLink = async () => {
+    const link = `${window.location.origin}/booking/${userId}`
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link)
+      } else {
+        const temp = document.createElement('textarea')
+        temp.value = link
+        temp.setAttribute('readonly', '')
+        temp.style.position = 'absolute'
+        temp.style.left = '-9999px'
+        document.body.appendChild(temp)
+        temp.select()
+        document.execCommand('copy')
+        document.body.removeChild(temp)
+      }
+      addToast('Link copiado!', 'success')
+    } catch {
+      addToast('Nao foi possivel copiar o link agora.', 'error')
+    }
+  }
+
   if (loading) return <DashboardSkeleton />
 
   if (loadError) {
@@ -671,6 +703,7 @@ const AppMain = ({ session, onLogout }) => {
               onGoClients={() => setPage('clients')}
               canUserEdit={canUserEdit}
               onUpgrade={() => openPaywall('Desbloqueie para salvar clientes')}
+              onCopyBookingLink={copyBookingLink}
             />
           )}
           {page === 'agenda' && (
@@ -910,6 +943,13 @@ const App = () => {
   const [session, setSession] = useState(null)
   const [checking, setChecking] = useState(true)
   const [recoveryMode, setRecoveryMode] = useState(() => isRecoveryFlowActive())
+  const [bookingProfessionalId, setBookingProfessionalId] = useState(() => getBookingProfessionalIdFromPath())
+
+  useEffect(() => {
+    const syncRouteState = () => setBookingProfessionalId(getBookingProfessionalIdFromPath())
+    window.addEventListener('popstate', syncRouteState)
+    return () => window.removeEventListener('popstate', syncRouteState)
+  }, [])
 
   useEffect(() => {
     const sb = initSupabase(SUPABASE_URL, SUPABASE_KEY)
@@ -958,6 +998,8 @@ const App = () => {
       authSubscription?.data?.subscription?.unsubscribe?.()
     }
   }, [])
+
+  if (bookingProfessionalId) return <PublicBooking professionalId={bookingProfessionalId} />
 
   if (checking) return <Spinner text="Carregando..." />
 
