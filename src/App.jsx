@@ -608,37 +608,54 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const copyBookingLink = async () => {
+    let professionalId = userId
+
+    // Best-effort canonical ID fetch: do not block copy flow if network/session lookup fails.
     try {
-      let professionalId = userId
       const sb = getClient()
       if (sb) {
         const { data } = await sb.auth.getUser()
         if (data?.user?.id) professionalId = data.user.id
       }
+    } catch {}
 
-      if (!professionalId || professionalId === 'demo_user') {
-        addToast('Link de agendamento indisponivel no modo de teste.', 'warning')
-        return
-      }
+    if (!professionalId || professionalId === 'demo_user') {
+      addToast('Link de agendamento indisponivel no modo de teste.', 'warning')
+      return
+    }
 
-      const link = `${window.location.origin}/booking/${professionalId}`
+    const link = `${window.location.origin}/booking/${professionalId}`
+
+    try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link)
-      } else {
-        const temp = document.createElement('textarea')
-        temp.value = link
-        temp.setAttribute('readonly', '')
-        temp.style.position = 'absolute'
-        temp.style.left = '-9999px'
-        document.body.appendChild(temp)
-        temp.select()
-        document.execCommand('copy')
-        document.body.removeChild(temp)
+        addToast('Link copiado!', 'success')
+        return
       }
-      addToast('Link copiado!', 'success')
-    } catch {
-      addToast('Nao foi possivel copiar o link agora.', 'error')
-    }
+    } catch {}
+
+    try {
+      const temp = document.createElement('textarea')
+      temp.value = link
+      temp.setAttribute('readonly', '')
+      temp.style.position = 'fixed'
+      temp.style.opacity = '0'
+      temp.style.pointerEvents = 'none'
+      temp.style.left = '-9999px'
+      temp.style.top = '0'
+      document.body.appendChild(temp)
+      temp.focus()
+      temp.select()
+      const copied = document.execCommand('copy')
+      document.body.removeChild(temp)
+      if (copied) {
+        addToast('Link copiado!', 'success')
+        return
+      }
+    } catch {}
+
+    window.prompt('Copie o link de agendamento:', link)
+    addToast('Nao foi possivel copiar automaticamente. Copie manualmente.', 'warning')
   }
 
   if (loading) return <DashboardSkeleton />
