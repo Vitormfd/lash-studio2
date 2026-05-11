@@ -58,6 +58,12 @@ const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
 const BOOKING_PATH_PREFIX = '/booking/'
 
+const isBookingPath = () => {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname || ''
+  return path === '/booking' || path.startsWith(BOOKING_PATH_PREFIX)
+}
+
 const getBookingProfessionalIdFromPath = () => {
   if (typeof window === 'undefined') return ''
   const path = window.location.pathname || ''
@@ -943,10 +949,14 @@ const App = () => {
   const [session, setSession] = useState(null)
   const [checking, setChecking] = useState(true)
   const [recoveryMode, setRecoveryMode] = useState(() => isRecoveryFlowActive())
+  const [isBookingPublicPath, setIsBookingPublicPath] = useState(() => isBookingPath())
   const [bookingProfessionalId, setBookingProfessionalId] = useState(() => getBookingProfessionalIdFromPath())
 
   useEffect(() => {
-    const syncRouteState = () => setBookingProfessionalId(getBookingProfessionalIdFromPath())
+    const syncRouteState = () => {
+      setIsBookingPublicPath(isBookingPath())
+      setBookingProfessionalId(getBookingProfessionalIdFromPath())
+    }
     window.addEventListener('popstate', syncRouteState)
     return () => window.removeEventListener('popstate', syncRouteState)
   }, [])
@@ -999,7 +1009,7 @@ const App = () => {
     }
   }, [])
 
-  if (bookingProfessionalId) return <PublicBooking professionalId={bookingProfessionalId} />
+  if (isBookingPublicPath) return <PublicBooking professionalId={bookingProfessionalId} />
 
   if (checking) return <Spinner text="Carregando..." />
 

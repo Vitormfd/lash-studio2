@@ -147,6 +147,7 @@ const BookingSkeleton = () => (
 
 const PublicBooking = ({ professionalId }) => {
   const sb = useMemo(() => getClient(), [])
+  const hasProfessionalId = !!String(professionalId || '').trim()
 
   const [step, setStep] = useState(1)
   const [loadingServices, setLoadingServices] = useState(true)
@@ -412,6 +413,21 @@ const PublicBooking = ({ professionalId }) => {
   }
 
   const pageTitle = success ? 'Agendamento confirmado! ✓' : 'Agendar atendimento'
+
+  if (!hasProfessionalId) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--off-white)', padding: '20px 14px' }}>
+        <div style={{ maxWidth: 720, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 16 }}>
+          <h1 className="serif" style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+            Link de agendamento inválido
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6 }}>
+            Este link está incompleto. Peça para a profissional enviar o link de agendamento completo.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--off-white)', padding: '20px 14px' }}>
