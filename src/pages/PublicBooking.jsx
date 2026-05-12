@@ -290,7 +290,10 @@ const PublicBooking = ({ professionalId }) => {
         p_client_phone: clientPhone,
       })
 
-      if (rpc.error) throw rpc.error
+      if (rpc.error) {
+        const detail = rpc.error.details || rpc.error.message || 'booking_error'
+        throw new Error(String(detail))
+      }
 
       const result = rpc.data || {}
       const ok = result?.ok === true
@@ -302,6 +305,10 @@ const PublicBooking = ({ professionalId }) => {
       }
       if (!ok && result?.reason === 'plan_required') {
         setErrorMsg('Esta profissional nao esta com agenda publica ativa no momento.')
+        return
+      }
+      if (!ok && result?.detail) {
+        setErrorMsg(`Nao foi possivel confirmar: ${result.detail}`)
         return
       }
       if (!ok) throw new Error(String(result?.reason || 'booking_error'))

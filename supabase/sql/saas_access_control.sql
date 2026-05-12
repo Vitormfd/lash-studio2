@@ -26,13 +26,6 @@ alter column professional_type set not null;
 
 do $$
 begin
-  if exists (
-    select 1
-    from pg_constraint
-    where conname = 'profiles_professional_type_check'
-      and conrelid = 'public.profiles'::regclass
-  end if;
-
   alter table public.profiles
     drop constraint if exists profiles_professional_type_check;
 
