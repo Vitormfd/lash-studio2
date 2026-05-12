@@ -221,10 +221,10 @@ const PublicBooking = ({ professionalId }) => {
 
       const dayAppointments = (appointmentsRes.data || []).map((a) => ({
         id: a.id,
-        date: a.date,
-          time: String(a.slot_time || a.time).slice(0, 5),
+        date: dateYmd,
+        time: String(a.slot_time || a.time).slice(0, 5),
         durationMinutes: Number(a.duration_minutes) > 0 ? Number(a.duration_minutes) : 60,
-        blocked: !!a.blocked,
+        blocked: false,
       }))
 
       const windowRow = Array.isArray(windowRes.data) ? windowRes.data[0] : windowRes.data
@@ -298,6 +298,10 @@ const PublicBooking = ({ professionalId }) => {
         setErrorMsg('Este horário acabou de ser reservado. Por favor, escolha outro horário.')
         setStep(2)
         await loadSlots(selectedDate, selectedService)
+        return
+      }
+      if (!ok && result?.reason === 'plan_required') {
+        setErrorMsg('Esta profissional nao esta com agenda publica ativa no momento.')
         return
       }
       if (!ok) throw new Error(String(result?.reason || 'booking_error'))

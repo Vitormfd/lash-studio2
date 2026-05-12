@@ -608,16 +608,7 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const copyBookingLink = async () => {
-    let professionalId = userId
-
-    // Best-effort canonical ID fetch: do not block copy flow if network/session lookup fails.
-    try {
-      const sb = getClient()
-      if (sb) {
-        const { data } = await sb.auth.getUser()
-        if (data?.user?.id) professionalId = data.user.id
-      }
-    } catch {}
+    const professionalId = userId
 
     if (!professionalId || professionalId === 'demo_user') {
       addToast('Link de agendamento indisponivel no modo de teste.', 'warning')

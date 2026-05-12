@@ -104,6 +104,8 @@ declare
   v_appointment_id uuid;
   v_conflict boolean;
 begin
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+
   if p_professional_id is null or p_service_id is null or p_date is null or p_time is null then
     return jsonb_build_object('ok', false, 'reason', 'invalid_input');
   end if;
@@ -206,6 +208,9 @@ begin
   return jsonb_build_object('ok', true, 'appointment_id', v_appointment_id);
 exception
   when others then
+    if sqlerrm ilike '%full plan required%' then
+      return jsonb_build_object('ok', false, 'reason', 'plan_required');
+    end if;
     return jsonb_build_object('ok', false, 'reason', 'unexpected_error', 'detail', sqlerrm);
 end;
 $$;
