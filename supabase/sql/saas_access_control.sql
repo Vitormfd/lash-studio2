@@ -169,6 +169,14 @@ begin
     return new;
   end if;
 
+  -- Allow inserts from public booking RPC (anon users booking appointments)
+  if current_setting('app.public_booking', true) = 'true' then
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
+  end if;
+
   target_user_id := case
     when tg_op = 'DELETE' then old.user_id
     else new.user_id

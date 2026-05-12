@@ -104,7 +104,8 @@ declare
   v_appointment_id uuid;
   v_conflict boolean;
 begin
-  perform set_config('request.jwt.claim.role', 'service_role', true);
+  -- Mark this transaction as a public booking to bypass the write access trigger
+  perform set_config('app.public_booking', 'true', true);
 
   if p_professional_id is null or p_service_id is null or p_date is null or p_time is null then
     return jsonb_build_object('ok', false, 'reason', 'invalid_input');
