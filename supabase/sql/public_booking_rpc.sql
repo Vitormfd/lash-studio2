@@ -100,6 +100,7 @@ declare
   v_duration int;
   v_phone_digits text;
   v_phone_e164 text;
+  v_phone_candidates text[];
   v_client_id uuid;
   v_appointment_id uuid;
   v_conflict boolean;
@@ -146,35 +147,62 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'conflict');
   end if;
 
-  v_phone_digits := regexp_replace(coalesce(p_client_phone, ''), '\\D', '', 'g');
-  if char_length(v_phone_digits) < 10 then
-    return jsonb_build_object('ok', false, 'reason', 'invalid_phone');
-  end if;
+  v_phone_digits := regexp_replace(coalesce(p_client_phone, ''), '[^0-9]', '', 'g');
+  v_phone_digits := regexp_replace(v_phone_digits, '^0+', '', 'g');
 
-  if left(v_phone_digits, 2) = '55' then
-    v_phone_e164 := '+' || v_phone_digits;
-  else
-    v_phone_e164 := '+55' || v_phone_digits;
-  end if;
+  v_phone_candidates := array_remove(array[
+    case
+      when left(v_phone_digits, 2) = '55' and char_length(v_phone_digits) > 2 then '+' || v_phone_digits
+      else null
+    end,
+    case
+      when char_length(v_phone_digits) >= 8 and char_length(v_phone_digits) <= 11 then '+55' || v_phone_digits
+      else null
+    end,
+    case
+      when char_length(v_phone_digits) >= 12 and char_length(v_phone_digits) <= 15 then '+' || v_phone_digits
+      else null
+    end
+  ], null);
+
+  v_phone_e164 := v_phone_candidates[1];
 
   select c.id
   into v_client_id
   from public.clients c
   where c.user_id = p_professional_id
-    and c.phone = v_phone_e164
+    and c.phone = any (v_phone_candidates)
   limit 1;
 
   if v_client_id is null then
     v_client_id := gen_random_uuid();
-    insert into public.clients (id, user_id, name, phone, notes, created_at)
-    values (
-      v_client_id,
-      p_professional_id,
-      coalesce(nullif(trim(p_client_name), ''), 'Cliente'),
-      v_phone_e164,
-      'Criado via agendamento público.',
-      now()
-    );
+    begin
+      insert into public.clients (id, user_id, name, phone, notes, created_at)
+      values (
+        v_client_id,
+        p_professional_id,
+        coalesce(nullif(trim(p_client_name), ''), 'Cliente'),
+        v_phone_candidates[1],
+        'Criado via agendamento público.',
+        now()
+      );
+    exception
+      when others then
+        begin
+          insert into public.clients (id, user_id, name, phone, notes, created_at)
+          values (
+            v_client_id,
+            p_professional_id,
+            coalesce(nullif(trim(p_client_name), ''), 'Cliente'),
+            null,
+            'Criado via agendamento público.',
+            now()
+          );
+        exception
+          when others then
+            return jsonb_build_object('ok', false, 'reason', 'client_insert_failed', 'detail', sqlerrm);
+        end;
+    end;
   end if;
 
   v_appointment_id := gen_random_uuid();

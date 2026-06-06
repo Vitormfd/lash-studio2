@@ -6,10 +6,22 @@ const formatMoney = (value) => `R$ ${Number(value).toFixed(2).replace('.', ',')}
 const Reports = ({ appointments, services, clients, isBarber }) => {
   const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const [period, setPeriod] = useState('month')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
   const now = new Date()
   const real = appointments.filter((a) => !a.blocked && a.status !== 'cancelled')
 
   const getFiltered = () => {
+    if (period === 'custom') {
+      if (!customStartDate || !customEndDate) return []
+      const start = new Date(customStartDate + 'T00:00')
+      const end = new Date(customEndDate + 'T23:59')
+      return real.filter((a) => {
+        const appointmentDate = new Date(a.date + 'T12:00')
+        return appointmentDate >= start && appointmentDate <= end
+      })
+    }
+
     const cutoff = new Date(now)
     if (period === 'week') cutoff.setDate(now.getDate() - 7)
     else if (period === 'month') cutoff.setMonth(now.getMonth() - 1)
@@ -34,13 +46,55 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
   return (
     <div style={{ padding: 16 }}>
       {/* Period filter */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[['week', 'Semana'], ['month', 'Mês'], ['year', 'Ano']].map(([v, l]) => (
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {[['week', 'Semana'], ['month', 'Mês'], ['year', 'Ano'], ['custom', 'Personalizado']].map(([v, l]) => (
           <button key={v} onClick={() => setPeriod(v)} style={{ padding: '7px 16px', borderRadius: 20, border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontSize: 12, fontWeight: 500, background: period === v ? 'var(--rose-deep)' : 'var(--rose-light)', color: period === v ? '#fff' : 'var(--text-mid)', transition: 'all 0.15s' }}>
             {l}
           </button>
         ))}
       </div>
+
+      {/* Custom date range filter */}
+      {period === 'custom' && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginBottom: 4 }}>De</label>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: '1px solid var(--rose-light)',
+                fontFamily: 'inherit',
+                fontSize: 13,
+                color: 'var(--text)',
+                background: 'var(--surface)',
+                cursor: 'pointer',
+              }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginBottom: 4 }}>Até</label>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: '1px solid var(--rose-light)',
+                fontFamily: 'inherit',
+                fontSize: 13,
+                color: 'var(--text)',
+                background: 'var(--surface)',
+                cursor: 'pointer',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
