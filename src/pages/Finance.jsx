@@ -5,10 +5,13 @@ import { MONTHS_PT, getAppointmentCost } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
 
+const formatMoney = (n) => `R$ ${n.toFixed(2).replace('.', ',')}`
+
 const Finance = ({ appointments, services, clients, config, setConfig, isBarber }) => {
   const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const [editCost, setEditCost] = useState(false)
   const [costVal, setCostVal] = useState(config.avgCost)
+  const [salaryPct, setSalaryPct] = useState(String(config.salaryPercentage ?? 50))
   const [monthOffset, setMonthOffset] = useState(0)
 
   const target = new Date(); target.setMonth(target.getMonth() + monthOffset)
@@ -29,6 +32,16 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
   const cost = real.reduce((sum, a) => sum + getAppointmentCost(a, services, config.avgCost), 0)
   const profit = revenue - cost
   const avg = count ? revenue / count : 0
+
+  const salaryPercentage = Math.min(100, Math.max(0, Number(salaryPct) || 0))
+  const salaryAmount = profit > 0 ? profit * (salaryPercentage / 100) : 0
+  const companyAmount = profit > 0 ? profit - salaryAmount : 0
+
+  const saveSalaryPct = (raw) => {
+    const pct = Math.min(100, Math.max(0, Number(raw) || 0))
+    setSalaryPct(String(pct))
+    setConfig({ ...config, salaryPercentage: pct })
+  }
 
   const paidToday = appointments
     .filter((a) => !a.blocked && a.status === 'done' && a.paidAt && toLocalYmd(new Date(a.paidAt)) === todayStr)
@@ -74,9 +87,58 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
         <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" color="var(--rose-deep)" />
         <StatCard label="Custo total" value={`R$ ${cost.toFixed(2).replace('.', ',')}`} icon="settings" color="#D4915A" />
-        <StatCard label="Lucro real" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} icon="chart" color="#7BAF7B" />
+        <StatCard label="Lucro real" value={formatMoney(profit)} icon="chart" color="#7BAF7B" />
         <StatCard label={appointmentsLabel} value={count} icon="check" color="var(--rose)" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" color="var(--rose-dark)" />
+      </div>
+
+      {/* Divisão salário / empresa */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Salário e dinheiro da empresa</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 16 }}>
+          Com base no lucro de {monthLabel.toLowerCase()} ({formatMoney(profit)})
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>Porcentagem para salário:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Inp
+              type="number"
+              min={0}
+              max={100}
+              value={salaryPct}
+              onChange={(e) => setSalaryPct(e.target.value)}
+              onBlur={() => saveSalaryPct(salaryPct)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveSalaryPct(salaryPct) }}
+              style={{ ...inputStyle, width: 80, textAlign: 'center' }}
+            />
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-mid)' }}>%</span>
+          </div>
+        </div>
+
+        <div style={{ height: 10, borderRadius: 5, background: 'var(--rose-light)', overflow: 'hidden', display: 'flex', marginBottom: 14 }}>
+          <div style={{ height: '100%', width: `${salaryPercentage}%`, background: '#7BAF7B', transition: 'width 0.3s ease' }} />
+          <div style={{ height: '100%', width: `${100 - salaryPercentage}%`, background: 'var(--rose-deep)', transition: 'width 0.3s ease' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 140px', border: '1px solid #7BAF7B', borderRadius: 12, padding: '12px 14px', background: 'rgba(123, 175, 123, 0.08)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Seu salário</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#5A8F5A' }}>{formatMoney(salaryAmount)}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>{salaryPercentage}% do lucro</div>
+          </div>
+          <div style={{ flex: '1 1 140px', border: '1px solid var(--rose-deep)', borderRadius: 12, padding: '12px 14px', background: 'rgba(196, 81, 95, 0.06)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dinheiro da empresa</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--rose-deep)' }}>{formatMoney(companyAmount)}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>{100 - salaryPercentage}% do lucro</div>
+          </div>
+        </div>
+
+        {profit <= 0 && (
+          <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 12, marginBottom: 0 }}>
+            Sem lucro positivo neste mês — a divisão será calculada quando houver lucro.
+          </p>
+        )}
       </div>
 
       {/* Per-service breakdown */}

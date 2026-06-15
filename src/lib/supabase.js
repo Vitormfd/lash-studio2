@@ -433,16 +433,26 @@ export const DB = {
     const sb = getClient()
     if (sb) {
       const { data } = await sb.from('config').select('*').eq('user_id', userId).single()
-      if (data) return { avgCost: Number(data.avg_cost ?? 12.35) }
+      if (data) return {
+        avgCost: Number(data.avg_cost ?? 12.35),
+        salaryPercentage: Number(data.salary_percentage ?? 50),
+      }
     }
     const stored = uget(userId, 'config')
-    return { avgCost: Number(stored?.avgCost ?? 12.35) }
+    return {
+      avgCost: Number(stored?.avgCost ?? 12.35),
+      salaryPercentage: Number(stored?.salaryPercentage ?? 50),
+    }
   },
 
   async saveConfig(userId, config) {
     const sb = getClient()
     if (sb) {
-      await sb.from('config').upsert({ user_id: userId, avg_cost: config.avgCost }, { onConflict: 'user_id' })
+      await sb.from('config').upsert({
+        user_id: userId,
+        avg_cost: config.avgCost,
+        salary_percentage: config.salaryPercentage ?? 50,
+      }, { onConflict: 'user_id' })
     }
     uset(userId, 'config', config)
   },

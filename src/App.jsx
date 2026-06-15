@@ -125,7 +125,7 @@ const AppMain = ({ session, onLogout }) => {
   const [appointments, setAppointments] = useState([])
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35 })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50 })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
