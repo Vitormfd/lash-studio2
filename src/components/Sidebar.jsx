@@ -9,6 +9,7 @@ const NAV = [
   { id: 'inventory', label: 'Estoque', icon: 'box' },
   { id: 'finance', label: 'Financeiro', icon: 'dollar' },
   { id: 'reports', label: 'Relatórios', icon: 'chart' },
+  { id: 'activity', label: 'Histórico', icon: 'clock' },
   { id: 'settings', label: 'Configurações', icon: 'settings' },
 ]
 

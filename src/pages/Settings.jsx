@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Btn, Field, Inp } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
-import { DB } from '../lib/supabase'
+import { DB, uid } from '../lib/supabase'
+import { hashPin, pickMemberColor } from '../lib/operator'
 import {
   isPushSupported,
   getVapidPublicKey,
@@ -13,7 +14,18 @@ import {
 import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 import { APP_DESCRIPTION, APP_NAME, getProfessionalTypeMeta } from '../lib/domain'
 
-const Settings = ({ config, setConfig, addToast, session, professionalType, onLogout, isDemo = false }) => {
+const Settings = ({
+  config,
+  setConfig,
+  addToast,
+  session,
+  professionalType,
+  onLogout,
+  isDemo = false,
+  teamMembers = [],
+  onTeamMembersChange,
+  refreshTeamMembers,
+}) => {
   const [cost, setCost] = useState(config.avgCost)
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
@@ -22,6 +34,8 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
   const [pwaCanInstall, setPwaCanInstall] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushOn, setPushOn] = useState(false)
+  const [memberForm, setMemberForm] = useState({ name: '', pin: '' })
+  const [memberBusy, setMemberBusy] = useState(false)
   const userId = session?.userId
   const professionalMeta = getProfessionalTypeMeta(professionalType)
 
@@ -158,6 +172,49 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
     addToast('Tema aplicado!', 'success')
   }
 
+  const addTeamMember = async () => {
+    if (blockDemoAction()) return
+    const name = memberForm.name.trim()
+    if (!name || !userId) return
+    setMemberBusy(true)
+    try {
+      const pinHash = memberForm.pin.trim() ? await hashPin(memberForm.pin) : null
+      const saved = await DB.saveTeamMember(userId, {
+        id: uid(),
+        name,
+        color: pickMemberColor(teamMembers.length),
+        pinHash,
+        active: true,
+        _new: true,
+      })
+      onTeamMembersChange?.([...teamMembers, saved])
+      await refreshTeamMembers?.()
+      setMemberForm({ name: '', pin: '' })
+      addToast('Operador adicionado!', 'success')
+    } catch {
+      addToast('Não foi possível adicionar operador.', 'error')
+    } finally {
+      setMemberBusy(false)
+    }
+  }
+
+  const removeTeamMember = async (memberId) => {
+    if (blockDemoAction()) return
+    if (!userId) return
+    setMemberBusy(true)
+    try {
+      await DB.deleteTeamMember(userId, memberId)
+      const next = teamMembers.filter((m) => m.id !== memberId)
+      onTeamMembersChange?.(next)
+      await refreshTeamMembers?.()
+      addToast('Operador removido.', 'info')
+    } catch {
+      addToast('Não foi possível remover operador.', 'error')
+    } finally {
+      setMemberBusy(false)
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       {isDemo && (
@@ -242,6 +299,81 @@ const Settings = ({ config, setConfig, addToast, session, professionalType, onLo
             Voltar ao tema padrão
           </Btn>
         </div>
+      </div>
+
+      {/* Team operators */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Equipe (quem usa o app)</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
+          Cadastre quem trabalha no estúdio. Ao abrir o app, cada pessoa se identifica — sem login separado.
+          PIN opcional na troca de operador.
+        </p>
+
+        {teamMembers.length > 0 && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+            {teamMembers.filter((m) => m.active !== false).map((member) => (
+              <div
+                key={member.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid var(--rose-light)',
+                  background: 'var(--off-white)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: member.color || 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                    {member.name[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{member.name}</div>
+                    {member.pinHash && (
+                      <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 2 }}>Com PIN</div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeTeamMember(member.id)}
+                  disabled={isDemo || memberBusy}
+                  style={{ background: 'transparent', border: 'none', color: '#C5515F', cursor: isDemo ? 'not-allowed' : 'pointer', padding: 4 }}
+                  title="Remover operador"
+                >
+                  <Icon name="trash" size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Field label="Nome" half>
+            <Inp
+              value={memberForm.name}
+              onChange={(e) => setMemberForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Ex.: Ana"
+              disabled={isDemo}
+            />
+          </Field>
+          <Field label="PIN (opcional)" half>
+            <Inp
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={memberForm.pin}
+              onChange={(e) => setMemberForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+              placeholder="4 dígitos"
+              disabled={isDemo}
+            />
+          </Field>
+        </div>
+        <Btn onClick={addTeamMember} loading={memberBusy} disabled={isDemo || !memberForm.name.trim() || memberBusy}>
+          <Icon name="plus" size={14} color="#fff" /> Adicionar operador
+        </Btn>
       </div>
 
       {/* Account */}

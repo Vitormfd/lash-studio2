@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getActiveOperatorGlobal } from './operator'
 
 // ─── LOCAL STORAGE HELPERS 1───────────────────────────────────────────────────
 export const local = {
@@ -122,6 +123,84 @@ const toE164Phone = (value) => {
   return candidates[0] || null
 }
 
+const ENTITY_LABELS = {
+  client: 'cliente',
+  service: 'serviço',
+  appointment: 'agendamento',
+  config: 'configuração',
+  inventory_item: 'item de estoque',
+  inventory_movement: 'movimentação de estoque',
+  team_member: 'operador',
+}
+
+const buildAuditSummary = (action, entityType, entityName) => {
+  const label = ENTITY_LABELS[entityType] || entityType
+  const verb = action === 'create' ? 'Criou' : action === 'update' ? 'Atualizou' : 'Removeu'
+  return entityName ? `${verb} ${label}: ${entityName}` : `${verb} ${label}`
+}
+
+const normalizeTeamMember = (member) => ({
+  id: member.id,
+  name: member.name || '',
+  color: member.color || null,
+  pinHash: member.pin_hash || member.pinHash || null,
+  active: member.active !== false,
+  createdAt: member.created_at || member.createdAt || new Date().toISOString(),
+  updatedAt: member.updated_at || member.updatedAt || new Date().toISOString(),
+})
+
+const normalizeAuditEntry = (entry) => ({
+  id: entry.id,
+  operatorId: entry.operator_id || entry.operatorId || null,
+  operatorName: entry.operator_name || entry.operatorName || 'Desconhecido',
+  action: entry.action,
+  entityType: entry.entity_type || entry.entityType,
+  entityId: entry.entity_id || entry.entityId || null,
+  summary: entry.summary,
+  payload: entry.payload || null,
+  createdAt: entry.created_at || entry.createdAt || new Date().toISOString(),
+})
+
+const logAudit = async (userId, { action, entityType, entityId, summary, payload, entityName }) => {
+  const operator = getActiveOperatorGlobal()
+  const normalized = {
+    id: uid(),
+    operatorId: operator?.id || null,
+    operatorName: operator?.name || 'Desconhecido',
+    action,
+    entityType,
+    entityId: entityId || null,
+    summary: summary || buildAuditSummary(action, entityType, entityName),
+    payload: payload || null,
+    createdAt: new Date().toISOString(),
+  }
+
+  const sb = getClient()
+  if (sb) {
+    const { error } = await sb.from('audit_log').insert({
+      id: normalized.id,
+      user_id: userId,
+      operator_id: normalized.operatorId,
+      operator_name: normalized.operatorName,
+      action: normalized.action,
+      entity_type: normalized.entityType,
+      entity_id: normalized.entityId,
+      summary: normalized.summary,
+      payload: normalized.payload,
+      created_at: normalized.createdAt,
+    })
+    if (!error) {
+      const all = uget(userId, 'audit_log') || []
+      uset(userId, 'audit_log', [normalized, ...all].slice(0, 500))
+      return normalized
+    }
+  }
+
+  const all = uget(userId, 'audit_log') || []
+  uset(userId, 'audit_log', [normalized, ...all].slice(0, 500))
+  return normalized
+}
+
 // ─── DB LAYER (Supabase com cache write-through no localStorage) ──────────────
 export const DB = {
   // ── Clientes ──
@@ -190,6 +269,12 @@ export const DB = {
         const all = uget(userId, 'clients') || []
         const exists = all.find((c) => c.id === normalized.id)
         uset(userId, 'clients', exists ? all.map((c) => (c.id === normalized.id ? normalized : c)) : [...all, normalized])
+        await logAudit(userId, {
+          action: client._new ? 'create' : 'update',
+          entityType: 'client',
+          entityId: normalized.id,
+          entityName: normalized.name,
+        })
         return normalized
       }
 
@@ -199,13 +284,26 @@ export const DB = {
     const all = uget(userId, 'clients') || []
     const exists = all.find((c) => c.id === normalized.id)
     uset(userId, 'clients', exists ? all.map((c) => (c.id === normalized.id ? normalized : c)) : [...all, normalized])
+    await logAudit(userId, {
+      action: client._new ? 'create' : 'update',
+      entityType: 'client',
+      entityId: normalized.id,
+      entityName: normalized.name,
+    })
     return normalized
   },
 
   async deleteClient(userId, id) {
+    const existing = (uget(userId, 'clients') || []).find((c) => c.id === id)
     const sb = getClient()
     if (sb) { await sb.from('clients').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'clients', (uget(userId, 'clients') || []).filter((c) => c.id !== id))
+    await logAudit(userId, {
+      action: 'delete',
+      entityType: 'client',
+      entityId: id,
+      entityName: existing?.name,
+    })
   },
 
   // ── Serviços ──
@@ -265,6 +363,12 @@ export const DB = {
         const all = uget(userId, 'services') || []
         const exists = all.find((s) => s.id === normalized.id)
         uset(userId, 'services', exists ? all.map((s) => (s.id === normalized.id ? normalized : s)) : [...all, normalized])
+        await logAudit(userId, {
+          action: service._new ? 'create' : 'update',
+          entityType: 'service',
+          entityId: normalized.id,
+          entityName: normalized.name,
+        })
         return normalized
       }
     }
@@ -272,13 +376,26 @@ export const DB = {
     const all = uget(userId, 'services') || []
     const exists = all.find((s) => s.id === normalized.id)
     uset(userId, 'services', exists ? all.map((s) => (s.id === normalized.id ? normalized : s)) : [...all, normalized])
+    await logAudit(userId, {
+      action: service._new ? 'create' : 'update',
+      entityType: 'service',
+      entityId: normalized.id,
+      entityName: normalized.name,
+    })
     return normalized
   },
 
   async deleteService(userId, id) {
+    const existing = (uget(userId, 'services') || []).find((s) => s.id === id)
     const sb = getClient()
     if (sb) { await sb.from('services').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'services', (uget(userId, 'services') || []).filter((s) => s.id !== id))
+    await logAudit(userId, {
+      action: 'delete',
+      entityType: 'service',
+      entityId: id,
+      entityName: existing?.name,
+    })
   },
 
   // ── Agendamentos ──
@@ -407,6 +524,18 @@ export const DB = {
         const all = uget(userId, 'appointments') || []
         const exists = all.find((a) => a.id === normalized.id)
         uset(userId, 'appointments', exists ? all.map((a) => (a.id === normalized.id ? normalized : a)) : [...all, normalized])
+        const clients = uget(userId, 'clients') || []
+        const clientName = clients.find((c) => c.id === normalized.clientId)?.name
+        const summary = appt.blocked
+          ? `${appt._new ? 'Bloqueou' : 'Atualizou bloqueio em'} ${appt.date} ${appt.time}`
+          : buildAuditSummary(appt._new ? 'create' : 'update', 'appointment', clientName || `${appt.date} ${appt.time}`)
+        await logAudit(userId, {
+          action: appt._new ? 'create' : 'update',
+          entityType: 'appointment',
+          entityId: normalized.id,
+          summary,
+          payload: { date: normalized.date, time: normalized.time, status: normalized.status },
+        })
         return normalized
       }
     }
@@ -419,13 +548,26 @@ export const DB = {
     const all = uget(userId, 'appointments') || []
     const exists = all.find((a) => a.id === fallback.id)
     uset(userId, 'appointments', exists ? all.map((a) => (a.id === fallback.id ? fallback : a)) : [...all, fallback])
+    await logAudit(userId, {
+      action: appt._new ? 'create' : 'update',
+      entityType: 'appointment',
+      entityId: fallback.id,
+      summary: buildAuditSummary(appt._new ? 'create' : 'update', 'appointment', `${fallback.date} ${fallback.time}`),
+    })
     return fallback
   },
 
   async deleteAppointment(userId, id) {
+    const existing = (uget(userId, 'appointments') || []).find((a) => a.id === id)
     const sb = getClient()
     if (sb) { await sb.from('appointments').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'appointments', (uget(userId, 'appointments') || []).filter((a) => a.id !== id))
+    await logAudit(userId, {
+      action: 'delete',
+      entityType: 'appointment',
+      entityId: id,
+      summary: existing ? `Removeu agendamento: ${existing.date} ${existing.time}` : 'Removeu agendamento',
+    })
   },
 
   // ── Config ──
@@ -455,6 +597,12 @@ export const DB = {
       }, { onConflict: 'user_id' })
     }
     uset(userId, 'config', config)
+    await logAudit(userId, {
+      action: 'update',
+      entityType: 'config',
+      summary: 'Atualizou configurações financeiras',
+      payload: config,
+    })
   },
 
   // ── Estoque ──
@@ -523,19 +671,38 @@ export const DB = {
         const all = uget(userId, 'inventory_items') || []
         const exists = all.find((i) => i.id === normalized.id)
         uset(userId, 'inventory_items', exists ? all.map((i) => (i.id === normalized.id ? normalized : i)) : [...all, normalized])
+        await logAudit(userId, {
+          action: item._new ? 'create' : 'update',
+          entityType: 'inventory_item',
+          entityId: normalized.id,
+          entityName: normalized.name,
+        })
         return normalized
       }
     }
     const all = uget(userId, 'inventory_items') || []
     const exists = all.find((i) => i.id === item.id)
     uset(userId, 'inventory_items', exists ? all.map((i) => (i.id === item.id ? item : i)) : [...all, item])
+    await logAudit(userId, {
+      action: item._new ? 'create' : 'update',
+      entityType: 'inventory_item',
+      entityId: item.id,
+      entityName: item.name,
+    })
     return item
   },
 
   async deleteInventoryItem(userId, id) {
+    const existing = (uget(userId, 'inventory_items') || []).find((i) => i.id === id)
     const sb = getClient()
     if (sb) { await sb.from('inventory_items').delete().eq('id', id).eq('user_id', userId) }
     uset(userId, 'inventory_items', (uget(userId, 'inventory_items') || []).filter((i) => i.id !== id))
+    await logAudit(userId, {
+      action: 'delete',
+      entityType: 'inventory_item',
+      entityId: id,
+      entityName: existing?.name,
+    })
   },
 
   async getInventoryMovements(userId) {
@@ -582,11 +749,27 @@ export const DB = {
         }
         const all = uget(userId, 'inventory_movements') || []
         uset(userId, 'inventory_movements', [normalized, ...all])
+        const items = uget(userId, 'inventory_items') || []
+        const itemName = items.find((i) => i.id === normalized.itemId)?.name
+        await logAudit(userId, {
+          action: 'create',
+          entityType: 'inventory_movement',
+          entityId: normalized.id,
+          summary: `Registrou ${normalized.type === 'in' ? 'entrada' : 'saída'} de estoque${itemName ? `: ${itemName}` : ''}`,
+          payload: normalized,
+        })
         return normalized
       }
     }
     const all = uget(userId, 'inventory_movements') || []
     uset(userId, 'inventory_movements', [movement, ...all])
+    await logAudit(userId, {
+      action: 'create',
+      entityType: 'inventory_movement',
+      entityId: movement.id,
+      summary: 'Registrou movimentação de estoque',
+      payload: movement,
+    })
     return movement
   },
 
@@ -624,5 +807,109 @@ export const DB = {
       await sb.from('push_subscriptions').delete().eq('user_id', userId).eq('endpoint', endpoint)
     }
     uset(userId, 'push_subscription', null)
+  },
+
+  // ── Operadores da equipe ──
+  async getTeamMembers(userId) {
+    const sb = getClient()
+    if (sb) {
+      const { data, error } = await sb
+        .from('team_members')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name')
+      if (!error && data) {
+        const normalized = data.map(normalizeTeamMember)
+        uset(userId, 'team_members', normalized)
+        return normalized
+      }
+    }
+    return (uget(userId, 'team_members') || []).map(normalizeTeamMember)
+  },
+
+  async saveTeamMember(userId, member) {
+    const sb = getClient()
+    const row = {
+      id: member.id,
+      user_id: userId,
+      name: member.name,
+      color: member.color || null,
+      pin_hash: member.pinHash ?? null,
+      active: member.active !== false,
+      created_at: member.createdAt || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    if (sb) {
+      const { data, error } = member._new
+        ? await sb.from('team_members').insert(row).select().single()
+        : await sb.from('team_members').update({
+          name: row.name,
+          color: row.color,
+          pin_hash: row.pin_hash,
+          active: row.active,
+          updated_at: row.updated_at,
+        }).eq('id', member.id).eq('user_id', userId).select().single()
+
+      if (!error && data) {
+        const normalized = normalizeTeamMember(data)
+        const all = uget(userId, 'team_members') || []
+        const exists = all.find((m) => m.id === normalized.id)
+        uset(userId, 'team_members', exists ? all.map((m) => (m.id === normalized.id ? normalized : m)) : [...all, normalized])
+        await logAudit(userId, {
+          action: member._new ? 'create' : 'update',
+          entityType: 'team_member',
+          entityId: normalized.id,
+          entityName: normalized.name,
+        })
+        return normalized
+      }
+    }
+
+    const normalized = normalizeTeamMember({ ...member, pin_hash: member.pinHash })
+    const all = uget(userId, 'team_members') || []
+    const exists = all.find((m) => m.id === normalized.id)
+    uset(userId, 'team_members', exists ? all.map((m) => (m.id === normalized.id ? normalized : m)) : [...all, normalized])
+    await logAudit(userId, {
+      action: member._new ? 'create' : 'update',
+      entityType: 'team_member',
+      entityId: normalized.id,
+      entityName: normalized.name,
+    })
+    return normalized
+  },
+
+  async deleteTeamMember(userId, id) {
+    const existing = (uget(userId, 'team_members') || []).find((m) => m.id === id)
+    const sb = getClient()
+    if (sb) {
+      await sb.from('team_members').delete().eq('id', id).eq('user_id', userId)
+    }
+    uset(userId, 'team_members', (uget(userId, 'team_members') || []).filter((m) => m.id !== id))
+    await logAudit(userId, {
+      action: 'delete',
+      entityType: 'team_member',
+      entityId: id,
+      entityName: existing?.name,
+    })
+  },
+
+  // ── Histórico de alterações ──
+  async getAuditLog(userId, { limit = 200 } = {}) {
+    const sb = getClient()
+    if (sb) {
+      const { data, error } = await sb
+        .from('audit_log')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (!error && data) {
+        const normalized = data.map(normalizeAuditEntry)
+        uset(userId, 'audit_log', normalized)
+        return normalized
+      }
+    }
+    return (uget(userId, 'audit_log') || []).map(normalizeAuditEntry).slice(0, limit)
   },
 }

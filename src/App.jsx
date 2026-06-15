@@ -31,6 +31,16 @@ import Finance from './pages/Finance'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import PublicBooking from './pages/PublicBooking'
+import OperatorSelect from './pages/OperatorSelect'
+import ActivityLog from './pages/ActivityLog'
+import {
+  OperatorContext,
+  saveOperatorSession,
+  loadOperatorSession,
+  clearOperatorSession,
+  touchOperatorActivity,
+  isOperatorSessionExpired,
+} from './lib/operator'
 
 const SUPABASE_URL = 'https://mbxfswxjrdikdyzpukmw.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_X8Pu3A3o_MfOKR0octLAyw_p_SzMKO3'
@@ -43,10 +53,11 @@ const NAV_TITLES = {
   inventory: 'Estoque',
   finance: 'Financeiro',
   reports: 'Relatórios',
+  activity: 'Histórico',
   settings: 'Configurações',
 }
 
-const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services', 'inventory', 'finance', 'reports', 'settings']
+const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings']
 
 const BARBER_STARTER_SERVICES = [
   { name: 'Corte', price: 50, color: '#7BAF9A' },
@@ -134,6 +145,9 @@ const AppMain = ({ session, onLogout }) => {
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallHint, setPaywallHint] = useState('')
+  const [teamMembers, setTeamMembers] = useState([])
+  const [activeOperator, setActiveOperator] = useState(null)
+  const [operatorGateOpen, setOperatorGateOpen] = useState(false)
 
   const professionalType = accessProfile.professionalType || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
   const isBarber = professionalType === 'barbeiro'
@@ -166,6 +180,49 @@ const AppMain = ({ session, onLogout }) => {
     return true
   }, [canUserEdit, addToast, openPaywall])
 
+  const refreshTeamMembers = useCallback(async () => {
+    const members = await DB.getTeamMembers(userId)
+    setTeamMembers(members)
+    return members
+  }, [userId])
+
+  const handleOperatorSelected = useCallback((member) => {
+    const operator = { id: member.id, name: member.name, color: member.color || null }
+    saveOperatorSession(userId, operator)
+    setActiveOperator(operator)
+    setOperatorGateOpen(false)
+  }, [userId])
+
+  const requestOperatorSwitch = useCallback(() => {
+    clearOperatorSession(userId)
+    setActiveOperator(null)
+    setOperatorGateOpen(true)
+  }, [userId])
+
+  const resolveOperatorGate = useCallback((members) => {
+    const activeMembers = members.filter((m) => m.active !== false)
+    if (activeMembers.length === 0) {
+      setOperatorGateOpen(true)
+      return
+    }
+    const stored = loadOperatorSession(userId)
+    if (!stored || isOperatorSessionExpired(userId)) {
+      clearOperatorSession(userId)
+      setActiveOperator(null)
+      setOperatorGateOpen(true)
+      return
+    }
+    const stillExists = activeMembers.some((m) => m.id === stored.id)
+    if (!stillExists) {
+      clearOperatorSession(userId)
+      setActiveOperator(null)
+      setOperatorGateOpen(true)
+      return
+    }
+    setActiveOperator(stored)
+    setOperatorGateOpen(false)
+  }, [userId])
+
   useEffect(() => {
     if (!isDemo) return
     if (DEMO_ALLOWED_PAGES.includes(page)) return
@@ -177,6 +234,23 @@ const AppMain = ({ session, onLogout }) => {
     window.addEventListener('lash-notification-settings-changed', bump)
     return () => window.removeEventListener('lash-notification-settings-changed', bump)
   }, [])
+
+  useEffect(() => {
+    if (!userId || operatorGateOpen) return undefined
+
+    const markActivity = () => touchOperatorActivity(userId)
+    const events = ['pointerdown', 'keydown', 'touchstart', 'scroll']
+    events.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }))
+
+    const timer = window.setInterval(() => {
+      if (isOperatorSessionExpired(userId)) requestOperatorSwitch()
+    }, 60_000)
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, markActivity))
+      window.clearInterval(timer)
+    }
+  }, [userId, operatorGateOpen, requestOperatorSwitch])
 
   const localNotifEnabled =
     typeof Notification !== 'undefined' && Notification.permission === 'granted'
@@ -266,13 +340,14 @@ const AppMain = ({ session, onLogout }) => {
     setLoading(true)
     setLoadError(false)
     try {
-      const [c, s, a, invItems, invMovs, cfg] = await Promise.all([
+      const [c, s, a, invItems, invMovs, cfg, members] = await Promise.all([
         DB.getClients(userId),
         DB.getServices(userId),
         DB.getAppointments(userId),
         DB.getInventoryItems(userId),
         DB.getInventoryMovements(userId),
         DB.getConfig(userId),
+        DB.getTeamMembers(userId),
       ])
       const compatibility = ensureServiceCompatibility({
         services: s,
@@ -298,6 +373,8 @@ const AppMain = ({ session, onLogout }) => {
       setInventoryItems(invItems)
       setInventoryMovements(invMovs)
       setConfigState(cfg)
+      setTeamMembers(members)
+      resolveOperatorGate(members)
 
       if (compatibility.createdService || compatibility.patchedAppointments.length > 0) {
         Promise.resolve().then(async () => {
@@ -317,7 +394,7 @@ const AppMain = ({ session, onLogout }) => {
     } finally {
       setLoading(false)
     }
-  }, [userId, addToast, isBarber])
+  }, [userId, addToast, isBarber, resolveOperatorGate])
 
   useEffect(() => {
     reloadData()
@@ -681,8 +758,30 @@ const AppMain = ({ session, onLogout }) => {
     openPaywall,
   }
 
+  const operatorValue = {
+    operator: activeOperator,
+    teamMembers,
+    selectOperator: handleOperatorSelected,
+    requestOperatorSwitch,
+    refreshTeamMembers,
+  }
+
+  if (operatorGateOpen) {
+    return (
+      <OperatorSelect
+        userId={userId}
+        teamMembers={teamMembers}
+        sessionName={session?.name}
+        setupMode={teamMembers.filter((m) => m.active !== false).length === 0}
+        onSelected={handleOperatorSelected}
+        onTeamUpdated={refreshTeamMembers}
+      />
+    )
+  }
+
   return (
     <AccessProvider value={accessValue}>
+    <OperatorContext.Provider value={operatorValue}>
     <div style={{ display: 'flex', minHeight: '100vh', minWidth: 0, width: '100%', background: 'var(--off-white)' }}>
       <Sidebar
         active={page}
@@ -710,6 +809,8 @@ const AppMain = ({ session, onLogout }) => {
           isDemo={!canUserEdit}
           canUserEdit={canUserEdit}
           onUpgrade={() => openPaywall('Organize seu negócio sem limitações')}
+          operator={activeOperator}
+          onSwitchOperator={requestOperatorSwitch}
         />
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -783,6 +884,7 @@ const AppMain = ({ session, onLogout }) => {
           )}
           {page === 'finance' && <Finance appointments={appointments} services={services} clients={clients} config={config} setConfig={saveConfig} isBarber={isBarber} />}
           {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} isBarber={isBarber} />}
+          {page === 'activity' && <ActivityLog userId={userId} />}
           {page === 'settings' && (
             <Settings
               config={config}
@@ -792,6 +894,9 @@ const AppMain = ({ session, onLogout }) => {
               professionalType={professionalType}
               onLogout={onLogout}
               isDemo={isDemo}
+              teamMembers={teamMembers}
+              onTeamMembersChange={setTeamMembers}
+              refreshTeamMembers={refreshTeamMembers}
             />
           )}
         </div>
@@ -879,6 +984,7 @@ const AppMain = ({ session, onLogout }) => {
         </div>
       )}
     </div>
+    </OperatorContext.Provider>
     </AccessProvider>
   )
 }
@@ -1055,7 +1161,12 @@ const App = () => {
   return (
     <AppMain
       session={session}
-      onLogout={() => { AUTH.signOut(); AUTH.clearLocalSession(); setSession(null) }}
+      onLogout={() => {
+        if (session?.userId) clearOperatorSession(session.userId)
+        AUTH.signOut()
+        AUTH.clearLocalSession()
+        setSession(null)
+      }}
     />
   )
 }

@@ -1,7 +1,7 @@
 import Icon from './Icon'
 import { Btn } from './UI'
 
-const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDemo, canUserEdit, onUpgrade }) => (
+const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDemo, canUserEdit, onUpgrade, operator, onSwitchOperator }) => (
   <header
     style={{
       position: 'sticky', top: 0,
@@ -31,6 +31,44 @@ const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDem
     </div>
 
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {operator?.name && (
+        <button
+          type="button"
+          title="Trocar operador"
+          onClick={() => onSwitchOperator?.()}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'var(--surface)',
+            border: '1px solid var(--rose-light)',
+            borderRadius: 999,
+            padding: '5px 10px',
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--text-mid)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            maxWidth: 140,
+          }}
+        >
+          <span style={{
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            background: operator.color || 'var(--rose-deep)',
+            color: '#fff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 10,
+            flexShrink: 0,
+          }}>
+            {operator.name[0]?.toUpperCase() || '?'}
+          </span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{operator.name}</span>
+        </button>
+      )}
       <button
         type="button"
         title="Horários próximos"
