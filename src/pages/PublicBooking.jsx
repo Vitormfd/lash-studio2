@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getClient } from '../lib/supabase'
 import { Btn, Field, Inp } from '../components/UI'
 import { apptIntervalsOverlap, formatDurationLabel, timeToMins } from '../lib/utils'
+import { getHolidaysOnDate, formatHolidaySummary } from '../lib/holidays'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -152,6 +153,7 @@ const PublicBooking = ({ professionalId }) => {
   const [selectedTime, setSelectedTime] = useState('')
   const [slots, setSlots] = useState([])
   const [workWindow, setWorkWindow] = useState({ start: DEFAULT_START, end: DEFAULT_END })
+  const [dayHolidayLabel, setDayHolidayLabel] = useState('')
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -230,6 +232,20 @@ const PublicBooking = ({ professionalId }) => {
       const windowRow = Array.isArray(windowRes.data) ? windowRes.data[0] : windowRes.data
       const nextWindow = resolveWindow(windowRow || null)
       setWorkWindow(nextWindow)
+
+      const loc = {
+        stateUf: windowRow?.state_uf || '',
+        city: windowRow?.city || '',
+      }
+
+      const holidays = getHolidaysOnDate(dateYmd, loc)
+      if (holidays.length) {
+        setDayHolidayLabel(formatHolidaySummary(holidays))
+        setSelectedTime('')
+        setSlots([])
+        return
+      }
+      setDayHolidayLabel('')
 
       const generated = buildSlots({
         selectedDate: dateYmd,
@@ -526,8 +542,10 @@ const PublicBooking = ({ professionalId }) => {
                     </div>
 
                     {!hasAnyAvailable && (
-                      <p style={{ marginTop: 12, fontSize: 14, color: 'var(--text-light)' }}>
-                        Não há horários disponíveis neste dia. Tente outra data.
+                      <p style={{ marginTop: 12, fontSize: 14, color: dayHolidayLabel ? '#9B3D4A' : 'var(--text-light)' }}>
+                        {dayHolidayLabel
+                          ? `Feriado: ${dayHolidayLabel}. Escolha outra data.`
+                          : 'Não há horários disponíveis neste dia. Tente outra data.'}
                       </p>
                     )}
 

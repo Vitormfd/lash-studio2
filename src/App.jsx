@@ -136,7 +136,7 @@ const AppMain = ({ session, onLogout }) => {
   const [appointments, setAppointments] = useState([])
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50 })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '' })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
@@ -839,6 +839,7 @@ const AppMain = ({ session, onLogout }) => {
               clients={clients}
               services={services}
               isBarber={isBarber}
+              config={config}
               onNew={saveAppt}
               onEdit={(appt) => {
                 if (guardRestrictedWrite('Desbloqueie para editar agendamentos.')) return
@@ -850,6 +851,7 @@ const AppMain = ({ session, onLogout }) => {
               canUserEdit={canUserEdit}
               onBlockedAction={guardRestrictedWrite}
               onUpgrade={() => openPaywall('Desbloqueie para criar agendamentos')}
+              onGoSettings={() => setPage('settings')}
             />
           )}
           {page === 'clients' && (

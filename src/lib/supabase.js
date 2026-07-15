@@ -578,12 +578,16 @@ export const DB = {
       if (data) return {
         avgCost: Number(data.avg_cost ?? 12.35),
         salaryPercentage: Number(data.salary_percentage ?? 50),
+        stateUf: data.state_uf || '',
+        city: data.city || '',
       }
     }
     const stored = uget(userId, 'config')
     return {
       avgCost: Number(stored?.avgCost ?? 12.35),
       salaryPercentage: Number(stored?.salaryPercentage ?? 50),
+      stateUf: stored?.stateUf || '',
+      city: stored?.city || '',
     }
   },
 
@@ -594,13 +598,15 @@ export const DB = {
         user_id: userId,
         avg_cost: config.avgCost,
         salary_percentage: config.salaryPercentage ?? 50,
+        state_uf: config.stateUf || null,
+        city: config.city || null,
       }, { onConflict: 'user_id' })
     }
     uset(userId, 'config', config)
     await logAudit(userId, {
       action: 'update',
       entityType: 'config',
-      summary: 'Atualizou configurações financeiras',
+      summary: 'Atualizou configurações',
       payload: config,
     })
   },

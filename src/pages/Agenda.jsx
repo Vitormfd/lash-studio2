@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Modal from '../components/Modal'
 import AppointmentForm from '../components/AppointmentForm'
 import { Btn, Field, Inp, Textarea } from '../components/UI'
@@ -11,12 +11,14 @@ import {
 } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
+import { getHolidaysMap, formatHolidaySummary, holidayTypeLabel } from '../lib/holidays'
 
 const Agenda = ({
   appointments,
   clients,
   services,
   isBarber,
+  config,
   onNew,
   onEdit,
   onDelete,
@@ -25,13 +27,27 @@ const Agenda = ({
   canUserEdit,
   onBlockedAction,
   onUpgrade,
+  onGoSettings,
 }) => {
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
   const [modal, setModal] = useState(null)
   const [paymentModal, setPaymentModal] = useState({ open: false, appt: null, method: '', value: '', notes: '' })
 
+  const location = useMemo(() => ({
+    stateUf: config?.stateUf || '',
+    city: config?.city || '',
+  }), [config?.stateUf, config?.city])
+
+  const holidaysByDate = useMemo(() => {
+    const y = current.getFullYear()
+    // Inclui ano vizinho para a vista de semana que cruza virada de ano
+    return getHolidaysMap([y - 1, y, y + 1], location)
+  }, [current, location])
+
   const dateStr = toLocalYmd(current)
+  const dayHolidays = holidaysByDate.get(dateStr) || []
+  const hasLocation = Boolean(location.stateUf)
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Bloqueado'
   const getClient = (id) => clients.find((c) => c.id === id) || null
   const getServiceName = (id) => services.find((s) => s.id === id)?.name || ''
@@ -278,10 +294,17 @@ const Agenda = ({
           <div />
           {days.map((d) => {
             const isToday = toLocalYmd(d) === toLocalYmd(new Date())
+            const ds = toLocalYmd(d)
+            const hols = holidaysByDate.get(ds) || []
             return (
-              <div key={toLocalYmd(d)} style={{ textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid var(--rose-light)', background: isToday ? 'var(--rose-light)' : 'var(--surface)' }}>
+              <div key={ds} style={{ textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid var(--rose-light)', background: hols.length ? 'rgba(197,81,95,0.08)' : isToday ? 'var(--rose-light)' : 'var(--surface)' }}>
                 <div style={{ fontSize: 10, color: 'var(--text-light)' }}>{DAYS_PT[d.getDay()]}</div>
-                <div style={{ fontSize: 14, fontWeight: isToday ? 600 : 400, color: isToday ? 'var(--rose-deep)' : 'var(--text)' }}>{d.getDate()}</div>
+                <div style={{ fontSize: 14, fontWeight: isToday || hols.length ? 600 : 400, color: hols.length ? '#C5515F' : isToday ? 'var(--rose-deep)' : 'var(--text)' }}>{d.getDate()}</div>
+                {hols.length > 0 && (
+                  <div style={{ fontSize: 8, color: '#C5515F', lineHeight: 1.2, marginTop: 2, padding: '0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={formatHolidaySummary(hols)}>
+                    Feriado
+                  </div>
+                )}
               </div>
             )
           })}
@@ -341,11 +364,33 @@ const Agenda = ({
             const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const appts = appointments.filter((a) => a.date === ds && !a.blocked && a.status !== 'cancelled')
             const isToday = ds === todayStr
+            const hols = holidaysByDate.get(ds) || []
             return (
               <div key={i} onClick={() => { setCurrent(new Date(ds + 'T12:00')); setView('day') }}
-                style={{ minHeight: 64, padding: 4, borderRadius: 8, cursor: 'pointer', background: isToday ? 'var(--rose-light)' : 'var(--surface)', border: `1px solid ${isToday ? 'var(--rose)' : 'var(--rose-light)'}`, transition: 'background 0.15s' }}>
-                <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--rose-deep)' : 'var(--text)', textAlign: 'right', marginBottom: 3 }}>{day}</div>
-                {appts.slice(0, 2).map((a) => {
+                style={{
+                  minHeight: 64,
+                  padding: 4,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: hols.length ? 'rgba(197,81,95,0.07)' : isToday ? 'var(--rose-light)' : 'var(--surface)',
+                  border: `1px solid ${hols.length ? '#E8B4B4' : isToday ? 'var(--rose)' : 'var(--rose-light)'}`,
+                  transition: 'background 0.15s',
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3, gap: 2 }}>
+                  <div style={{ fontSize: 12, fontWeight: isToday || hols.length ? 700 : 400, color: hols.length ? '#C5515F' : isToday ? 'var(--rose-deep)' : 'var(--text)' }}>{day}</div>
+                  {hols.length > 0 && (
+                    <span
+                      title={formatHolidaySummary(hols)}
+                      style={{ width: 6, height: 6, borderRadius: '50%', background: '#C5515F', flexShrink: 0 }}
+                    />
+                  )}
+                </div>
+                {hols.length > 0 && (
+                  <div style={{ fontSize: 8, color: '#C5515F', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={formatHolidaySummary(hols)}>
+                    {hols[0].name}
+                  </div>
+                )}
+                {appts.slice(0, hols.length ? 1 : 2).map((a) => {
                   const acc = normalizeServiceColor(services.find((s) => s.id === a.serviceId)?.color)
                   return (
                     <div key={a.id} style={{ fontSize: 9, background: acc ? hexToRgba(acc, 0.35) || 'var(--rose)' : 'var(--rose)', color: acc ? '#2C1A1E' : 'var(--rose-dark)', borderLeft: acc ? `3px solid ${acc}` : '3px solid transparent', borderRadius: 3, padding: '1px 4px', marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -353,7 +398,7 @@ const Agenda = ({
                     </div>
                   )
                 })}
-                {appts.length > 2 && <div style={{ fontSize: 9, color: 'var(--text-light)' }}>+{appts.length - 2}</div>}
+                {appts.length > (hols.length ? 1 : 2) && <div style={{ fontSize: 9, color: 'var(--text-light)' }}>+{appts.length - (hols.length ? 1 : 2)}</div>}
               </div>
             )
           })}
@@ -432,6 +477,26 @@ const Agenda = ({
         </div>
       </div>
 
+      {!hasLocation && (
+        <div style={{ margin: '0 16px 10px', border: '1px solid var(--rose-light)', borderRadius: 10, background: 'var(--off-white)', padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.45 }}>
+            Defina seu estado em Configurações para ver feriados estaduais e regionais.
+          </span>
+          {onGoSettings && (
+            <Btn sm variant="ghost" onClick={onGoSettings}>Configurar</Btn>
+          )}
+        </div>
+      )}
+
+      {view === 'day' && dayHolidays.length > 0 && (
+        <div style={{ margin: '0 16px 10px', border: '1px solid #E8B4B4', borderRadius: 10, background: 'rgba(197,81,95,0.08)', padding: '10px 12px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#C5515F', marginBottom: 2 }}>Feriado neste dia</div>
+          <div style={{ fontSize: 12, color: '#9B3D4A', lineHeight: 1.45 }}>
+            {dayHolidays.map((h) => `${h.name} (${holidayTypeLabel(h.type)})`).join(' · ')}
+          </div>
+        </div>
+      )}
+
       {view === 'day' && <DayView />}
       {view === 'week' && <WeekView />}
       {view === 'month' && <MonthView />}
@@ -454,6 +519,10 @@ const Agenda = ({
                 apptIntervalsOverlap(form.date, form.time, dur, a.date, a.time, apptDurationMin(a))
               )
               if (clash) { addToast(form.blocked ? 'Esse intervalo já está ocupado.' : 'Horário conflita com outro agendamento.', 'error'); return }
+              const hols = holidaysByDate.get(form.date) || []
+              if (hols.length && !form.blocked) {
+                addToast(`Atenção: ${formatHolidaySummary(hols)}.`, 'warning')
+              }
               onNew(form)
               setModal(null)
             }}

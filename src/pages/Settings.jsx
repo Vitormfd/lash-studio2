@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Btn, Field, Inp } from '../components/UI'
+import { Btn, Field, Inp, Sel } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
@@ -13,6 +13,7 @@ import {
 } from '../lib/pushClient'
 import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 import { APP_DESCRIPTION, APP_NAME, getProfessionalTypeMeta } from '../lib/domain'
+import { BRAZIL_STATES } from '../lib/holidays'
 
 const Settings = ({
   config,
@@ -27,6 +28,8 @@ const Settings = ({
   refreshTeamMembers,
 }) => {
   const [cost, setCost] = useState(config.avgCost)
+  const [stateUf, setStateUf] = useState(config.stateUf || '')
+  const [city, setCity] = useState(config.city || '')
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
@@ -76,7 +79,9 @@ const Settings = ({
 
   useEffect(() => {
     setCost(config.avgCost)
-  }, [config.avgCost])
+    setStateUf(config.stateUf || '')
+    setCity(config.city || '')
+  }, [config.avgCost, config.stateUf, config.city])
 
   const enablePushNotifications = async () => {
     if (blockDemoAction()) return
@@ -251,6 +256,53 @@ const Settings = ({
           disabled={isDemo}
         >
           <Icon name="check" size={14} color="#fff" /> Salvar configurações
+        </Btn>
+      </div>
+
+      {/* Location / holidays */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Localização e feriados</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
+          Informe onde você atende para a agenda marcar feriados nacionais, estaduais e municipais (das principais cidades).
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Field label="Estado (UF)" half>
+            <Sel
+              value={stateUf}
+              onChange={(e) => setStateUf(e.target.value)}
+              disabled={isDemo}
+            >
+              <option value="">Selecionar…</option>
+              {BRAZIL_STATES.map((s) => (
+                <option key={s.uf} value={s.uf}>{s.uf} — {s.name}</option>
+              ))}
+            </Sel>
+          </Field>
+          <Field label="Cidade" half>
+            <Inp
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Ex.: São Paulo"
+              disabled={isDemo}
+            />
+          </Field>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -4, marginBottom: 14, lineHeight: 1.5 }}>
+          Sem UF, só aparecem feriados nacionais. A cidade ativa feriados municipais quando o município está na lista.
+        </p>
+        <Btn
+          onClick={() => {
+            if (blockDemoAction()) return
+            setConfig({
+              ...config,
+              stateUf: stateUf || '',
+              city: city.trim(),
+            })
+            addToast('Localização salva! A agenda já usa os feriados.', 'success')
+          }}
+          disabled={isDemo}
+        >
+          <Icon name="check" size={14} color="#fff" /> Salvar localização
         </Btn>
       </div>
 

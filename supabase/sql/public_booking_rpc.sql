@@ -47,10 +47,15 @@ $$;
 
 grant execute on function public.get_public_booking_occupied_slots(uuid, date) to anon, authenticated;
 
+-- DROP necessary when return columns change (Postgres cannot replace OUT row type)
+drop function if exists public.get_public_booking_window(uuid);
+
 create or replace function public.get_public_booking_window(p_professional_id uuid)
 returns table (
   start_time text,
-  end_time text
+  end_time text,
+  state_uf text,
+  city text
 )
 language sql
 security definer
@@ -74,7 +79,9 @@ as $$
       nullif(to_jsonb(c) ->> 'closing_hour', ''),
       nullif(to_jsonb(c) ->> 'business_end', ''),
       '18:00'
-    ) as end_time
+    ) as end_time,
+    nullif(to_jsonb(c) ->> 'state_uf', '') as state_uf,
+    nullif(to_jsonb(c) ->> 'city', '') as city
   from public.config c
   where c.user_id = p_professional_id
   limit 1;
