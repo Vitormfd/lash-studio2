@@ -41,7 +41,7 @@ const Agenda = ({
 
   const holidaysByDate = useMemo(() => {
     const y = current.getFullYear()
-    // Inclui ano vizinho para a vista de semana que cruza virada de ano11]
+    // Inclui ano vizinho para a vista de semana que cruza virada de ano
     return getHolidaysMap([y - 1, y, y + 1], location)
   }, [current, location])
 
