@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { getActiveOperatorGlobal } from './operator'
+import { normalizeWorkHours } from './workHours'
 
 // ─── LOCAL STORAGE HELPERS 1───────────────────────────────────────────────────
 export const local = {
@@ -580,6 +581,7 @@ export const DB = {
         salaryPercentage: Number(data.salary_percentage ?? 50),
         stateUf: data.state_uf || '',
         city: data.city || '',
+        workHours: normalizeWorkHours(data.work_hours),
       }
     }
     const stored = uget(userId, 'config')
@@ -588,26 +590,30 @@ export const DB = {
       salaryPercentage: Number(stored?.salaryPercentage ?? 50),
       stateUf: stored?.stateUf || '',
       city: stored?.city || '',
+      workHours: normalizeWorkHours(stored?.workHours),
     }
   },
 
   async saveConfig(userId, config) {
     const sb = getClient()
+    const workHours = normalizeWorkHours(config.workHours)
+    const nextConfig = { ...config, workHours }
     if (sb) {
       await sb.from('config').upsert({
         user_id: userId,
-        avg_cost: config.avgCost,
-        salary_percentage: config.salaryPercentage ?? 50,
-        state_uf: config.stateUf || null,
-        city: config.city || null,
+        avg_cost: nextConfig.avgCost,
+        salary_percentage: nextConfig.salaryPercentage ?? 50,
+        state_uf: nextConfig.stateUf || null,
+        city: nextConfig.city || null,
+        work_hours: workHours,
       }, { onConflict: 'user_id' })
     }
-    uset(userId, 'config', config)
+    uset(userId, 'config', nextConfig)
     await logAudit(userId, {
       action: 'update',
       entityType: 'config',
       summary: 'Atualizou configurações',
-      payload: config,
+      payload: nextConfig,
     })
   },
 

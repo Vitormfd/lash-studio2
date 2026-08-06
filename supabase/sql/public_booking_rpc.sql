@@ -47,47 +47,113 @@ $$;
 
 grant execute on function public.get_public_booking_occupied_slots(uuid, date) to anon, authenticated;
 
--- DROP necessary when return columns change (Postgres cannot replace OUT row type)
+-- DROP necessary when signature / return columns change
 drop function if exists public.get_public_booking_window(uuid);
+drop function if exists public.get_public_booking_window(uuid, date);
 
-create or replace function public.get_public_booking_window(p_professional_id uuid)
+create or replace function public.get_public_booking_window(
+  p_professional_id uuid,
+  p_date date default null
+)
 returns table (
   start_time text,
   end_time text,
+  closed boolean,
   state_uf text,
   city text
 )
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  select
-    coalesce(
-      nullif(to_jsonb(c) ->> 'start_time', ''),
-      nullif(to_jsonb(c) ->> 'start_hour', ''),
-      nullif(to_jsonb(c) ->> 'work_start', ''),
-      nullif(to_jsonb(c) ->> 'working_start', ''),
-      nullif(to_jsonb(c) ->> 'opening_hour', ''),
-      nullif(to_jsonb(c) ->> 'business_start', ''),
-      '08:00'
-    ) as start_time,
-    coalesce(
-      nullif(to_jsonb(c) ->> 'end_time', ''),
-      nullif(to_jsonb(c) ->> 'end_hour', ''),
-      nullif(to_jsonb(c) ->> 'work_end', ''),
-      nullif(to_jsonb(c) ->> 'working_end', ''),
-      nullif(to_jsonb(c) ->> 'closing_hour', ''),
-      nullif(to_jsonb(c) ->> 'business_end', ''),
-      '18:00'
-    ) as end_time,
-    nullif(to_jsonb(c) ->> 'state_uf', '') as state_uf,
-    nullif(to_jsonb(c) ->> 'city', '') as city
+declare
+  v_cfg jsonb;
+  v_hours jsonb;
+  v_day jsonb;
+  v_key text;
+  v_dow int;
+  v_closed boolean;
+  v_start text;
+  v_end text;
+  v_state text;
+  v_city text;
+begin
+  select to_jsonb(c)
+  into v_cfg
   from public.config c
   where c.user_id = p_professional_id
   limit 1;
+
+  if v_cfg is null then
+    start_time := '08:00';
+    end_time := '18:00';
+    closed := false;
+    state_uf := null;
+    city := null;
+    return next;
+    return;
+  end if;
+
+  v_state := nullif(v_cfg ->> 'state_uf', '');
+  v_city := nullif(v_cfg ->> 'city', '');
+  v_hours := v_cfg -> 'work_hours';
+
+  v_dow := extract(dow from coalesce(p_date, current_date))::int;
+  v_key := case v_dow
+    when 0 then 'sun'
+    when 1 then 'mon'
+    when 2 then 'tue'
+    when 3 then 'wed'
+    when 4 then 'thu'
+    when 5 then 'fri'
+    else 'sat'
+  end;
+
+  if v_hours is not null and jsonb_typeof(v_hours) = 'object' then
+    v_day := v_hours -> v_key;
+  end if;
+
+  if v_day is not null and jsonb_typeof(v_day) = 'object' then
+    v_closed := coalesce((v_day ->> 'closed')::boolean, false);
+    v_start := nullif(v_day ->> 'start', '');
+    v_end := nullif(v_day ->> 'end', '');
+  else
+    -- fallback legado: janela única
+    v_closed := false;
+    v_start := coalesce(
+      nullif(v_cfg ->> 'start_time', ''),
+      nullif(v_cfg ->> 'start_hour', ''),
+      nullif(v_cfg ->> 'work_start', ''),
+      '08:00'
+    );
+    v_end := coalesce(
+      nullif(v_cfg ->> 'end_time', ''),
+      nullif(v_cfg ->> 'end_hour', ''),
+      nullif(v_cfg ->> 'work_end', ''),
+      '18:00'
+    );
+  end if;
+
+  if v_closed then
+    start_time := null;
+    end_time := null;
+    closed := true;
+    state_uf := v_state;
+    city := v_city;
+    return next;
+    return;
+  end if;
+
+  start_time := coalesce(v_start, '08:00');
+  end_time := coalesce(v_end, '18:00');
+  closed := false;
+  state_uf := v_state;
+  city := v_city;
+  return next;
+end;
 $$;
 
-grant execute on function public.get_public_booking_window(uuid) to anon, authenticated;
+grant execute on function public.get_public_booking_window(uuid, date) to anon, authenticated;
 
 create or replace function public.create_public_booking(
   p_professional_id uuid,
@@ -111,6 +177,10 @@ declare
   v_client_id uuid;
   v_appointment_id uuid;
   v_conflict boolean;
+  v_win record;
+  v_start_mins int;
+  v_end_mins int;
+  v_slot_mins int;
 begin
   -- Mark this transaction as a public booking to bypass the write access trigger
   perform set_config('app.public_booking', 'true', true);
@@ -134,6 +204,27 @@ begin
   end if;
 
   v_duration := coalesce(v_service.duration_minutes, 60);
+
+  -- Valida horário de trabalho do dia
+  select *
+  into v_win
+  from public.get_public_booking_window(p_professional_id, p_date)
+  limit 1;
+
+  if coalesce(v_win.closed, false) then
+    return jsonb_build_object('ok', false, 'reason', 'outside_hours');
+  end if;
+
+  if v_win.start_time is not null and v_win.end_time is not null then
+    v_start_mins := (split_part(v_win.start_time, ':', 1)::int * 60)
+      + split_part(v_win.start_time, ':', 2)::int;
+    v_end_mins := (split_part(v_win.end_time, ':', 1)::int * 60)
+      + split_part(v_win.end_time, ':', 2)::int;
+    v_slot_mins := extract(hour from p_time)::int * 60 + extract(minute from p_time)::int;
+    if v_slot_mins < v_start_mins or (v_slot_mins + v_duration) > v_end_mins then
+      return jsonb_build_object('ok', false, 'reason', 'outside_hours');
+    end if;
+  end if;
 
   select exists (
     select 1

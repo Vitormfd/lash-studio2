@@ -94,6 +94,12 @@ const Dashboard = ({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
           <StatCard label={appointmentsTodayLabel} value={todaySummary.count} icon="check" color="var(--rose-deep)" />
           <StatCard
+            label="Horas trabalhadas"
+            value={formatDurationLabel(todaySummary.totalMinutes || 0)}
+            icon="clock"
+            color="var(--rose-dark)"
+          />
+          <StatCard
             label="Ganho do dia (realizado)"
             value={`R$ ${todaySummary.revenueDone.toFixed(2).replace('.', ',')}`}
             icon="dollar"

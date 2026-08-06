@@ -14,6 +14,12 @@ import {
 import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 import { APP_DESCRIPTION, APP_NAME, getProfessionalTypeMeta } from '../lib/domain'
 import { BRAZIL_STATES } from '../lib/holidays'
+import {
+  DEFAULT_WORK_HOURS,
+  WORK_DAY_ORDER,
+  WORK_TIME_OPTIONS,
+  normalizeWorkHours,
+} from '../lib/workHours'
 
 const Settings = ({
   config,
@@ -30,6 +36,7 @@ const Settings = ({
   const [cost, setCost] = useState(config.avgCost)
   const [stateUf, setStateUf] = useState(config.stateUf || '')
   const [city, setCity] = useState(config.city || '')
+  const [workHours, setWorkHours] = useState(() => normalizeWorkHours(config.workHours))
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
@@ -81,7 +88,15 @@ const Settings = ({
     setCost(config.avgCost)
     setStateUf(config.stateUf || '')
     setCity(config.city || '')
-  }, [config.avgCost, config.stateUf, config.city])
+    setWorkHours(normalizeWorkHours(config.workHours))
+  }, [config.avgCost, config.stateUf, config.city, config.workHours])
+
+  const updateWorkDay = (key, patch) => {
+    setWorkHours((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...patch },
+    }))
+  }
 
   const enablePushNotifications = async () => {
     if (blockDemoAction()) return
@@ -257,6 +272,100 @@ const Settings = ({
         >
           <Icon name="check" size={14} color="#fff" /> Salvar configurações
         </Btn>
+      </div>
+
+      {/* Work hours */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Horário de trabalho</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
+          Defina os dias e horários em que você atende. O agendamento público só libera horários dentro dessa janela.
+        </p>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {WORK_DAY_ORDER.map(({ key, label }) => {
+            const day = workHours[key] || DEFAULT_WORK_HOURS[key]
+            return (
+              <div
+                key={key}
+                style={{
+                  border: '1px solid var(--rose-light)',
+                  borderRadius: 12,
+                  padding: '12px 12px',
+                  background: day.closed ? 'var(--off-white)' : 'var(--surface)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: day.closed ? 0 : 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{label}</span>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-mid)', cursor: isDemo ? 'default' : 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!day.closed}
+                      disabled={isDemo}
+                      onChange={(e) => updateWorkDay(key, { closed: !e.target.checked })}
+                      style={{ width: 16, height: 16, accentColor: 'var(--rose-deep)' }}
+                    />
+                    Aberto
+                  </label>
+                </div>
+                {!day.closed && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                      <Sel
+                        value={day.start}
+                        disabled={isDemo}
+                        onChange={(e) => updateWorkDay(key, { start: e.target.value })}
+                      >
+                        {WORK_TIME_OPTIONS.map((t) => (
+                          <option key={`s-${key}-${t}`} value={t}>{t}</option>
+                        ))}
+                      </Sel>
+                    </div>
+                    <span style={{ fontSize: 12, color: 'var(--text-light)' }}>até</span>
+                    <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                      <Sel
+                        value={day.end}
+                        disabled={isDemo}
+                        onChange={(e) => updateWorkDay(key, { end: e.target.value })}
+                      >
+                        {WORK_TIME_OPTIONS.map((t) => (
+                          <option key={`e-${key}-${t}`} value={t}>{t}</option>
+                        ))}
+                      </Sel>
+                    </div>
+                  </div>
+                )}
+                {day.closed && (
+                  <p style={{ fontSize: 12, color: 'var(--text-light)', margin: 0 }}>Fechado — sem horários no link público</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <Btn
+            onClick={() => {
+              if (blockDemoAction()) return
+              const normalized = normalizeWorkHours(workHours)
+              const invalid = WORK_DAY_ORDER.some(({ key }) => {
+                const d = normalized[key]
+                if (d.closed) return false
+                return !d.start || !d.end || d.start >= d.end
+              })
+              if (invalid) {
+                addToast('Revise os horários: o fim precisa ser depois do início.', 'warning')
+                return
+              }
+              setWorkHours(normalized)
+              setConfig({
+                ...config,
+                workHours: normalized,
+              })
+              addToast('Horário de trabalho salvo! O agendamento público já usa essa janela.', 'success')
+            }}
+            disabled={isDemo}
+          >
+            <Icon name="check" size={14} color="#fff" /> Salvar horário de trabalho
+          </Btn>
+        </div>
       </div>
 
       {/* Location / holidays */}

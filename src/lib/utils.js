@@ -30,10 +30,12 @@ export const apptStartsInHourRow = (appt, hourLabel) => {
 }
 
 export const formatDurationLabel = (m) => {
-  const n = Number(m) || 60
-  if (n >= 60 && n % 60 === 0) return `${n / 60} h`
-  if (n > 60) return `${Math.floor(n / 60)} h ${n % 60} min`
-  return `${n} min`
+  const n = Number(m)
+  const mins = Number.isFinite(n) && n >= 0 ? n : 60
+  if (mins === 0) return '0 min'
+  if (mins >= 60 && mins % 60 === 0) return `${mins / 60} h`
+  if (mins > 60) return `${Math.floor(mins / 60)} h ${mins % 60} min`
+  return `${mins} min`
 }
 
 export const endTimeLabel = (startTime, durM) => {
@@ -85,8 +87,27 @@ export const HOURS = Array.from({ length: 13 }, (_, i) => `${(i + 8).toString().
 export const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 export const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
+/** Início da grade da agenda (primeiro horário visível). */
+export const AGENDA_DAY_START = HOURS[0]
+
+/** Minutos para cobrir todos os slots da grade (ex.: 08:00 → 21:00). */
+export const getFullDayBlockMinutes = () =>
+  timeToMins(HOURS[HOURS.length - 1]) + 60 - timeToMins(HOURS[0])
+
+export const getFullDayBlock = () => ({
+  time: AGENDA_DAY_START,
+  durationMinutes: getFullDayBlockMinutes(),
+})
+
 // ─── SERVICE CONSTANTS ───────────────────────────────────────────────────────
 export const DURATION_OPTIONS = [30, 40, 45, 50, 60, 90, 120, 150, 180]
+
+/** Durações extras para bloqueios pessoais (além das opções de serviço). */
+export const BLOCK_DURATION_OPTIONS = [
+  ...DURATION_OPTIONS,
+  240, 300, 360, 480, 600,
+  getFullDayBlockMinutes(),
+]
 
 export const SERVICE_COLOR_PRESETS = [
   { name: 'Rosé', hex: '#C17B82' },

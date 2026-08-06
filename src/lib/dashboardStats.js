@@ -1,5 +1,7 @@
 /** Cálculos puros para o dashboard — fácil de testar e reutilizar */
 
+import { apptDurationMin } from './utils'
+
 /** YYYY-MM-DD no fuso local (não usar toISOString: ele usa UTC e desloca o dia). */
 export const toLocalYmd = (d = new Date()) => {
   const y = d.getFullYear()
@@ -27,11 +29,14 @@ export const getTodaySummary = (appointments, todayStr = getTodayStr()) => {
     .filter((a) => a.status === 'done')
     .reduce((s, a) => s + Number(a.value || 0), 0)
   const uniqueClients = new Set(today.map((a) => a.clientId).filter(Boolean)).size
+  const totalMinutes = today.reduce((s, a) => s + apptDurationMin(a), 0)
   return {
     count: today.length,
     uniqueClients,
     revenueScheduled,
     revenueDone,
+    /** soma das durações dos atendimentos ativos do dia */
+    totalMinutes,
     /** compat: “previsto” = o que ainda não foi concluído (pendente + confirmado) */
     revenue: revenueScheduled,
     appointments: today,

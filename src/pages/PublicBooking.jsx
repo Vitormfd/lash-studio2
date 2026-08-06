@@ -59,6 +59,10 @@ const normalizeTimeValue = (raw) => {
 
 const resolveWindow = (configRow) => {
   const row = configRow || {}
+  if (row.closed === true || row.closed === 'true' || row.closed === 1) {
+    return { closed: true, start: null, end: null }
+  }
+
   const start =
     normalizeTimeValue(row.start_time) ||
     normalizeTimeValue(row.start_hour) ||
@@ -78,10 +82,10 @@ const resolveWindow = (configRow) => {
     DEFAULT_END
 
   if (timeToMins(end) <= timeToMins(start)) {
-    return { start: DEFAULT_START, end: DEFAULT_END }
+    return { closed: false, start: DEFAULT_START, end: DEFAULT_END }
   }
 
-  return { start, end }
+  return { closed: false, start, end }
 }
 
 const buildSlots = ({ selectedDate, durationMinutes, appointments, windowStart, windowEnd }) => {
@@ -152,7 +156,8 @@ const PublicBooking = ({ professionalId }) => {
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedTime, setSelectedTime] = useState('')
   const [slots, setSlots] = useState([])
-  const [workWindow, setWorkWindow] = useState({ start: DEFAULT_START, end: DEFAULT_END })
+  const [workWindow, setWorkWindow] = useState({ closed: false, start: DEFAULT_START, end: DEFAULT_END })
+  const [dayClosed, setDayClosed] = useState(false)
   const [dayHolidayLabel, setDayHolidayLabel] = useState('')
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -216,10 +221,12 @@ const PublicBooking = ({ professionalId }) => {
         }),
         sb.rpc('get_public_booking_window', {
           p_professional_id: professionalId,
+          p_date: dateYmd,
         }),
       ])
 
       if (appointmentsRes.error) throw appointmentsRes.error
+      if (windowRes.error) throw windowRes.error
 
       const dayAppointments = (appointmentsRes.data || []).map((a) => ({
         id: a.id,
@@ -241,11 +248,20 @@ const PublicBooking = ({ professionalId }) => {
       const holidays = getHolidaysOnDate(dateYmd, loc)
       if (holidays.length) {
         setDayHolidayLabel(formatHolidaySummary(holidays))
+        setDayClosed(false)
         setSelectedTime('')
         setSlots([])
         return
       }
       setDayHolidayLabel('')
+
+      if (nextWindow.closed) {
+        setDayClosed(true)
+        setSelectedTime('')
+        setSlots([])
+        return
+      }
+      setDayClosed(false)
 
       const generated = buildSlots({
         selectedDate: dateYmd,
@@ -315,6 +331,12 @@ const PublicBooking = ({ professionalId }) => {
       const ok = result?.ok === true
       if (!ok && result?.reason === 'conflict') {
         setErrorMsg('Este horário acabou de ser reservado. Por favor, escolha outro horário.')
+        setStep(2)
+        await loadSlots(selectedDate, selectedService)
+        return
+      }
+      if (!ok && result?.reason === 'outside_hours') {
+        setErrorMsg('Este horário está fora do horário de atendimento. Escolha outro horário.')
         setStep(2)
         await loadSlots(selectedDate, selectedService)
         return
@@ -496,7 +518,11 @@ const PublicBooking = ({ professionalId }) => {
                 </div>
 
                 <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 10 }}>
-                  Janela de atendimento: {workWindow.start} às {workWindow.end}
+                  {dayClosed
+                    ? 'Dia fechado no horário de trabalho configurado.'
+                    : workWindow.start && workWindow.end
+                      ? `Horário de atendimento neste dia: ${workWindow.start} às ${workWindow.end}`
+                      : 'Selecione uma data para ver o horário de atendimento.'}
                 </p>
 
                 {loadingSlots ? (
@@ -542,10 +568,12 @@ const PublicBooking = ({ professionalId }) => {
                     </div>
 
                     {!hasAnyAvailable && (
-                      <p style={{ marginTop: 12, fontSize: 14, color: dayHolidayLabel ? '#9B3D4A' : 'var(--text-light)' }}>
+                      <p style={{ marginTop: 12, fontSize: 14, color: dayHolidayLabel || dayClosed ? '#9B3D4A' : 'var(--text-light)' }}>
                         {dayHolidayLabel
                           ? `Feriado: ${dayHolidayLabel}. Escolha outra data.`
-                          : 'Não há horários disponíveis neste dia. Tente outra data.'}
+                          : dayClosed
+                            ? 'Neste dia não há atendimento. Escolha outra data.'
+                            : 'Não há horários disponíveis neste dia. Tente outra data.'}
                       </p>
                     )}
 

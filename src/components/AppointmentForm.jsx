@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Btn, Field, Inp, Sel, Textarea, inputStyle } from './UI'
 import Icon from './Icon'
-import { DURATION_OPTIONS, formatDurationLabel, endTimeLabel } from '../lib/utils'
+import {
+  DURATION_OPTIONS,
+  BLOCK_DURATION_OPTIONS,
+  formatDurationLabel,
+  endTimeLabel,
+  getFullDayBlock,
+  getFullDayBlockMinutes,
+  AGENDA_DAY_START,
+} from '../lib/utils'
 import { toLocalYmd } from '../lib/dashboardStats'
 
 const listBoxStyle = {
@@ -11,6 +19,11 @@ const listBoxStyle = {
   borderRadius: 10,
   background: 'var(--surface)',
   marginTop: 6,
+}
+
+const durationOptionLabel = (m) => {
+  if (m === getFullDayBlockMinutes()) return `Dia inteiro (${AGENDA_DAY_START}–${endTimeLabel(AGENDA_DAY_START, m)})`
+  return formatDurationLabel(m)
 }
 
 const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked }) => {
@@ -71,11 +84,22 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
   const selectedService = services.find((s) => s.id === form.serviceId)
 
   const dur = Number(form.durationMinutes) || 60
-  const durationSelectValues = [...new Set([...DURATION_OPTIONS, dur])].sort((a, b) => a - b)
+  const durationBase = form.blocked ? BLOCK_DURATION_OPTIONS : DURATION_OPTIONS
+  const durationSelectValues = [...new Set([...durationBase, dur])].sort((a, b) => a - b)
   const timeStr = form.time && String(form.time).trim() ? String(form.time).trim().slice(0, 5) : '09:00'
+  const fullDay = getFullDayBlock()
+  const isFullDayBlock = !!form.blocked && timeStr === fullDay.time && dur === fullDay.durationMinutes
   const valid = form.blocked
     ? form.date && timeStr && dur > 0
     : form.clientId && form.serviceId && form.date && timeStr && form.value && dur > 0
+
+  const applyFullDayBlock = (enabled) => {
+    if (enabled) {
+      setForm((f) => ({ ...f, time: fullDay.time, durationMinutes: fullDay.durationMinutes }))
+      return
+    }
+    setForm((f) => ({ ...f, durationMinutes: 60 }))
+  }
 
   const submit = async () => {
     if (!valid) return
@@ -196,17 +220,62 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
         </Field>
       )}
 
+      {blocked && (
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+            padding: '12px 14px',
+            borderRadius: 12,
+            border: `1.5px solid ${isFullDayBlock ? 'var(--rose-deep)' : 'var(--border-mid)'}`,
+            background: isFullDayBlock ? 'var(--rose-light)' : 'var(--surface)',
+            cursor: 'pointer',
+            marginBottom: 14,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={isFullDayBlock}
+            onChange={(e) => applyFullDayBlock(e.target.checked)}
+            style={{ width: 18, height: 18, marginTop: 1, accentColor: 'var(--rose-deep)', flexShrink: 0 }}
+          />
+          <span>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Bloquear dia inteiro</span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--text-light)', marginTop: 3, lineHeight: 1.4 }}>
+              Fecha toda a agenda do dia ({AGENDA_DAY_START} às {endTimeLabel(AGENDA_DAY_START, fullDay.durationMinutes)}).
+            </span>
+          </span>
+        </label>
+      )}
+
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Field label="Data" half>
           <Inp type="date" value={form.date} onChange={(e) => set('date', e.target.value)} />
         </Field>
         <Field label="Início" half>
-          <Inp type="time" value={timeStr} onChange={(e) => set('time', e.target.value)} />
+          <Inp
+            type="time"
+            value={timeStr}
+            disabled={isFullDayBlock}
+            onChange={(e) => set('time', e.target.value)}
+          />
         </Field>
         <Field label="Duração" half>
-          <Sel value={String(dur)} onChange={(e) => set('durationMinutes', Number(e.target.value))}>
+          <Sel
+            value={String(dur)}
+            disabled={isFullDayBlock}
+            onChange={(e) => {
+              const m = Number(e.target.value)
+              if (form.blocked && m === fullDay.durationMinutes) {
+                setForm((f) => ({ ...f, time: fullDay.time, durationMinutes: m }))
+                return
+              }
+              set('durationMinutes', m)
+            }}
+          >
             {durationSelectValues.map((m) => (
-              <option key={m} value={m}>{formatDurationLabel(m)}</option>
+              <option key={m} value={m}>{form.blocked ? durationOptionLabel(m) : formatDurationLabel(m)}</option>
             ))}
           </Sel>
           <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 5 }}>

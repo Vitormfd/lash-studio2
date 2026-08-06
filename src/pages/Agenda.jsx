@@ -7,10 +7,11 @@ import {
   HOURS, DAYS_PT, MONTHS_PT,
   normalizeServiceColor, hexToRgba,
   apptDurationMin, apptCoversSlotHour, apptStartsInHourRow, apptIntervalsOverlap,
-  formatDurationLabel, endTimeLabel,
+  formatDurationLabel, endTimeLabel, getFullDayBlockMinutes,
 } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
-import { toLocalYmd } from '../lib/dashboardStats'
+import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
+import { toLocalYmd, getTodaySummary } from '../lib/dashboardStats'
 import { getHolidaysMap, formatHolidaySummary, holidayTypeLabel } from '../lib/holidays'
 
 const Agenda = ({
@@ -32,7 +33,9 @@ const Agenda = ({
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
   const [modal, setModal] = useState(null)
+  const [apptDetailId, setApptDetailId] = useState(null)
   const [paymentModal, setPaymentModal] = useState({ open: false, appt: null, method: '', value: '', notes: '' })
+  const apptDetail = apptDetailId ? appointments.find((a) => a.id === apptDetailId) : null
 
   const location = useMemo(() => ({
     stateUf: config?.stateUf || '',
@@ -47,6 +50,8 @@ const Agenda = ({
 
   const dateStr = toLocalYmd(current)
   const dayHolidays = holidaysByDate.get(dateStr) || []
+  const daySummary = useMemo(() => getTodaySummary(appointments, dateStr), [appointments, dateStr])
+  const appointmentsLabel = isBarber ? 'cortes' : 'atendimentos'
   const hasLocation = Boolean(location.stateUf)
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Bloqueado'
   const getClient = (id) => clients.find((c) => c.id === id) || null
@@ -87,6 +92,9 @@ const Agenda = ({
     const m = statusMeta(a.status)
     return { bg: m.bg, border: m.border, text: m.text }
   }
+
+  const detailDuration = apptDetail ? apptDurationMin(apptDetail) : 60
+  const detailColors = apptDetail ? statusColor(apptDetail) : null
 
   const quickBtn = (label, appt, next, extra = {}) => (
     <button
@@ -190,7 +198,13 @@ const Agenda = ({
                           {paymentMethodLabel(appt.paymentMethod)} {paymentMethodIcon(appt.paymentMethod)} · {formatMoney(appt.paymentValue != null ? appt.paymentValue : appt.value)}
                         </div>
                       )}
-                      {appt.blocked && <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{formatDurationLabel(dm)}</div>}
+                      {appt.blocked && (
+                        <div style={{ fontSize: 11, color: 'var(--text-light)' }}>
+                          {apptDurationMin(appt) >= getFullDayBlockMinutes()
+                            ? 'Dia inteiro'
+                            : formatDurationLabel(dm)}
+                        </div>
+                      )}
                       {appt.notes && <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>{appt.notes}</div>}
                       {!appt.blocked && (
                         <QuickStatusRow appt={appt} />
@@ -322,7 +336,23 @@ const Agenda = ({
                   <div key={ds} onClick={() => !slotBusy && setModal({ date: ds, time: h })}
                     style={{ minHeight: 44, padding: 3, borderBottom: '1px solid var(--rose-light)', borderLeft: '1px solid var(--rose-light)', cursor: slotBusy ? 'default' : 'pointer' }}>
                     {appt && (
-                      <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 6, padding: '3px 5px', height: '100%', overflow: 'hidden' }}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setApptDetailId(appt.id)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setApptDetailId(appt.id)
+                          }
+                        }}
+                        title="Ver atendimento"
+                        style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 6, padding: '3px 5px', height: '100%', overflow: 'hidden', cursor: 'pointer' }}
+                      >
                         <div style={{ fontSize: 10, fontWeight: 600, color: colors.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {appt.blocked ? '🔒' : getClientName(appt.clientId)}
                         </div>
@@ -393,7 +423,36 @@ const Agenda = ({
                 {appts.slice(0, hols.length ? 1 : 2).map((a) => {
                   const acc = normalizeServiceColor(services.find((s) => s.id === a.serviceId)?.color)
                   return (
-                    <div key={a.id} style={{ fontSize: 9, background: acc ? hexToRgba(acc, 0.35) || 'var(--rose)' : 'var(--rose)', color: acc ? '#2C1A1E' : 'var(--rose-dark)', borderLeft: acc ? `3px solid ${acc}` : '3px solid transparent', borderRadius: 3, padding: '1px 4px', marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div
+                      key={a.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setApptDetailId(a.id)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setApptDetailId(a.id)
+                        }
+                      }}
+                      title="Ver atendimento"
+                      style={{
+                        fontSize: 9,
+                        background: acc ? hexToRgba(acc, 0.35) || 'var(--rose)' : 'var(--rose)',
+                        color: acc ? '#2C1A1E' : 'var(--rose-dark)',
+                        borderLeft: acc ? `3px solid ${acc}` : '3px solid transparent',
+                        borderRadius: 3,
+                        padding: '1px 4px',
+                        marginBottom: 1,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                      }}
+                    >
                       {String(a.time).slice(0, 5)} {getClientName(a.clientId)}
                     </div>
                   )
@@ -497,6 +556,37 @@ const Agenda = ({
         </div>
       )}
 
+      {view === 'day' && (
+        <div
+          style={{
+            margin: '0 16px 10px',
+            border: '1px solid var(--rose-light)',
+            borderRadius: 10,
+            background: 'var(--surface)',
+            padding: '10px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+              {daySummary.count}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{appointmentsLabel}</span>
+          </div>
+          <div style={{ width: 1, height: 18, background: 'var(--rose-light)' }} />
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <Icon name="clock" size={14} color="var(--rose-deep)" />
+            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+              {formatDurationLabel(daySummary.totalMinutes || 0)}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>trabalhadas</span>
+          </div>
+        </div>
+      )}
+
       {view === 'day' && <DayView />}
       {view === 'week' && <WeekView />}
       {view === 'month' && <MonthView />}
@@ -527,6 +617,88 @@ const Agenda = ({
               setModal(null)
             }}
           />
+        )}
+      </Modal>
+
+      <Modal
+        open={!!apptDetail}
+        onClose={() => setApptDetailId(null)}
+        title={apptDetail?.blocked ? 'Horário bloqueado' : 'Atendimento'}
+      >
+        {apptDetail && detailColors && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div
+              style={{
+                background: detailColors.bg,
+                border: `1.5px solid ${detailColors.border}`,
+                borderRadius: 12,
+                padding: '12px 14px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                <p style={{ fontSize: 16, fontWeight: 700, color: detailColors.text, margin: 0 }}>
+                  {apptDetail.blocked ? '🔒 Bloqueado' : getClientName(apptDetail.clientId)}
+                </p>
+                {!apptDetail.blocked && <AppointmentStatusBadge status={apptDetail.status} />}
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--text-mid)', margin: 0 }}>
+                {new Date(`${apptDetail.date}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {' · '}
+                {apptDetail.blocked && detailDuration >= getFullDayBlockMinutes()
+                  ? 'Dia inteiro'
+                  : `${String(apptDetail.time).slice(0, 5)}–${endTimeLabel(apptDetail.time, detailDuration)} · ${formatDurationLabel(detailDuration)}`}
+              </p>
+              {!apptDetail.blocked && (
+                <p style={{ fontSize: 13, color: 'var(--text-mid)', margin: '6px 0 0' }}>
+                  {getServiceName(apptDetail.serviceId)} · {formatMoney(apptDetail.value)}
+                </p>
+              )}
+              {!apptDetail.blocked && apptDetail.status === 'done' && apptDetail.paymentMethod && (
+                <p style={{ fontSize: 12, color: '#0F766E', margin: '6px 0 0', fontWeight: 600 }}>
+                  {paymentMethodLabel(apptDetail.paymentMethod)} {paymentMethodIcon(apptDetail.paymentMethod)} · {formatMoney(apptDetail.paymentValue != null ? apptDetail.paymentValue : apptDetail.value)}
+                </p>
+              )}
+              {apptDetail.notes && (
+                <p style={{ fontSize: 12, color: 'var(--text-light)', margin: '8px 0 0', lineHeight: 1.4 }}>{apptDetail.notes}</p>
+              )}
+            </div>
+
+            {!apptDetail.blocked && <QuickStatusRow appt={apptDetail} />}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {!apptDetail.blocked && (
+                <Btn variant="ghost" touch onClick={() => openWhatsappReminder(apptDetail)}>
+                  <Icon name="whatsapp" size={14} color="#10A867" /> WhatsApp
+                </Btn>
+              )}
+              {!apptDetail.blocked && (
+                <Btn
+                  variant="outline"
+                  touch
+                  onClick={() => {
+                    if (!canUserEdit) {
+                      onBlockedAction?.('Desbloqueie para editar agendamentos.')
+                      return
+                    }
+                    setApptDetailId(null)
+                    onEdit(apptDetail)
+                  }}
+                >
+                  <Icon name={canUserEdit ? 'edit' : 'lock'} size={14} color="var(--rose-deep)" /> Editar
+                </Btn>
+              )}
+              <Btn
+                variant="danger"
+                touch
+                onClick={() => {
+                  onDelete(apptDetail.id)
+                  setApptDetailId(null)
+                }}
+              >
+                <Icon name="trash" size={14} color="#fff" /> Excluir
+              </Btn>
+            </div>
+          </div>
         )}
       </Modal>
 
