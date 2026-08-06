@@ -65,8 +65,19 @@ Legado (mantido):
 
 Tabela: `public.profiles`
 
-- pagamento aprovado: `plan = active`, `access_level = full`
+- pagamento aprovado: `plan = active`, `access_level = full`, `manual_grant = false`
 - cancelamento/expiracao: `plan = canceled`, `access_level = demo`
+- se `manual_grant = true` (ou padrao legado de acesso manual), eventos de cancelamento **nao** rebaixam o perfil
+
+Para liberar acesso manual (sem Stripe), rode no SQL Editor:
+
+```sql
+update public.profiles
+set plan = 'active', access_level = 'full', manual_grant = true, subscription_expires_at = null
+where id = '<user-uuid>';
+```
+
+Ver tambem: `supabase/sql/manual_grant_access.sql`.
 
 ## Deploy
 

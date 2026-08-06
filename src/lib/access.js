@@ -53,14 +53,15 @@ export const fetchUserAccessProfile = async (userId, isDemo) => {
       return normalized
     }
 
-    // Profile genuinely doesn't exist in DB (no error, no row) → create with defaults
+    // Profile genuinely doesn't exist in DB (no error, no row) → create with defaults.
+    // ignoreDuplicates avoids overwriting a concurrent/manual active grant.
     if (!error && !data) {
       await sb.from('profiles').upsert({
         id: userId,
         plan: 'free',
         access_level: 'demo',
         professional_type: DEFAULT_PROFESSIONAL_TYPE,
-      }, { onConflict: 'id' })
+      }, { onConflict: 'id', ignoreDuplicates: true })
       local.set(FALLBACK_KEY(userId), defaultAccessProfile)
       return defaultAccessProfile
     }

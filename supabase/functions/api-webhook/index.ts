@@ -17,6 +17,8 @@ type ProfileAccess = 'full' | 'demo'
 type ProfileSnapshot = {
   plan: 'free' | ProfilePlan
   access_level: ProfileAccess
+  manual_grant: boolean
+  subscription_expires_at: string | null
 } | null
 
 const corsHeaders = {
@@ -91,17 +93,21 @@ const updateProfileAccess = async (
   plan: ProfilePlan,
   accessLevel: ProfileAccess,
   expiresAt: string | null,
-) => sb
-  .from('profiles')
-  .upsert(
-    {
-      id: userId,
-      plan,
-      access_level: accessLevel,
-      subscription_expires_at: expiresAt,
-    },
-    { onConflict: 'id' },
-  )
+  options?: { clearManualGrant?: boolean },
+) => {
+  const row: Record<string, unknown> = {
+    id: userId,
+    plan,
+    access_level: accessLevel,
+    subscription_expires_at: expiresAt,
+  }
+  if (options?.clearManualGrant) {
+    row.manual_grant = false
+  }
+  return sb
+    .from('profiles')
+    .upsert(row, { onConflict: 'id' })
+}
 
 const resolveUserIdFromStripe = async (
   sb: ReturnType<typeof createClient>,
@@ -149,7 +155,7 @@ const getProfileSnapshot = async (
 ): Promise<ProfileSnapshot> => {
   const { data, error } = await sb
     .from('profiles')
-    .select('plan, access_level')
+    .select('plan, access_level, manual_grant, subscription_expires_at')
     .eq('id', userId)
     .maybeSingle()
 
@@ -157,9 +163,19 @@ const getProfileSnapshot = async (
 
   const plan = data.plan === 'active' || data.plan === 'canceled' ? data.plan : 'free'
   const access_level = data.access_level === 'full' ? 'full' : 'demo'
-  return { plan, access_level }
+  return {
+    plan,
+    access_level,
+    manual_grant: Boolean(data.manual_grant),
+    subscription_expires_at: data.subscription_expires_at || null,
+  }
 }
 
+// Manual grants must not be wiped by Stripe cancel/unpaid events.
+// Patterns:
+// - manual_grant = true (explicit lock)
+// - legacy: plan free + access full
+// - common admin pattern: active + full + no Stripe expiry date
 const shouldProtectManualFullAccess = (
   currentProfile: ProfileSnapshot,
   nextPlan: ProfilePlan,
@@ -167,7 +183,11 @@ const shouldProtectManualFullAccess = (
 ) => {
   if (nextPlan !== 'canceled' || nextAccess !== 'demo') return false
   if (!currentProfile) return false
-  return currentProfile.plan === 'free' && currentProfile.access_level === 'full'
+  if (currentProfile.access_level !== 'full') return false
+  if (currentProfile.manual_grant) return true
+  if (currentProfile.plan === 'free') return true
+  if (currentProfile.plan === 'active' && !currentProfile.subscription_expires_at) return true
+  return false
 }
 
 const handleStripeWebhook = async (
@@ -203,7 +223,7 @@ const handleStripeWebhook = async (
     || event.type === 'invoice.payment_succeeded'
     || event.type === 'invoice.paid'
   ) {
-    const { error } = await updateProfileAccess(sb, userId, 'active', 'full', null)
+    const { error } = await updateProfileAccess(sb, userId, 'active', 'full', null, { clearManualGrant: true })
     if (error) return json(500, { ok: false, error: error.message })
     return json(200, { ok: true, provider: 'stripe', event: event.type, userId, plan: 'active', access_level: 'full' })
   }
@@ -248,7 +268,15 @@ const handleStripeWebhook = async (
     }
 
     const expiresAt = toIso(object.current_period_end)
-    const { error } = await updateProfileAccess(sb, userId, mapped.plan, mapped.access, expiresAt)
+    const clearManualGrant = mapped.plan === 'active' && mapped.access === 'full'
+    const { error } = await updateProfileAccess(
+      sb,
+      userId,
+      mapped.plan,
+      mapped.access,
+      expiresAt,
+      clearManualGrant ? { clearManualGrant: true } : undefined,
+    )
     if (error) return json(500, { ok: false, error: error.message })
     return json(200, {
       ok: true,
@@ -371,6 +399,7 @@ Deno.serve(async (req) => {
         plan: nextPlan,
         access_level: nextAccess,
         subscription_expires_at: expiresAt,
+        ...(nextPlan === 'active' && nextAccess === 'full' ? { manual_grant: false } : {}),
       },
       { onConflict: 'id' },
     )

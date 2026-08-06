@@ -14,6 +14,12 @@ create table if not exists public.profiles (
 alter table public.profiles
 add column if not exists professional_type text;
 
+alter table public.profiles
+add column if not exists manual_grant boolean not null default false;
+
+comment on column public.profiles.manual_grant is
+  'When true, Stripe/payment webhooks must not downgrade plan/access_level.';
+
 update public.profiles
 set professional_type = 'lash'
 where professional_type is null;
