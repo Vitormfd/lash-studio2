@@ -21,6 +21,9 @@ import {
   normalizeWorkHours,
 } from '../lib/workHours'
 
+const SUPPORT_WHATSAPP = '5574999348744'
+const SUPPORT_WHATSAPP_TEXT = 'Olá! Preciso de ajuda com o app.'
+
 const Settings = ({
   config,
   setConfig,
@@ -616,6 +619,41 @@ const Settings = ({
             )}
           </>
         )}
+      </div>
+
+      {/* Support */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Suporte</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 14 }}>
+          Precisa de ajuda? Fale comigo pelo WhatsApp.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            const url = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(SUPPORT_WHATSAPP_TEXT)}`
+            window.open(url, '_blank', 'noopener,noreferrer')
+          }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            width: '100%',
+            minHeight: 48,
+            padding: '13px 22px',
+            border: '1px solid #0E8A64',
+            borderRadius: 10,
+            cursor: 'pointer',
+            color: '#fff',
+            background: 'linear-gradient(180deg, #1ECB78 0%, #10A867 100%)',
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            boxShadow: '0 2px 6px rgba(16,168,103,0.35)',
+          }}
+        >
+          <Icon name="whatsapp" size={16} color="#fff" /> Falar no WhatsApp
+        </button>
       </div>
 
       {/* About */}
