@@ -30,6 +30,7 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const WEBHOOK_SECRET = Deno.env.get('PAYMENT_WEBHOOK_SECRET') || ''
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') || ''
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET') || WEBHOOK_SECRET
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders })
@@ -63,28 +64,125 @@ const toIso = (value: unknown) => {
   return null
 }
 
-const getFromRecord = (record: Record<string, unknown> | undefined, key: string) => {
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' ? value as Record<string, unknown> : null
+
+const getFromRecord = (record: Record<string, unknown> | undefined | null, key: string) => {
   if (!record) return null
   const value = record[key]
-  return typeof value === 'string' ? value : null
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+const getId = (value: unknown) => {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return getFromRecord(asRecord(value), 'id')
+}
+
+const collectEmails = (...objects: Array<Record<string, unknown> | null | undefined>) => {
+  const emails = new Set<string>()
+  const add = (value: string | null) => {
+    if (!value || !value.includes('@')) return
+    emails.add(value.trim().toLowerCase())
+  }
+
+  for (const object of objects) {
+    if (!object) continue
+    add(getFromRecord(object, 'customer_email'))
+    add(getFromRecord(object, 'email'))
+    add(getFromRecord(asRecord(object.customer_details), 'email'))
+    add(getFromRecord(asRecord(object.customer), 'email'))
+    add(getFromRecord(asRecord(object.prefilled), 'email'))
+  }
+
+  return [...emails]
 }
 
 const getStripeUserIdFromObject = (object: Record<string, unknown>) => {
-  const metadata = (object.metadata && typeof object.metadata === 'object')
-    ? object.metadata as Record<string, unknown>
-    : undefined
-  const subscriptionDetails =
-    object.subscription_details && typeof object.subscription_details === 'object'
-      ? object.subscription_details as Record<string, unknown>
-      : undefined
-  const subscriptionMetadata =
-    subscriptionDetails?.metadata && typeof subscriptionDetails.metadata === 'object'
-      ? subscriptionDetails.metadata as Record<string, unknown>
-      : undefined
+  const metadata = asRecord(object.metadata)
+  const subscriptionDetails = asRecord(object.subscription_details)
+  const subscriptionMetadata = asRecord(subscriptionDetails?.metadata)
 
   return getFromRecord(metadata, 'user_id')
     || getFromRecord(subscriptionMetadata, 'user_id')
     || getFromRecord(object, 'client_reference_id')
+}
+
+const findUserIdByEmail = async (email: string) => {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return null
+
+  try {
+    const response = await fetch(
+      `${PROJECT_URL}/auth/v1/admin/users?email=${encodeURIComponent(normalized)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          apikey: SERVICE_ROLE_KEY,
+        },
+      },
+    )
+    if (!response.ok) return null
+    const payload = await response.json()
+    if (payload && typeof payload === 'object' && typeof payload.id === 'string') {
+      return payload.id
+    }
+    const users = Array.isArray(payload?.users) ? payload.users : []
+    const match = users.find((user: { email?: string; id?: string }) =>
+      String(user.email || '').trim().toLowerCase() === normalized
+    )
+    return typeof match?.id === 'string' ? match.id : null
+  } catch {
+    return null
+  }
+}
+
+const userIdExists = async (
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+) => {
+  if (!UUID_RE.test(userId)) return false
+  const { data, error } = await sb.auth.admin.getUserById(userId)
+  return !error && Boolean(data?.user?.id)
+}
+
+const findRelatedCheckoutSession = async (
+  stripe: Stripe,
+  object: Record<string, unknown>,
+) => {
+  if (getFromRecord(object, 'object') === 'checkout.session' || getFromRecord(object, 'client_reference_id')) {
+    return object
+  }
+
+  const subscriptionId = getId(object.subscription)
+    || (getFromRecord(object, 'object') === 'subscription' ? getFromRecord(object, 'id') : null)
+
+  if (subscriptionId) {
+    const sessions = await stripe.checkout.sessions.list({ subscription: subscriptionId, limit: 5 })
+    const match = sessions.data.find((session) => session.client_reference_id) || sessions.data[0]
+    if (match) return match as unknown as Record<string, unknown>
+  }
+
+  const customerId = getId(object.customer)
+  if (customerId) {
+    const sessions = await stripe.checkout.sessions.list({ customer: customerId, limit: 10 })
+    const completed = sessions.data.filter((session) => session.status === 'complete')
+    const match = completed.find((session) => session.client_reference_id) || completed[0]
+    if (match) return match as unknown as Record<string, unknown>
+  }
+
+  return null
+}
+
+const retrieveCustomerEmail = async (stripe: Stripe, object: Record<string, unknown>) => {
+  const customerId = getId(object.customer)
+  if (!customerId) return null
+  try {
+    const customer = await stripe.customers.retrieve(customerId)
+    if ('deleted' in customer && customer.deleted) return null
+    return typeof customer.email === 'string' ? customer.email : null
+  } catch {
+    return null
+  }
 }
 
 const updateProfileAccess = async (
@@ -111,31 +209,47 @@ const updateProfileAccess = async (
 
 const resolveUserIdFromStripe = async (
   sb: ReturnType<typeof createClient>,
+  stripe: Stripe,
   object: Record<string, unknown>,
 ) => {
-  const fromMetadata = getStripeUserIdFromObject(object)
-  if (fromMetadata) return fromMetadata
+  const relatedSession = await findRelatedCheckoutSession(stripe, object).catch(() => null)
+  const directId = getStripeUserIdFromObject(object)
+    || (relatedSession ? getStripeUserIdFromObject(relatedSession) : null)
 
-  const email = getFromRecord(object, 'customer_email')
-    || getFromRecord(object, 'email')
-    || (() => {
-      const details = object.customer_details
-      if (!details || typeof details !== 'object') return null
-      return getFromRecord(details as Record<string, unknown>, 'email')
-    })()
+  if (directId && await userIdExists(sb, directId)) return directId
 
-  if (!email) return null
+  const emails = collectEmails(object, relatedSession)
+  const customerEmail = await retrieveCustomerEmail(stripe, object)
+  if (customerEmail) emails.push(customerEmail.trim().toLowerCase())
 
-  const { data, error } = await sb
-    .schema('auth')
-    .from('users')
-    .select('id')
-    .eq('email', email.trim().toLowerCase())
-    .limit(1)
-    .maybeSingle()
+  for (const email of [...new Set(emails)]) {
+    const userId = await findUserIdByEmail(email)
+    if (userId) return userId
+  }
 
-  if (error || !data?.id) return null
-  return data.id as string
+  return null
+}
+
+const attachUserIdToStripe = async (
+  stripe: Stripe,
+  object: Record<string, unknown>,
+  userId: string,
+) => {
+  const subscriptionId = getId(object.subscription)
+    || (getFromRecord(object, 'object') === 'subscription' ? getFromRecord(object, 'id') : null)
+  const customerId = getId(object.customer)
+
+  try {
+    if (subscriptionId) {
+      await stripe.subscriptions.update(subscriptionId, { metadata: { user_id: userId } })
+    }
+  } catch {}
+
+  try {
+    if (customerId) {
+      await stripe.customers.update(customerId, { metadata: { user_id: userId } })
+    }
+  } catch {}
 }
 
 const mapStripeStatusToAccess = (status: string): { plan: ProfilePlan, access: ProfileAccess } | null => {
@@ -213,10 +327,12 @@ const handleStripeWebhook = async (
   }
 
   const object = event.data.object as Record<string, unknown>
-  const userId = await resolveUserIdFromStripe(sb, object)
+  const userId = await resolveUserIdFromStripe(sb, stripe, object)
   if (!userId) {
     return json(404, { ok: false, error: 'User not found for Stripe event', event: event.type })
   }
+
+  await attachUserIdToStripe(stripe, object, userId)
 
   if (
     event.type === 'checkout.session.completed'
@@ -299,16 +415,7 @@ const resolveUserId = async (sb: ReturnType<typeof createClient>, payload: Webho
   const email = payload.email?.trim().toLowerCase()
   if (!email) return null
 
-  const { data, error } = await sb
-    .schema('auth')
-    .from('users')
-    .select('id')
-    .eq('email', email)
-    .limit(1)
-    .maybeSingle()
-
-  if (error || !data?.id) return null
-  return data.id as string
+  return findUserIdByEmail(email)
 }
 
 Deno.serve(async (req) => {

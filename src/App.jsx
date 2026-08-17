@@ -458,9 +458,15 @@ const AppMain = ({ session, onLogout }) => {
 
     if (checkoutStatus === 'success') {
       addToast('Pagamento confirmado. Atualizando seu acesso...', 'success')
-      fetchUserAccessProfile(userId, isDemo)
-        .then((profile) => setAccessProfile(profile))
-        .catch(() => {})
+      ;(async () => {
+        for (const delay of [0, 1500, 3500]) {
+          if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+          await AUTH.getSession().catch(() => null)
+          const profile = await fetchUserAccessProfile(userId, isDemo)
+          setAccessProfile(profile)
+          if (canUserEditByLevel(profile.accessLevel)) break
+        }
+      })().catch(() => {})
     } else if (checkoutStatus === 'canceled') {
       addToast('Checkout cancelado. Voce pode tentar novamente quando quiser.', 'warning')
     }

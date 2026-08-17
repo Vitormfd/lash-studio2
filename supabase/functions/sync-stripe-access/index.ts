@@ -33,26 +33,49 @@ const toIso = (value: number | null | undefined) => {
   return new Date(value * 1000).toISOString()
 }
 
-const pickBestSubscription = async (stripe: Stripe, email: string) => {
-  const customers = await stripe.customers.list({ email, limit: 100 })
-  if (!customers.data.length) return null
+const considerSubscription = (
+  subscription: Stripe.Subscription,
+  activeCandidate: { status: string; currentPeriodEnd: number | null } | null,
+) => {
+  const mapped = resolvePlanFromStatus(subscription.status)
+  if (!mapped || mapped.access !== 'full') return activeCandidate
 
+  const periodEnd = subscription.current_period_end ?? null
+  if (!activeCandidate || (periodEnd || 0) > (activeCandidate.currentPeriodEnd || 0)) {
+    return {
+      status: subscription.status,
+      currentPeriodEnd: periodEnd,
+    }
+  }
+  return activeCandidate
+}
+
+const pickBestSubscription = async (stripe: Stripe, userId: string, email: string) => {
   let activeCandidate: { status: string; currentPeriodEnd: number | null } | null = null
 
+  try {
+    const sessions = await stripe.checkout.sessions.search({
+      query: `client_reference_id:"${userId}"`,
+      limit: 10,
+    })
+    for (const session of sessions.data) {
+      if (session.status !== 'complete') continue
+      const subscriptionId = typeof session.subscription === 'string'
+        ? session.subscription
+        : session.subscription?.id
+      if (!subscriptionId) continue
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+      activeCandidate = considerSubscription(subscription, activeCandidate)
+    }
+  } catch {
+    // Checkout search is best-effort; email lookup below still runs.
+  }
+
+  const customers = await stripe.customers.list({ email, limit: 100 })
   for (const customer of customers.data) {
     const subscriptions = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 100 })
     for (const subscription of subscriptions.data) {
-      const mapped = resolvePlanFromStatus(subscription.status)
-      if (!mapped) continue
-      if (mapped.access !== 'full') continue
-
-      const periodEnd = subscription.current_period_end ?? null
-      if (!activeCandidate || (periodEnd || 0) > (activeCandidate.currentPeriodEnd || 0)) {
-        activeCandidate = {
-          status: subscription.status,
-          currentPeriodEnd: periodEnd,
-        }
-      }
+      activeCandidate = considerSubscription(subscription, activeCandidate)
     }
   }
 
@@ -87,7 +110,7 @@ Deno.serve(async (req) => {
   }
 
   const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
-  const activeSubscription = await pickBestSubscription(stripe, email)
+  const activeSubscription = await pickBestSubscription(stripe, user.id, email)
 
   if (!activeSubscription) {
     return json(200, { ok: true, synced: false, reason: 'No active subscription found for email' })
