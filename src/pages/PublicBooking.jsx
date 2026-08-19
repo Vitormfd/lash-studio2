@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getClient } from '../lib/supabase'
+import { getClient, notifyProfessionalNewBooking } from '../lib/supabase'
 import { Btn, Field, Inp } from '../components/UI'
 import { apptIntervalsOverlap, formatDurationLabel, timeToMins } from '../lib/utils'
 import { getHolidaysOnDate, formatHolidaySummary } from '../lib/holidays'
@@ -350,6 +350,8 @@ const PublicBooking = ({ professionalId }) => {
         return
       }
       if (!ok) throw new Error(String(result?.reason || 'booking_error'))
+
+      notifyProfessionalNewBooking(result.appointment_id)
 
       setSuccess({
         serviceName: selectedService.name,

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Modal from '../components/Modal'
 import AppointmentForm from '../components/AppointmentForm'
 import { Btn, Field, Inp, Textarea } from '../components/UI'
@@ -29,6 +29,7 @@ const Agenda = ({
   onBlockedAction,
   onUpgrade,
   onGoSettings,
+  focusAppointment,
 }) => {
   const [view, setView] = useState('day')
   const [current, setCurrent] = useState(new Date())
@@ -36,6 +37,15 @@ const Agenda = ({
   const [apptDetailId, setApptDetailId] = useState(null)
   const [paymentModal, setPaymentModal] = useState({ open: false, appt: null, method: '', value: '', notes: '' })
   const apptDetail = apptDetailId ? appointments.find((a) => a.id === apptDetailId) : null
+
+  useEffect(() => {
+    if (!focusAppointment?.date && !focusAppointment?.id) return
+    if (focusAppointment.date) {
+      const d = new Date(`${focusAppointment.date}T12:00:00`)
+      if (!Number.isNaN(d.getTime())) setCurrent(d)
+    }
+    if (focusAppointment.id) setApptDetailId(focusAppointment.id)
+  }, [focusAppointment])
 
   const location = useMemo(() => ({
     stateUf: config?.stateUf || '',

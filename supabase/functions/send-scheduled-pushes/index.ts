@@ -26,6 +26,8 @@ type RequestBody = {
   body?: string
   url?: string
   debug?: boolean
+  appointment_id?: string
+  appointmentId?: string
 }
 
 type ProfileRow = {
@@ -33,7 +35,12 @@ type ProfileRow = {
   professional_type: string | null
 }
 
-const jsonHeaders = { 'Content-Type': 'application/json' }
+const corsHeaders = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || ''
@@ -45,7 +52,7 @@ const WINDOW_MS = 10 * 60 * 1000
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000
 
 const json = (status: number, body: Record<string, unknown>) =>
-  new Response(JSON.stringify(body), { status, headers: jsonHeaders })
+  new Response(JSON.stringify(body), { status, headers: corsHeaders })
 
 const parseBearerToken = (header: string | null) =>
   header?.replace(/^Bearer\s+/i, '').trim() || ''
@@ -100,12 +107,183 @@ const sendPush = async (
   payload,
 )
 
+const statusCodeOf = (error: unknown) =>
+  typeof error === 'object' && error && 'statusCode' in error
+    ? Number((error as { statusCode?: number }).statusCode)
+    : 0
+
+const formatBookingWhen = (date: string, time: string) => {
+  const ymd = String(date || '').slice(0, 10)
+  const parts = ymd.split('-')
+  const hhmm = String(time || '').slice(0, 5)
+  if (parts.length === 3) return `${parts[2]}/${parts[1]} às ${hhmm}`
+  return hhmm
+}
+
+const sendToSubscriptions = async (subscriptions: PushSubscriptionRow[], payload: string) => {
+  const staleSubscriptionIds = new Set<string>()
+  let sent = 0
+  let failed = 0
+
+  for (const sub of subscriptions) {
+    try {
+      await sendPush(sub, payload)
+      sent += 1
+    } catch (error) {
+      failed += 1
+      const statusCode = statusCodeOf(error)
+      if (statusCode === 404 || statusCode === 410) staleSubscriptionIds.add(sub.id)
+      console.error('[push] send failed', {
+        subscriptionId: sub.id,
+        userId: sub.user_id,
+        statusCode,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  return { sent, failed, staleSubscriptionIds }
+}
+
+const pruneStaleSubscriptions = async (
+  sb: ReturnType<typeof createClient>,
+  staleSubscriptionIds: Set<string>,
+) => {
+  if (staleSubscriptionIds.size === 0) return
+  const ids = [...staleSubscriptionIds]
+  const { error } = await sb.from('push_subscriptions').delete().in('id', ids)
+  if (error) {
+    console.error('[push] failed to prune stale subscriptions', { count: ids.length, error: error.message })
+  }
+}
+
+const handleNewBooking = async (
+  sb: ReturnType<typeof createClient>,
+  appointmentId: string,
+) => {
+  const { data: appt, error: apptError } = await sb
+    .from('appointments')
+    .select('id,user_id,client_id,service_id,date,time,notes,owner_notified_at,created_at')
+    .eq('id', appointmentId)
+    .maybeSingle()
+
+  let appointment = appt as {
+    id: string
+    user_id: string
+    client_id: string | null
+    service_id: string | null
+    date: string
+    time: string
+    notes: string | null
+    owner_notified_at?: string | null
+    created_at?: string | null
+  } | null
+
+  if (apptError) {
+    const missingColumn = /owner_notified_at/i.test(apptError.message)
+    if (!missingColumn) {
+      return json(500, { ok: false, error: `appointments query failed: ${apptError.message}` })
+    }
+    const fallback = await sb
+      .from('appointments')
+      .select('id,user_id,client_id,service_id,date,time,notes,created_at')
+      .eq('id', appointmentId)
+      .maybeSingle()
+    if (fallback.error) {
+      return json(500, { ok: false, error: `appointments query failed: ${fallback.error.message}` })
+    }
+    appointment = fallback.data as typeof appointment
+  }
+
+  if (!appointment) return json(404, { ok: false, error: 'appointment_not_found' })
+  if (String(appointment.notes || '').trim() !== 'Agendamento público') {
+    return json(403, { ok: false, error: 'not_public_booking' })
+  }
+  if (appointment.owner_notified_at) {
+    return json(200, { ok: true, sent: 0, reason: 'already_notified' })
+  }
+  if (appointment.created_at) {
+    const createdMs = new Date(appointment.created_at).getTime()
+    if (Number.isFinite(createdMs) && Date.now() - createdMs > 30 * 60 * 1000) {
+      return json(200, { ok: true, sent: 0, reason: 'booking_too_old' })
+    }
+  }
+
+  const [{ data: clientRow }, { data: serviceRow }] = await Promise.all([
+    appointment.client_id
+      ? sb.from('clients').select('name').eq('id', appointment.client_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    appointment.service_id
+      ? sb.from('services').select('name').eq('id', appointment.service_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+
+  const clientName = String((clientRow as { name?: string } | null)?.name || '').trim() || 'Cliente'
+  const serviceName = String((serviceRow as { name?: string } | null)?.name || '').trim()
+  const when = formatBookingWhen(appointment.date, appointment.time)
+  const payload = JSON.stringify({
+    title: 'Novo agendamento',
+    body: serviceName
+      ? `${clientName} agendou ${serviceName} para ${when}`
+      : `${clientName} agendou para ${when}`,
+    tag: `new-booking-${appointment.id}`,
+    data: { url: '/agenda' },
+  })
+
+  const { data: subscriptions, error: subsError } = await sb
+    .from('push_subscriptions')
+    .select('id,user_id,endpoint,keys_p256dh,keys_auth,reminder_minutes_before')
+    .eq('user_id', appointment.user_id)
+
+  if (subsError) return json(500, { ok: false, error: `push_subscriptions query failed: ${subsError.message}` })
+
+  const userSubs = (subscriptions || []) as PushSubscriptionRow[]
+  if (!userSubs.length) {
+    await sb.from('appointments').update({ owner_notified_at: new Date().toISOString() }).eq('id', appointment.id)
+    return json(200, { ok: true, mode: 'new_booking', sent: 0, reason: 'no_subscriptions' })
+  }
+
+  const { sent, failed, staleSubscriptionIds } = await sendToSubscriptions(userSubs, payload)
+  await pruneStaleSubscriptions(sb, staleSubscriptionIds)
+
+  if (sent > 0 || userSubs.length === staleSubscriptionIds.size) {
+    const marked = await sb
+      .from('appointments')
+      .update({ owner_notified_at: new Date().toISOString() })
+      .eq('id', appointment.id)
+    if (marked.error && !/owner_notified_at/i.test(marked.error.message)) {
+      console.error('[push] failed to mark owner notified', { appointmentId: appointment.id, error: marked.error.message })
+    }
+  }
+
+  return json(200, {
+    ok: true,
+    mode: 'new_booking',
+    sent,
+    failed,
+    staleSubscriptionsRemoved: staleSubscriptionIds.size,
+  })
+}
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders })
   if (req.method !== 'POST') return json(405, { ok: false, error: 'POST only' })
 
+  let requestBody: RequestBody = {}
+  try {
+    requestBody = await req.json()
+  } catch {
+    requestBody = {}
+  }
+
+  const appointmentId = String(requestBody.appointment_id || requestBody.appointmentId || '').trim()
+  const isNewBooking = requestBody.mode === 'new_booking'
   const secret = Deno.env.get('CRON_SECRET') || ''
   const auth = parseBearerToken(req.headers.get('Authorization'))
-  if (!secret || auth !== secret) return json(401, { ok: false, error: 'Unauthorized' })
+  const cronAuthorized = Boolean(secret && auth === secret)
+
+  if (!isNewBooking && !cronAuthorized) return json(401, { ok: false, error: 'Unauthorized' })
+  if (isNewBooking && !appointmentId) return json(400, { ok: false, error: 'appointment_id required' })
 
   if (!PROJECT_URL || !SERVICE_ROLE_KEY) {
     return json(500, { ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' })
@@ -116,16 +294,11 @@ Deno.serve(async (req) => {
 
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
-  let requestBody: RequestBody = {}
-  try {
-    requestBody = await req.json()
-  } catch {
-    requestBody = {}
-  }
-
   const sb = createClient(PROJECT_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
+
+  if (isNewBooking) return handleNewBooking(sb, appointmentId)
 
   const { data: subscriptions, error: subsError } = await sb
     .from('push_subscriptions')

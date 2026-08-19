@@ -35,6 +35,29 @@ export const getClient = () => {
 
 export const getSupabaseConfig = () => ({ url: SUPABASE_URL, anonKey: SUPABASE_KEY })
 
+const getFunctionsBaseUrl = () => {
+  const explicit = (import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || '').trim().replace(/\/$/, '')
+  if (explicit) return explicit
+  if (!SUPABASE_URL) return ''
+  return SUPABASE_URL.replace('.supabase.co', '.functions.supabase.co')
+}
+
+/** Avisa a profissional de um agendamento feito pelo link público. Best-effort. */
+export const notifyProfessionalNewBooking = (appointmentId) => {
+  const id = String(appointmentId || '').trim()
+  const base = getFunctionsBaseUrl()
+  if (!id || !base) return
+  fetch(`${base}/send-scheduled-pushes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify({ mode: 'new_booking', appointment_id: id }),
+  }).catch(() => {})
+}
+
 // ─── USER-SCOPED LOCAL STORAGE ───────────────────────────────────────────────
 const userKey = (userId, key) => `u_${userId}_${key}`
 const uget = (userId, key) => local.get(userKey(userId, key))
@@ -160,6 +183,17 @@ const normalizeAuditEntry = (entry) => ({
   summary: entry.summary,
   payload: entry.payload || null,
   createdAt: entry.created_at || entry.createdAt || new Date().toISOString(),
+})
+
+const normalizeNotification = (row) => ({
+  id: row.id,
+  type: row.type || 'public_booking',
+  title: row.title || 'Notificação',
+  body: row.body || '',
+  appointmentId: row.appointment_id || row.appointmentId || null,
+  payload: row.payload && typeof row.payload === 'object' ? row.payload : {},
+  readAt: row.read_at || row.readAt || null,
+  createdAt: row.created_at || row.createdAt || new Date().toISOString(),
 })
 
 const logAudit = async (userId, { action, entityType, entityId, summary, payload, entityName }) => {
@@ -923,5 +957,52 @@ export const DB = {
       }
     }
     return (uget(userId, 'audit_log') || []).map(normalizeAuditEntry).slice(0, limit)
+  },
+
+  async getNotifications(userId, { limit = 50 } = {}) {
+    const sb = getClient()
+    if (sb && userId && userId !== 'demo_user') {
+      const { data, error } = await sb
+        .from('app_notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (!error && data) {
+        const normalized = data.map(normalizeNotification)
+        uset(userId, 'app_notifications', normalized)
+        return normalized
+      }
+    }
+    return (uget(userId, 'app_notifications') || []).map(normalizeNotification).slice(0, limit)
+  },
+
+  async markNotificationsRead(userId, ids) {
+    const idList = (Array.isArray(ids) ? ids : [ids]).filter(Boolean)
+    if (!idList.length) return this.getNotifications(userId)
+    const nowIso = new Date().toISOString()
+    const sb = getClient()
+    if (sb && userId && userId !== 'demo_user') {
+      await sb
+        .from('app_notifications')
+        .update({ read_at: nowIso, updated_at: nowIso })
+        .eq('user_id', userId)
+        .in('id', idList)
+        .is('read_at', null)
+    }
+    return this.getNotifications(userId)
+  },
+
+  async markAllNotificationsRead(userId) {
+    const nowIso = new Date().toISOString()
+    const sb = getClient()
+    if (sb && userId && userId !== 'demo_user') {
+      await sb
+        .from('app_notifications')
+        .update({ read_at: nowIso, updated_at: nowIso })
+        .eq('user_id', userId)
+        .is('read_at', null)
+    }
+    return this.getNotifications(userId)
   },
 }

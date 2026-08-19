@@ -45,6 +45,20 @@ curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes"
 
 Resposta esperada: JSON com `sent`, `failed`, `staleSubscriptionsRemoved` e `remindersMarkedSent`.
 
+## Novo agendamento pelo link público
+
+Quando `create_public_booking` grava o horário, a função recebe `mode = new_booking` e envia um push só para a profissional dona da agenda:
+
+```bash
+curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes" \
+   -H "Content-Type: application/json" \
+   -d '{"mode":"new_booking","appointment_id":"<UUID>"}'
+```
+
+Esse modo não usa `CRON_SECRET`. Ele só aceita um agendamento recente com `notes = 'Agendamento público'` e evita reenvio via `owner_notified_at`.
+
+Rode também `supabase/sql/public_booking_rpc.sql` no SQL Editor para o banco chamar a função na hora do insert.
+
 ## Disparo de teste para todos os dispositivos inscritos
 
 Para enviar uma notificacao manual para todas as subscriptions salvas, envie um body JSON com `mode = broadcast_test`:

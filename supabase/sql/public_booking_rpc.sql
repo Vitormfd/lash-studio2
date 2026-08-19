@@ -1,5 +1,16 @@
 -- Public booking RPCs (anonymous-safe)
 -- Execute in Supabase SQL Editor.
+--
+-- Depois deste SQL, faça o deploy da Edge Function:
+--   supabase functions deploy send-scheduled-pushes --no-verify-jwt
+-- Ela envia push para a profissional quando alguém agenda pelo link público.
+-- Também grava o aviso no sininho (tabela app_notifications).
+
+alter table public.appointments
+  add column if not exists owner_notified_at timestamptz null;
+
+comment on column public.appointments.owner_notified_at is
+  'Quando a profissional foi avisada de um agendamento público (web push).';
 
 create or replace function public.get_public_booking_services(p_professional_id uuid)
 returns table (
@@ -191,6 +202,7 @@ begin
 
   select
     s.id,
+    s.name,
     s.price,
     coalesce(nullif(to_jsonb(s) ->> 'duration_minutes', '')::int, 60) as duration_minutes
   into v_service
@@ -331,6 +343,65 @@ begin
     false,
     v_duration
   );
+
+  -- Inbox do sininho (best-effort)
+  begin
+    insert into public.app_notifications (
+      user_id,
+      type,
+      title,
+      body,
+      appointment_id,
+      payload
+    )
+    values (
+      p_professional_id,
+      'public_booking',
+      'Novo agendamento',
+      case
+        when nullif(trim(coalesce(v_service.name, '')), '') is not null then
+          coalesce(nullif(trim(p_client_name), ''), 'Cliente')
+          || ' agendou '
+          || trim(v_service.name)
+          || ' para '
+          || to_char(p_date, 'DD/MM')
+          || ' às '
+          || to_char(p_time, 'HH24:MI')
+        else
+          coalesce(nullif(trim(p_client_name), ''), 'Cliente')
+          || ' agendou para '
+          || to_char(p_date, 'DD/MM')
+          || ' às '
+          || to_char(p_time, 'HH24:MI')
+      end,
+      v_appointment_id,
+      jsonb_build_object(
+        'date', p_date,
+        'time', to_char(p_time, 'HH24:MI'),
+        'clientName', coalesce(nullif(trim(p_client_name), ''), 'Cliente'),
+        'serviceName', coalesce(v_service.name, '')
+      )
+    );
+  exception
+    when others then
+      null;
+  end;
+
+  -- Avisa a profissional (best-effort). Falha de push não cancela o agendamento.
+  begin
+    perform
+      net.http_post(
+        url := 'https://mbxfswxjrdikdyzpukmw.supabase.co/functions/v1/send-scheduled-pushes',
+        headers := jsonb_build_object('Content-Type', 'application/json'),
+        body := jsonb_build_object(
+          'mode', 'new_booking',
+          'appointment_id', v_appointment_id
+        )
+      );
+  exception
+    when others then
+      null;
+  end;
 
   return jsonb_build_object('ok', true, 'appointment_id', v_appointment_id);
 exception

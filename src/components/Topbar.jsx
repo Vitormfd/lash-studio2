@@ -1,13 +1,27 @@
 import Icon from './Icon'
 import { Btn } from './UI'
+import NotificationInbox from './NotificationInbox'
 
-const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDemo, canUserEdit, onUpgrade, operator, onSwitchOperator }) => (
+const Topbar = ({
+  title,
+  setOpen,
+  notifs,
+  onBellClick,
+  inbox,
+  onNewAppt,
+  offline,
+  isDemo,
+  canUserEdit,
+  onUpgrade,
+  operator,
+  onSwitchOperator,
+}) => (
   <header
     style={{
       position: 'sticky', top: 0,
       background: 'color-mix(in srgb, var(--off-white) 92%, transparent)', backdropFilter: 'blur(10px)',
       borderBottom: '1px solid var(--rose-light)', padding: '12px 20px',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 40,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 90,
     }}
   >
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -69,19 +83,23 @@ const Topbar = ({ title, setOpen, notifs, onBellClick, onNewAppt, offline, isDem
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{operator.name}</span>
         </button>
       )}
-      <button
-        type="button"
-        title="Horários próximos"
-        aria-label={notifs > 0 ? `Há ${notifs} horário(s) nos próximos 30 minutos` : 'Ver agenda e lembretes'}
-        onClick={() => onBellClick?.()}
-        className="lash-btn-press"
-        style={{ position: 'relative', background: 'var(--rose-light)', border: 'none', borderRadius: 8, padding: 8, display: 'flex', color: 'var(--text-mid)', cursor: 'pointer' }}
-      >
-        <Icon name="bell" size={17} />
-        {notifs > 0 && (
-          <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--rose-deep)', borderRadius: '50%', border: '2px solid var(--off-white)' }} />
-        )}
-      </button>
+      {inbox ? (
+        <NotificationInbox {...inbox} />
+      ) : (
+        <button
+          type="button"
+          title="Horários próximos"
+          aria-label={notifs > 0 ? `Há ${notifs} horário(s) nos próximos 30 minutos` : 'Ver agenda e lembretes'}
+          onClick={() => onBellClick?.()}
+          className="lash-btn-press"
+          style={{ position: 'relative', background: 'var(--rose-light)', border: 'none', borderRadius: 8, padding: 8, display: 'flex', color: 'var(--text-mid)', cursor: 'pointer' }}
+        >
+          <Icon name="bell" size={17} />
+          {notifs > 0 && (
+            <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, background: 'var(--rose-deep)', borderRadius: '50%', border: '2px solid var(--off-white)' }} />
+          )}
+        </button>
+      )}
       {canUserEdit ? (
         <Btn onClick={onNewAppt} sm>
           <Icon name="plus" size={14} color="#fff" /> Novo

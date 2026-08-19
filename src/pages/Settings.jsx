@@ -563,7 +563,7 @@ const Settings = ({
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Lembretes no celular</h3>
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 14 }}>
-          Receba aviso antes do próximo horário e resumos do dia. Ative quando quiser — não pedimos permissão ao entrar no app.
+          Receba aviso quando alguém agenda pelo link público, antes do próximo horário e resumos do dia. Ative quando quiser — não pedimos permissão ao entrar no app.
           No iPhone, instale o app na tela inicial para melhor suporte a notificações.
         </p>
         {!isPushSupported() ? (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { initSupabase, DB, uid, getClient } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
@@ -148,6 +148,9 @@ const AppMain = ({ session, onLogout }) => {
   const [teamMembers, setTeamMembers] = useState([])
   const [activeOperator, setActiveOperator] = useState(null)
   const [operatorGateOpen, setOperatorGateOpen] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [inboxOpen, setInboxOpen] = useState(false)
+  const [agendaFocus, setAgendaFocus] = useState(null)
 
   const professionalType = accessProfile.professionalType || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
   const isBarber = professionalType === 'barbeiro'
@@ -340,7 +343,7 @@ const AppMain = ({ session, onLogout }) => {
     setLoading(true)
     setLoadError(false)
     try {
-      const [c, s, a, invItems, invMovs, cfg, members] = await Promise.all([
+      const [c, s, a, invItems, invMovs, cfg, members, notifRows] = await Promise.all([
         DB.getClients(userId),
         DB.getServices(userId),
         DB.getAppointments(userId),
@@ -348,6 +351,7 @@ const AppMain = ({ session, onLogout }) => {
         DB.getInventoryMovements(userId),
         DB.getConfig(userId),
         DB.getTeamMembers(userId),
+        DB.getNotifications(userId),
       ])
       const compatibility = ensureServiceCompatibility({
         services: s,
@@ -374,6 +378,7 @@ const AppMain = ({ session, onLogout }) => {
       setInventoryMovements(invMovs)
       setConfigState(cfg)
       setTeamMembers(members)
+      setNotifications(notifRows)
       resolveOperatorGate(members)
 
       if (compatibility.createdService || compatibility.patchedAppointments.length > 0) {
@@ -399,6 +404,76 @@ const AppMain = ({ session, onLogout }) => {
   useEffect(() => {
     reloadData()
   }, [reloadData])
+
+  const refreshNotifications = useCallback(async () => {
+    const rows = await DB.getNotifications(userId)
+    setNotifications(rows)
+    return rows
+  }, [userId])
+
+  const silentReloadAgenda = useCallback(async () => {
+    try {
+      const [c, a] = await Promise.all([
+        DB.getClients(userId),
+        DB.getAppointments(userId),
+      ])
+      setClients(c)
+      setAppointments(a)
+    } catch {}
+  }, [userId])
+
+  const notifToastSeen = useRef(new Set())
+  const notifSeeded = useRef(false)
+
+  useEffect(() => {
+    if (loading || notifSeeded.current) return
+    notifications.forEach((n) => {
+      if (n?.id) notifToastSeen.current.add(n.id)
+    })
+    notifSeeded.current = true
+  }, [loading, notifications])
+
+  useEffect(() => {
+    if (isDemo) return undefined
+
+    const onIncoming = async (row) => {
+      if (row?.id && !row.read_at && !notifToastSeen.current.has(row.id)) {
+        notifToastSeen.current.add(row.id)
+        addToast(row.body || row.title || 'Novo agendamento pelo link público.', 'success')
+      }
+      await Promise.all([refreshNotifications(), silentReloadAgenda()])
+    }
+
+    const sb = getClient()
+    const channel = sb
+      ? sb
+          .channel(`app_notifications:${userId}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${userId}` },
+            (payload) => { onIncoming(payload.new) },
+          )
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${userId}` },
+            () => { refreshNotifications() },
+          )
+          .subscribe()
+      : null
+
+    const poll = () => { refreshNotifications() }
+    const intervalId = window.setInterval(poll, 30_000)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') poll()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (sb && channel) sb.removeChannel(channel)
+    }
+  }, [userId, isDemo, refreshNotifications, silentReloadAgenda, addToast])
 
   useEffect(() => {
     let alive = true
@@ -670,24 +745,55 @@ const AppMain = ({ session, onLogout }) => {
       return diff > 0 && diff < 30
     }).length
 
-  const todayNotifs = countSoonAppointments()
+  const soonItems = appointments
+    .filter((a) => {
+      if (a.blocked || a.status === 'cancelled') return false
+      const diff = (new Date(a.date + 'T' + a.time) - new Date()) / 60000
+      return diff > 0 && diff < 30
+    })
+    .sort((a, b) => String(a.time).localeCompare(String(b.time)))
+    .map((a) => {
+      const clientName = clients.find((c) => c.id === a.clientId)?.name || 'Cliente'
+      const serviceName = services.find((s) => s.id === a.serviceId)?.name || ''
+      const mins = Math.max(1, Math.round((new Date(a.date + 'T' + a.time) - new Date()) / 60000))
+      return {
+        id: a.id,
+        date: a.date,
+        title: `Em ${mins} min`,
+        body: serviceName ? `${clientName} — ${serviceName}` : clientName,
+      }
+    })
 
-  const handleBellClick = () => {
-    const n = countSoonAppointments()
+  const unreadCount = notifications.filter((n) => !n.readAt).length
+
+  const openAgendaFromNotice = (date, appointmentId) => {
+    setAgendaFocus({ date: date || toLocalYmd(new Date()), id: appointmentId || null, key: Date.now() })
     setPage('agenda')
-    if (n > 0) {
-      addToast(
-        `${n === 1 ? '1 horário' : `${n} horários`} começando nos próximos 30 min — confira na agenda.`,
-        'info',
-      )
-    } else {
-      addToast(
-        isBarber
-          ? 'Nenhum corte nos próximos 30 min. Toque em Configurações para ativar lembretes no celular.'
-          : 'Nenhum atendimento nos próximos 30 min. Toque em Configurações para ativar lembretes no celular.',
-        'info',
-      )
+    setInboxOpen(false)
+  }
+
+  const handleNotificationClick = async (item) => {
+    if (item?.id && !item.readAt) {
+      const nowIso = new Date().toISOString()
+      setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, readAt: n.readAt || nowIso } : n)))
+      DB.markNotificationsRead(userId, [item.id]).then((next) => {
+        if (Array.isArray(next) && next.length) setNotifications(next)
+      }).catch(() => {})
     }
+    const date = item?.payload?.date || appointments.find((a) => a.id === item?.appointmentId)?.date
+    openAgendaFromNotice(date, item?.appointmentId)
+  }
+
+  const handleSoonClick = (item) => {
+    openAgendaFromNotice(item?.date, item?.id)
+  }
+
+  const handleMarkAllRead = async () => {
+    const nowIso = new Date().toISOString()
+    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt || nowIso })))
+    DB.markAllNotificationsRead(userId).then((next) => {
+      if (Array.isArray(next) && next.length) setNotifications(next)
+    }).catch(() => {})
   }
 
   const copyBookingLink = async () => {
@@ -800,12 +906,23 @@ const AppMain = ({ session, onLogout }) => {
       />
 
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, overflow: 'hidden' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, overflow: 'visible' }}>
         <Topbar
           title={NAV_TITLES[page]}
           setOpen={setSidebarOpen}
-          notifs={todayNotifs}
-          onBellClick={handleBellClick}
+          notifs={unreadCount + countSoonAppointments()}
+          inbox={{
+            unreadCount,
+            soonCount: soonItems.length,
+            items: notifications,
+            soonItems,
+            open: inboxOpen,
+            onToggle: () => setInboxOpen((v) => !v),
+            onClose: () => setInboxOpen(false),
+            onItemClick: handleNotificationClick,
+            onSoonClick: handleSoonClick,
+            onMarkAllRead: handleMarkAllRead,
+          }}
           onNewAppt={() => {
             if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
             setNewApptInitial(null)
@@ -858,6 +975,7 @@ const AppMain = ({ session, onLogout }) => {
               onBlockedAction={guardRestrictedWrite}
               onUpgrade={() => openPaywall('Desbloqueie para criar agendamentos')}
               onGoSettings={() => setPage('settings')}
+              focusAppointment={agendaFocus}
             />
           )}
           {page === 'clients' && (
