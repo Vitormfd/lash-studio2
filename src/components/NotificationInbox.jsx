@@ -1,5 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Icon from './Icon'
+
+const PANEL_MAX_WIDTH = 360
+const PANEL_EDGE_GAP = 12
 
 const formatRelative = (iso) => {
   if (!iso) return ''
@@ -33,8 +36,44 @@ const NotificationInbox = ({
   onDeleteAll,
 }) => {
   const rootRef = useRef(null)
+  const [panelStyle, setPanelStyle] = useState(null)
   const hasUnread = unreadCount > 0
   const showDot = !hasUnread && soonCount > 0
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelStyle(null)
+      return undefined
+    }
+
+    const placePanel = () => {
+      const anchor = rootRef.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const width = Math.min(PANEL_MAX_WIDTH, vw - PANEL_EDGE_GAP * 2)
+      // Alinha à direita do sino, mas nunca sai da tela
+      let left = rect.right - width
+      left = Math.max(PANEL_EDGE_GAP, Math.min(left, vw - PANEL_EDGE_GAP - width))
+      const top = Math.min(rect.bottom + 8, vh - 80)
+      setPanelStyle({
+        position: 'fixed',
+        top,
+        left,
+        width,
+        maxHeight: Math.min(vh * 0.7, 480, Math.max(160, vh - top - PANEL_EDGE_GAP)),
+      })
+    }
+
+    placePanel()
+    window.addEventListener('resize', placePanel)
+    window.addEventListener('scroll', placePanel, true)
+    return () => {
+      window.removeEventListener('resize', placePanel)
+      window.removeEventListener('scroll', placePanel, true)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return undefined
@@ -115,21 +154,17 @@ const NotificationInbox = ({
         )}
       </button>
 
-      {open && (
+      {open && panelStyle && (
         <div
           role="dialog"
           aria-label="Notificações"
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
-            width: 'min(360px, calc(100vw - 24px))',
-            maxHeight: 'min(70vh, 480px)',
+            ...panelStyle,
             background: 'var(--surface)',
             border: '1px solid var(--rose-light)',
             borderRadius: 16,
             boxShadow: '0 16px 40px var(--shadow)',
-            zIndex: 80,
+            zIndex: 120,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -142,10 +177,11 @@ const NotificationInbox = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 8,
+              flexWrap: 'wrap',
               borderBottom: '1px solid var(--rose-light)',
             }}
           >
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: 0 }}>Notificações</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: 0, flexShrink: 0 }}>Notificações</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               {hasUnread && (
                 <button
