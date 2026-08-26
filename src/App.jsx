@@ -139,6 +139,7 @@ const AppMain = ({ session, onLogout }) => {
   const [appointments, setAppointments] = useState([])
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
+  const [cashExpenses, setCashExpenses] = useState([])
   const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
@@ -352,12 +353,13 @@ const AppMain = ({ session, onLogout }) => {
     setLoading(true)
     setLoadError(false)
     try {
-      const [c, s, a, invItems, invMovs, cfg, members, notifRows] = await Promise.all([
+      const [c, s, a, invItems, invMovs, expenses, cfg, members, notifRows] = await Promise.all([
         DB.getClients(userId),
         DB.getServices(userId),
         DB.getAppointments(userId),
         DB.getInventoryItems(userId),
         DB.getInventoryMovements(userId),
+        DB.getCashExpenses(userId),
         DB.getConfig(userId),
         DB.getTeamMembers(userId),
         DB.getNotifications(userId),
@@ -385,6 +387,7 @@ const AppMain = ({ session, onLogout }) => {
       setAppointments(compatibility.appointments)
       setInventoryItems(invItems)
       setInventoryMovements(invMovs)
+      setCashExpenses(expenses)
       setConfigState(cfg)
       setTeamMembers(members)
       setNotifications(notifRows)
@@ -739,6 +742,23 @@ const AppMain = ({ session, onLogout }) => {
     setInventoryMovements((list) => [saved, ...list])
   }
 
+  // ── CASH EXPENSES ──
+  const handleSaveCashExpense = async (expense) => {
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
+    const saved = await DB.saveCashExpense(userId, expense)
+    setCashExpenses((list) => {
+      const exists = list.some((x) => x.id === saved.id)
+      return exists ? list.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...list]
+    })
+    return saved
+  }
+
+  const handleDeleteCashExpense = async (id) => {
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
+    await DB.deleteCashExpense(userId, id)
+    setCashExpenses((list) => list.filter((x) => x.id !== id))
+  }
+
   // ── COMPAT SETTERS (para páginas que usam setClients/setServices como array-setter) ──
   const setClientsCompat = (valOrFn) => {
     if (!canUserEdit) { guardRestrictedWrite('Desbloqueie para salvar clientes.'); return }
@@ -1066,7 +1086,20 @@ const AppMain = ({ session, onLogout }) => {
               addToast={addToast}
             />
           )}
-          {page === 'finance' && <Finance appointments={appointments} services={services} clients={clients} config={config} setConfig={saveConfig} isBarber={isBarber} />}
+          {page === 'finance' && (
+            <Finance
+              appointments={appointments}
+              services={services}
+              clients={clients}
+              config={config}
+              setConfig={saveConfig}
+              isBarber={isBarber}
+              cashExpenses={cashExpenses}
+              onSaveCashExpense={handleSaveCashExpense}
+              onDeleteCashExpense={handleDeleteCashExpense}
+              addToast={addToast}
+            />
+          )}
           {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} isBarber={isBarber} />}
           {page === 'activity' && <ActivityLog userId={userId} />}
           {page === 'settings' && (

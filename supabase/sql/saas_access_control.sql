@@ -207,6 +207,7 @@ begin
     'appointments',
     'inventory_items',
     'inventory_movements',
+    'cash_expenses',
     'config'
   ]
   loop

@@ -190,6 +190,7 @@ const ENTITY_LABELS = {
   config: 'configuração',
   inventory_item: 'item de estoque',
   inventory_movement: 'movimentação de estoque',
+  cash_expense: 'saída de caixa',
   team_member: 'operador',
 }
 
@@ -854,6 +855,116 @@ export const DB = {
       payload: movement,
     })
     return movement
+  },
+
+  // ── Saídas de caixa ──
+  async getCashExpenses(userId) {
+    const sb = getClient()
+    if (sb) {
+      const { data, error } = await sb
+        .from('cash_expenses')
+        .select('*')
+        .eq('user_id', userId)
+        .order('expense_date', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (!error && data) {
+        const normalized = data.map((e) => ({
+          id: e.id,
+          category: e.category || 'materials',
+          amount: Number(e.amount || 0),
+          paymentMethod: e.payment_method || 'cash',
+          notes: e.notes || '',
+          expenseDate: e.expense_date || String(e.created_at || '').slice(0, 10),
+          createdAt: e.created_at || new Date().toISOString(),
+          updatedAt: e.updated_at || e.created_at || new Date().toISOString(),
+        }))
+        uset(userId, 'cash_expenses', normalized)
+        return normalized
+      }
+    }
+    return uget(userId, 'cash_expenses') || []
+  },
+
+  async saveCashExpense(userId, expense) {
+    const sb = getClient()
+    if (sb) {
+      const row = {
+        id: expense.id,
+        user_id: userId,
+        category: expense.category || 'materials',
+        amount: Number(expense.amount || 0),
+        payment_method: expense.paymentMethod || 'cash',
+        notes: expense.notes || '',
+        expense_date: expense.expenseDate || new Date().toISOString().slice(0, 10),
+        created_at: expense.createdAt || new Date().toISOString(),
+        updated_at: expense.updatedAt || new Date().toISOString(),
+      }
+      const { data, error } = expense._new
+        ? await sb.from('cash_expenses').insert(row).select().single()
+        : await sb.from('cash_expenses').update(row).eq('id', expense.id).eq('user_id', userId).select().single()
+      if (!error && data) {
+        const normalized = {
+          id: data.id,
+          category: data.category || 'materials',
+          amount: Number(data.amount || 0),
+          paymentMethod: data.payment_method || 'cash',
+          notes: data.notes || '',
+          expenseDate: data.expense_date || String(data.created_at || '').slice(0, 10),
+          createdAt: data.created_at || new Date().toISOString(),
+          updatedAt: data.updated_at || new Date().toISOString(),
+        }
+        const all = uget(userId, 'cash_expenses') || []
+        const exists = all.find((e) => e.id === normalized.id)
+        uset(userId, 'cash_expenses', exists
+          ? all.map((e) => (e.id === normalized.id ? normalized : e))
+          : [normalized, ...all])
+        await logAudit(userId, {
+          action: expense._new ? 'create' : 'update',
+          entityType: 'cash_expense',
+          entityId: normalized.id,
+          summary: `Registrou saída de caixa: R$ ${normalized.amount.toFixed(2)}`,
+          payload: normalized,
+        })
+        return normalized
+      }
+    }
+    const all = uget(userId, 'cash_expenses') || []
+    const exists = all.find((e) => e.id === expense.id)
+    const localRow = {
+      id: expense.id,
+      category: expense.category || 'materials',
+      amount: Number(expense.amount || 0),
+      paymentMethod: expense.paymentMethod || 'cash',
+      notes: expense.notes || '',
+      expenseDate: expense.expenseDate || new Date().toISOString().slice(0, 10),
+      createdAt: expense.createdAt || new Date().toISOString(),
+      updatedAt: expense.updatedAt || new Date().toISOString(),
+    }
+    uset(userId, 'cash_expenses', exists
+      ? all.map((e) => (e.id === localRow.id ? localRow : e))
+      : [localRow, ...all])
+    await logAudit(userId, {
+      action: expense._new ? 'create' : 'update',
+      entityType: 'cash_expense',
+      entityId: localRow.id,
+      summary: `Registrou saída de caixa: R$ ${localRow.amount.toFixed(2)}`,
+      payload: localRow,
+    })
+    return localRow
+  },
+
+  async deleteCashExpense(userId, id) {
+    const existing = (uget(userId, 'cash_expenses') || []).find((e) => e.id === id)
+    const sb = getClient()
+    if (sb) { await sb.from('cash_expenses').delete().eq('id', id).eq('user_id', userId) }
+    uset(userId, 'cash_expenses', (uget(userId, 'cash_expenses') || []).filter((e) => e.id !== id))
+    await logAudit(userId, {
+      action: 'delete',
+      entityType: 'cash_expense',
+      entityId: id,
+      summary: existing ? `Removeu saída de caixa: R$ ${Number(existing.amount || 0).toFixed(2)}` : 'Removeu saída de caixa',
+      payload: existing || { id },
+    })
   },
 
   // ── Push Web (PWA) — tabela push_subscriptions (ver supabase/sql/push_subscriptions.sql) ──

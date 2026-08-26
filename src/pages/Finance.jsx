@@ -1,36 +1,67 @@
 import { useState } from 'react'
-import { StatCard, Btn, Inp, inputStyle } from '../components/UI'
+import Modal from '../components/Modal'
+import { StatCard, Btn, Field, Inp, Sel, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { MONTHS_PT, getAppointmentCost } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
+import { uid } from '../lib/supabase'
 
-const formatMoney = (n) => `R$ ${n.toFixed(2).replace('.', ',')}`
+const formatMoney = (n) => `R$ ${Number(n || 0).toFixed(2).replace('.', ',')}`
 
-const Finance = ({ appointments, services, clients, config, setConfig, isBarber }) => {
+const paymentMethodMeta = {
+  cash: { label: 'Dinheiro', icon: '💵' },
+  pix: { label: 'Pix', icon: '💰' },
+  credit_card: { label: 'Cartão de crédito', icon: '💳' },
+  debit_card: { label: 'Cartão de débito', icon: '💳' },
+}
+
+const categoryMeta = {
+  materials: { label: 'Materiais do estúdio' },
+  other: { label: 'Outro gasto' },
+}
+
+const emptyExpenseForm = () => ({
+  amount: '',
+  category: 'materials',
+  paymentMethod: 'cash',
+  notes: '',
+  expenseDate: toLocalYmd(new Date()),
+})
+
+const Finance = ({
+  appointments,
+  services,
+  clients,
+  config,
+  setConfig,
+  isBarber,
+  cashExpenses = [],
+  onSaveCashExpense,
+  onDeleteCashExpense,
+  addToast,
+}) => {
   const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const [editCost, setEditCost] = useState(false)
   const [costVal, setCostVal] = useState(config.avgCost)
   const [salaryPct, setSalaryPct] = useState(String(config.salaryPercentage ?? 50))
   const [monthOffset, setMonthOffset] = useState(0)
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false)
+  const [expenseForm, setExpenseForm] = useState(emptyExpenseForm)
+  const [savingExpense, setSavingExpense] = useState(false)
 
   const target = new Date(); target.setMonth(target.getMonth() + monthOffset)
   const monthStr = target.toISOString().slice(0, 7)
   const monthLabel = `${MONTHS_PT[target.getMonth()]} ${target.getFullYear()}`
   const todayStr = toLocalYmd(new Date())
 
-  const paymentMethodMeta = {
-    cash: { label: 'Dinheiro', icon: '💵' },
-    pix: { label: 'Pix', icon: '💰' },
-    credit_card: { label: 'Cartão de crédito', icon: '💳' },
-    debit_card: { label: 'Cartão de débito', icon: '💳' },
-  }
-
   const real = appointments.filter((a) => !a.blocked && a.date.startsWith(monthStr) && a.status !== 'cancelled')
   const revenue = real.reduce((s, a) => s + Number(a.value), 0)
   const count = real.length
   const cost = real.reduce((sum, a) => sum + getAppointmentCost(a, services, config.avgCost), 0)
-  const profit = revenue - cost
+  const monthExpenses = cashExpenses.filter((e) => String(e.expenseDate || '').startsWith(monthStr))
+  const materialsOut = monthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  const profit = revenue - cost - materialsOut
   const avg = count ? revenue / count : 0
 
   const salaryPercentage = Math.min(100, Math.max(0, Number(salaryPct) || 0))
@@ -47,13 +78,67 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
     .filter((a) => !a.blocked && a.status === 'done' && a.paidAt && toLocalYmd(new Date(a.paidAt)) === todayStr)
     .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
 
+  const expensesToday = cashExpenses
+    .filter((e) => String(e.expenseDate || '') === todayStr)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
   const totalPaidToday = paidToday.reduce((sum, a) => sum + Number(a.paymentValue != null ? a.paymentValue : a.value || 0), 0)
+  const totalOutToday = expensesToday.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  const netToday = totalPaidToday - totalOutToday
+
   const paidByMethod = paidToday.reduce((acc, a) => {
     const key = a.paymentMethod || 'cash'
     const value = Number(a.paymentValue != null ? a.paymentValue : a.value || 0)
     acc[key] = (acc[key] || 0) + value
     return acc
   }, {})
+
+  const openExpenseModal = () => {
+    setExpenseForm(emptyExpenseForm())
+    setExpenseModalOpen(true)
+  }
+
+  const saveExpense = async () => {
+    const amount = Number(expenseForm.amount || 0)
+    if (!(amount > 0)) {
+      addToast?.('Informe um valor maior que zero.', 'warning')
+      return
+    }
+    if (!expenseForm.expenseDate) {
+      addToast?.('Informe a data da saída.', 'warning')
+      return
+    }
+    setSavingExpense(true)
+    try {
+      await onSaveCashExpense?.({
+        id: uid(),
+        category: expenseForm.category || 'materials',
+        amount,
+        paymentMethod: expenseForm.paymentMethod || 'cash',
+        notes: (expenseForm.notes || '').trim(),
+        expenseDate: expenseForm.expenseDate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        _new: true,
+      })
+      addToast?.('Saída registrada!', 'success')
+      setExpenseModalOpen(false)
+    } catch {
+      addToast?.('Não foi possível salvar a saída.', 'error')
+    } finally {
+      setSavingExpense(false)
+    }
+  }
+
+  const removeExpense = async (expense) => {
+    if (!window.confirm(`Remover saída de ${formatMoney(expense.amount)}?`)) return
+    try {
+      await onDeleteCashExpense?.(expense.id)
+      addToast?.('Saída removida.', 'success')
+    } catch {
+      addToast?.('Não foi possível remover a saída.', 'error')
+    }
+  }
 
   return (
     <div style={{ padding: 16 }}>
@@ -86,7 +171,8 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
       {/* Summary cards */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
         <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" color="var(--rose-deep)" />
-        <StatCard label="Custo total" value={`R$ ${cost.toFixed(2).replace('.', ',')}`} icon="settings" color="#D4915A" />
+        <StatCard label="Custo estimado" value={`R$ ${cost.toFixed(2).replace('.', ',')}`} icon="settings" color="#D4915A" />
+        <StatCard label="Gastos materiais" value={formatMoney(materialsOut)} icon="box" color="#C45A5A" />
         <StatCard label="Lucro real" value={formatMoney(profit)} icon="chart" color="#7BAF7B" />
         <StatCard label={appointmentsLabel} value={count} icon="check" color="var(--rose)" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" color="var(--rose-dark)" />
@@ -97,6 +183,7 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Salário e dinheiro da empresa</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 16 }}>
           Com base no lucro de {monthLabel.toLowerCase()} ({formatMoney(profit)})
+          {materialsOut > 0 ? ` — já descontando ${formatMoney(materialsOut)} em materiais` : ''}
         </p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -168,12 +255,25 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Caixa do dia</h3>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#0F766E' }}>
-            Total: R$ {totalPaidToday.toFixed(2).replace('.', ',')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Btn sm onClick={openExpenseModal}>
+              <Icon name="minus" size={12} color="#fff" /> Saída (materiais)
+            </Btn>
+            <div style={{ fontSize: 14, fontWeight: 700, color: netToday >= 0 ? '#0F766E' : '#C45A5A' }}>
+              Líquido: {formatMoney(netToday)}
+            </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ border: '1px solid var(--rose-light)', borderRadius: 10, padding: '8px 10px', background: 'var(--off-white)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-light)' }}>Entradas</div>
+            <div style={{ fontSize: 13, color: '#0F766E', fontWeight: 700 }}>{formatMoney(totalPaidToday)}</div>
+          </div>
+          <div style={{ border: '1px solid var(--rose-light)', borderRadius: 10, padding: '8px 10px', background: 'var(--off-white)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-light)' }}>Saídas</div>
+            <div style={{ fontSize: 13, color: '#C45A5A', fontWeight: 700 }}>{formatMoney(totalOutToday)}</div>
+          </div>
           {Object.keys(paymentMethodMeta).map((method) => {
             const total = Number(paidByMethod[method] || 0)
             const meta = paymentMethodMeta[method]
@@ -199,17 +299,91 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
                   <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{service?.name || 'Serviço'} · {method.label} {method.icon}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E' }}>R$ {paid.toFixed(2).replace('.', ',')}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E' }}>+ {formatMoney(paid)}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{new Date(a.paidAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
               </div>
             )
           })}
-          {paidToday.length === 0 && (
-            <p style={{ textAlign: 'center', padding: 10, fontSize: 13, color: 'var(--text-light)' }}>Nenhum pagamento registrado hoje</p>
+
+          {expensesToday.map((e) => {
+            const method = paymentMethodMeta[e.paymentMethod] || { label: 'Não informado', icon: '💰' }
+            const cat = categoryMeta[e.category] || categoryMeta.materials
+            return (
+              <div key={e.id} style={{ border: '1px solid rgba(196,90,90,0.35)', borderRadius: 10, padding: '9px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: 'rgba(196,90,90,0.04)' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{cat.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-light)' }}>
+                    {method.label} {method.icon}
+                    {e.notes ? ` · ${e.notes}` : ''}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#C45A5A' }}>− {formatMoney(e.amount)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-light)' }}>
+                      {e.createdAt ? new Date(e.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeExpense(e)}
+                    title="Remover saída"
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', color: 'var(--text-light)' }}
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
+          {paidToday.length === 0 && expensesToday.length === 0 && (
+            <p style={{ textAlign: 'center', padding: 10, fontSize: 13, color: 'var(--text-light)' }}>Nenhuma movimentação registrada hoje</p>
           )}
         </div>
       </div>
+
+      {/* Gastos do mês */}
+      {monthExpenses.length > 0 && (
+        <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Saídas do mês</h3>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#C45A5A' }}>{formatMoney(materialsOut)}</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {monthExpenses
+              .slice()
+              .sort((a, b) => String(b.expenseDate).localeCompare(String(a.expenseDate)) || String(b.createdAt).localeCompare(String(a.createdAt)))
+              .map((e) => {
+                const method = paymentMethodMeta[e.paymentMethod] || { label: 'Não informado', icon: '💰' }
+                const cat = categoryMeta[e.category] || categoryMeta.materials
+                return (
+                  <div key={e.id} style={{ border: '1px solid var(--rose-light)', borderRadius: 10, padding: '9px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{cat.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-light)' }}>
+                        {new Date(`${e.expenseDate}T12:00`).toLocaleDateString('pt-BR')} · {method.label}
+                        {e.notes ? ` · ${e.notes}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#C45A5A' }}>− {formatMoney(e.amount)}</div>
+                      <button
+                        type="button"
+                        onClick={() => removeExpense(e)}
+                        title="Remover saída"
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', color: 'var(--text-light)' }}
+                      >
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      )}
 
       {/* Appointments table */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
@@ -248,6 +422,93 @@ const Finance = ({ appointments, services, clients, config, setConfig, isBarber 
           {real.length === 0 && <p style={{ textAlign: 'center', padding: 30, fontSize: 13, color: 'var(--text-light)' }}>{`Nenhum ${isBarber ? 'corte' : 'atendimento'} este mês`}</p>}
         </div>
       </div>
+
+      <Modal open={expenseModalOpen} onClose={() => setExpenseModalOpen(false)} title="Registrar saída de dinheiro">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-light)', margin: 0 }}>
+            Use para anotar compras de materiais e outros gastos do estúdio que saíram do caixa.
+          </p>
+
+          <Field label="Categoria">
+            <Sel
+              value={expenseForm.category}
+              onChange={(e) => setExpenseForm((prev) => ({ ...prev, category: e.target.value }))}
+            >
+              <option value="materials">Materiais do estúdio</option>
+              <option value="other">Outro gasto</option>
+            </Sel>
+          </Field>
+
+          <Field label="Valor">
+            <Inp
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={expenseForm.amount}
+              onChange={(e) => setExpenseForm((prev) => ({ ...prev, amount: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Forma de pagamento">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {Object.entries(paymentMethodMeta).map(([value, meta]) => {
+                const active = expenseForm.paymentMethod === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setExpenseForm((prev) => ({ ...prev, paymentMethod: value }))}
+                    style={{
+                      minHeight: 48,
+                      borderRadius: 12,
+                      border: active ? '2px solid #C45A5A' : '1.5px solid var(--border-mid)',
+                      background: active ? 'rgba(196,90,90,0.08)' : 'var(--surface)',
+                      color: active ? '#C45A5A' : 'var(--text)',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      padding: '10px 8px',
+                    }}
+                  >
+                    <span>{meta.icon}</span>
+                    <span>{meta.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </Field>
+
+          <Field label="Data">
+            <Inp
+              type="date"
+              value={expenseForm.expenseDate}
+              onChange={(e) => setExpenseForm((prev) => ({ ...prev, expenseDate: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Observação (opcional)">
+            <Textarea
+              placeholder="Ex.: cola, fios, pads de hidrogel…"
+              value={expenseForm.notes}
+              onChange={(e) => setExpenseForm((prev) => ({ ...prev, notes: e.target.value }))}
+            />
+          </Field>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" touch onClick={() => setExpenseModalOpen(false)}>Cancelar</Btn>
+            <Btn variant="danger" touch loading={savingExpense} onClick={saveExpense}>
+              Confirmar saída
+            </Btn>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
