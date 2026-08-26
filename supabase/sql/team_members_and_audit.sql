@@ -1,5 +1,6 @@
 -- Operadores da equipe (sem login) + histórico de alterações
 -- Execute no SQL Editor do Supabase.
+-- A primeira pessoa cadastrada (created_at) é a dona da conta.
 
 create table if not exists public.team_members (
   id uuid primary key default gen_random_uuid(),

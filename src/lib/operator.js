@@ -17,6 +17,32 @@ export const getActiveOperatorGlobal = () => _activeOperator
 
 export const pickMemberColor = (index = 0) => MEMBER_COLORS[index % MEMBER_COLORS.length]
 
+/** Primeira pessoa cadastrada (ativa) é a dona da conta. */
+export const getAccountOwner = (members = []) => {
+  const active = (members || []).filter((m) => m && m.active !== false && m.id)
+  if (!active.length) return null
+  return [...active].sort((a, b) => {
+    const ta = new Date(a.createdAt || a.created_at || 0).getTime()
+    const tb = new Date(b.createdAt || b.created_at || 0).getTime()
+    if (ta !== tb) return ta - tb
+    return String(a.id).localeCompare(String(b.id))
+  })[0]
+}
+
+export const isAccountOwner = (operator, members = []) => {
+  const owner = getAccountOwner(members)
+  return !!(owner && operator?.id && owner.id === operator.id)
+}
+
+export const notificationsForOperator = (notifications = [], operator, members = []) => {
+  const rows = notifications || []
+  if (!operator?.id) return []
+  const scoped = rows.some((n) => n.operatorId)
+  if (!scoped) return rows
+  const ownerSeesUnscoped = isAccountOwner(operator, members)
+  return rows.filter((n) => n.operatorId === operator.id || (ownerSeesUnscoped && !n.operatorId))
+}
+
 export const hashPin = async (pin) => {
   const normalized = String(pin || '').trim()
   if (!normalized) return null

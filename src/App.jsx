@@ -40,7 +40,10 @@ import {
   clearOperatorSession,
   touchOperatorActivity,
   isOperatorSessionExpired,
+  getAccountOwner,
+  notificationsForOperator,
 } from './lib/operator'
+import { getExistingPushSubscription } from './lib/pushClient'
 
 const SUPABASE_URL = 'https://mbxfswxjrdikdyzpukmw.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_X8Pu3A3o_MfOKR0octLAyw_p_SzMKO3'
@@ -194,6 +197,12 @@ const AppMain = ({ session, onLogout }) => {
     saveOperatorSession(userId, operator)
     setActiveOperator(operator)
     setOperatorGateOpen(false)
+    getExistingPushSubscription()
+      .then((sub) => {
+        if (!sub) return
+        return DB.bindPushSubscriptionToOperator(userId, sub, operator.id)
+      })
+      .catch(() => {})
   }, [userId])
 
   const requestOperatorSwitch = useCallback(() => {
@@ -437,9 +446,10 @@ const AppMain = ({ session, onLogout }) => {
     if (isDemo) return undefined
 
     const onIncoming = async (row) => {
-      if (row?.id && !row.read_at && !notifToastSeen.current.has(row.id)) {
+      const mine = !row?.operator_id || row.operator_id === activeOperator?.id
+      if (mine && row?.id && !row.read_at && !notifToastSeen.current.has(row.id)) {
         notifToastSeen.current.add(row.id)
-        addToast(row.body || row.title || 'Novo agendamento pelo link público.', 'success')
+        addToast(row.body || row.title || 'Novo agendamento.', 'success')
       }
       await Promise.all([refreshNotifications(), silentReloadAgenda()])
     }
@@ -458,6 +468,11 @@ const AppMain = ({ session, onLogout }) => {
             { event: 'UPDATE', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${userId}` },
             () => { refreshNotifications() },
           )
+          .on(
+            'postgres_changes',
+            { event: 'DELETE', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${userId}` },
+            () => { refreshNotifications() },
+          )
           .subscribe()
       : null
 
@@ -473,7 +488,7 @@ const AppMain = ({ session, onLogout }) => {
       document.removeEventListener('visibilitychange', onVisibility)
       if (sb && channel) sb.removeChannel(channel)
     }
-  }, [userId, isDemo, refreshNotifications, silentReloadAgenda, addToast])
+  }, [userId, isDemo, activeOperator?.id, refreshNotifications, silentReloadAgenda, addToast])
 
   useEffect(() => {
     let alive = true
@@ -619,6 +634,17 @@ const AppMain = ({ session, onLogout }) => {
       setNewApptModal(false)
       setNewApptInitial(null)
       addToast(form.blocked ? 'Horário bloqueado com sucesso!' : 'Agendamento criado!', 'success')
+      if (!form.blocked) {
+        const owner = getAccountOwner(teamMembers)
+        DB.notifyOwnerStaffBooking(userId, {
+          appointment: saved,
+          ownerOperatorId: owner?.id,
+          actorOperatorId: activeOperator?.id,
+          actorName: activeOperator?.name,
+          clientName: clients.find((c) => c.id === saved.clientId)?.name || '',
+          serviceName: services.find((s) => s.id === saved.serviceId)?.name || '',
+        }).catch(() => {})
+      }
     }
   }
 
@@ -764,7 +790,10 @@ const AppMain = ({ session, onLogout }) => {
       }
     })
 
-  const unreadCount = notifications.filter((n) => !n.readAt).length
+  const visibleNotifications = notificationsForOperator(notifications, activeOperator, teamMembers)
+  const unreadCount = visibleNotifications.filter((n) => !n.readAt).length
+  const ownerMember = getAccountOwner(teamMembers)
+  const includeUnscopedNotifs = !!(activeOperator?.id && ownerMember?.id === activeOperator.id)
 
   const openAgendaFromNotice = (date, appointmentId) => {
     setAgendaFocus({ date: date || toLocalYmd(new Date()), id: appointmentId || null, key: Date.now() })
@@ -790,9 +819,36 @@ const AppMain = ({ session, onLogout }) => {
 
   const handleMarkAllRead = async () => {
     const nowIso = new Date().toISOString()
-    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt || nowIso })))
-    DB.markAllNotificationsRead(userId).then((next) => {
+    const visibleIds = new Set(visibleNotifications.map((n) => n.id))
+    setNotifications((prev) => prev.map((n) => (
+      visibleIds.has(n.id) ? { ...n, readAt: n.readAt || nowIso } : n
+    )))
+    DB.markAllNotificationsRead(userId, {
+      operatorId: activeOperator?.id,
+      includeUnscoped: includeUnscopedNotifs,
+    }).then((next) => {
       if (Array.isArray(next) && next.length) setNotifications(next)
+    }).catch(() => {})
+  }
+
+  const handleDeleteNotification = async (item) => {
+    if (!item?.id) return
+    setNotifications((prev) => prev.filter((n) => n.id !== item.id))
+    DB.deleteNotifications(userId, [item.id]).then((next) => {
+      if (Array.isArray(next)) setNotifications(next)
+    }).catch(() => {})
+  }
+
+  const handleDeleteAllNotifications = async () => {
+    if (!visibleNotifications.length) return
+    if (!window.confirm('Apagar todas as notificações deste perfil?')) return
+    const visibleIds = new Set(visibleNotifications.map((n) => n.id))
+    setNotifications((prev) => prev.filter((n) => !visibleIds.has(n.id)))
+    DB.deleteAllNotifications(userId, {
+      operatorId: activeOperator?.id,
+      includeUnscoped: includeUnscopedNotifs,
+    }).then((next) => {
+      if (Array.isArray(next)) setNotifications(next)
     }).catch(() => {})
   }
 
@@ -914,7 +970,7 @@ const AppMain = ({ session, onLogout }) => {
           inbox={{
             unreadCount,
             soonCount: soonItems.length,
-            items: notifications,
+            items: visibleNotifications,
             soonItems,
             open: inboxOpen,
             onToggle: () => setInboxOpen((v) => !v),
@@ -922,6 +978,8 @@ const AppMain = ({ session, onLogout }) => {
             onItemClick: handleNotificationClick,
             onSoonClick: handleSoonClick,
             onMarkAllRead: handleMarkAllRead,
+            onDeleteItem: handleDeleteNotification,
+            onDeleteAll: handleDeleteAllNotifications,
           }}
           onNewAppt={() => {
             if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return

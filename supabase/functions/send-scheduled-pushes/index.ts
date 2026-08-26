@@ -4,6 +4,7 @@ import webpush from 'npm:web-push@3.6.7'
 type PushSubscriptionRow = {
   id: string
   user_id: string
+  operator_id?: string | null
   endpoint: string
   keys_p256dh: string
   keys_auth: string
@@ -28,6 +29,8 @@ type RequestBody = {
   debug?: boolean
   appointment_id?: string
   appointmentId?: string
+  actor_operator_id?: string
+  actorOperatorId?: string
 }
 
 type ProfileRow = {
@@ -118,6 +121,58 @@ const formatBookingWhen = (date: string, time: string) => {
   const hhmm = String(time || '').slice(0, 5)
   if (parts.length === 3) return `${parts[2]}/${parts[1]} às ${hhmm}`
   return hhmm
+}
+
+const loadSubscriptions = async (
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+) => {
+  const withOperator = await sb
+    .from('push_subscriptions')
+    .select('id,user_id,operator_id,endpoint,keys_p256dh,keys_auth,reminder_minutes_before')
+    .eq('user_id', userId)
+
+  if (!withOperator.error) {
+    return { subscriptions: (withOperator.data || []) as PushSubscriptionRow[], error: null as string | null }
+  }
+
+  const missingColumn = /operator_id/i.test(withOperator.error.message)
+  if (!missingColumn) {
+    return { subscriptions: [] as PushSubscriptionRow[], error: withOperator.error.message }
+  }
+
+  const fallback = await sb
+    .from('push_subscriptions')
+    .select('id,user_id,endpoint,keys_p256dh,keys_auth,reminder_minutes_before')
+    .eq('user_id', userId)
+
+  if (fallback.error) {
+    return { subscriptions: [] as PushSubscriptionRow[], error: fallback.error.message }
+  }
+  return { subscriptions: (fallback.data || []) as PushSubscriptionRow[], error: null as string | null }
+}
+
+const loadAccountOwnerId = async (
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+) => {
+  const rpc = await sb.rpc('account_owner_id', { p_user_id: userId })
+  if (!rpc.error && rpc.data) return String(rpc.data)
+
+  const { data, error } = await sb
+    .from('team_members')
+    .select('id,created_at')
+    .eq('user_id', userId)
+    .eq('active', true)
+
+  if (error || !data?.length) return null
+  const sorted = [...data].sort((a, b) => {
+    const ta = new Date(String((a as { created_at?: string }).created_at || 0)).getTime()
+    const tb = new Date(String((b as { created_at?: string }).created_at || 0)).getTime()
+    if (ta !== tb) return ta - tb
+    return String((a as { id: string }).id).localeCompare(String((b as { id: string }).id))
+  })
+  return (sorted[0] as { id?: string } | undefined)?.id || null
 }
 
 const sendToSubscriptions = async (subscriptions: PushSubscriptionRow[], payload: string) => {
@@ -230,14 +285,10 @@ const handleNewBooking = async (
     data: { url: '/agenda' },
   })
 
-  const { data: subscriptions, error: subsError } = await sb
-    .from('push_subscriptions')
-    .select('id,user_id,endpoint,keys_p256dh,keys_auth,reminder_minutes_before')
-    .eq('user_id', appointment.user_id)
+  const { subscriptions, error: subsError } = await loadSubscriptions(sb, appointment.user_id)
+  if (subsError) return json(500, { ok: false, error: `push_subscriptions query failed: ${subsError}` })
 
-  if (subsError) return json(500, { ok: false, error: `push_subscriptions query failed: ${subsError.message}` })
-
-  const userSubs = (subscriptions || []) as PushSubscriptionRow[]
+  const userSubs = subscriptions
   if (!userSubs.length) {
     await sb.from('appointments').update({ owner_notified_at: new Date().toISOString() }).eq('id', appointment.id)
     return json(200, { ok: true, mode: 'new_booking', sent: 0, reason: 'no_subscriptions' })
@@ -265,6 +316,95 @@ const handleNewBooking = async (
   })
 }
 
+const handleStaffBooking = async (
+  sb: ReturnType<typeof createClient>,
+  appointmentId: string,
+  accountUserId: string,
+  actorOperatorId: string,
+) => {
+  const { data: appt, error: apptError } = await sb
+    .from('appointments')
+    .select('id,user_id,client_id,service_id,date,time,notes,blocked,created_at')
+    .eq('id', appointmentId)
+    .eq('user_id', accountUserId)
+    .maybeSingle()
+
+  if (apptError) return json(500, { ok: false, error: `appointments query failed: ${apptError.message}` })
+  const appointment = appt as {
+    id: string
+    user_id: string
+    client_id: string | null
+    service_id: string | null
+    date: string
+    time: string
+    notes: string | null
+    blocked?: boolean | null
+    created_at?: string | null
+  } | null
+
+  if (!appointment) return json(404, { ok: false, error: 'appointment_not_found' })
+  if (appointment.blocked) return json(200, { ok: true, sent: 0, reason: 'blocked_slot' })
+  if (String(appointment.notes || '').trim() === 'Agendamento público') {
+    return json(200, { ok: true, sent: 0, reason: 'public_booking_uses_other_mode' })
+  }
+  if (appointment.created_at) {
+    const createdMs = new Date(appointment.created_at).getTime()
+    if (Number.isFinite(createdMs) && Date.now() - createdMs > 30 * 60 * 1000) {
+      return json(200, { ok: true, sent: 0, reason: 'booking_too_old' })
+    }
+  }
+
+  const ownerId = await loadAccountOwnerId(sb, appointment.user_id)
+  if (!ownerId) return json(200, { ok: true, sent: 0, reason: 'no_owner' })
+  if (actorOperatorId && actorOperatorId === ownerId) {
+    return json(200, { ok: true, sent: 0, reason: 'actor_is_owner' })
+  }
+
+  const [{ data: clientRow }, { data: serviceRow }, { data: actorRow }] = await Promise.all([
+    appointment.client_id
+      ? sb.from('clients').select('name').eq('id', appointment.client_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    appointment.service_id
+      ? sb.from('services').select('name').eq('id', appointment.service_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    actorOperatorId
+      ? sb.from('team_members').select('name').eq('id', actorOperatorId).eq('user_id', appointment.user_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+
+  const clientName = String((clientRow as { name?: string } | null)?.name || '').trim() || 'Cliente'
+  const serviceName = String((serviceRow as { name?: string } | null)?.name || '').trim()
+  const actorName = String((actorRow as { name?: string } | null)?.name || '').trim() || 'Funcionário'
+  const when = formatBookingWhen(appointment.date, appointment.time)
+  const payload = JSON.stringify({
+    title: 'Novo agendamento',
+    body: serviceName
+      ? `${actorName} agendou ${clientName} — ${serviceName} para ${when}`
+      : `${actorName} agendou ${clientName} para ${when}`,
+    tag: `staff-booking-${appointment.id}`,
+    data: { url: '/agenda' },
+  })
+
+  const { subscriptions, error: subsError } = await loadSubscriptions(sb, appointment.user_id)
+  if (subsError) return json(500, { ok: false, error: `push_subscriptions query failed: ${subsError}` })
+
+  const ownerSubs = subscriptions.filter((sub) => !sub.operator_id || sub.operator_id === ownerId)
+  if (!ownerSubs.length) {
+    return json(200, { ok: true, mode: 'staff_booking', sent: 0, reason: 'no_owner_subscriptions' })
+  }
+
+  const { sent, failed, staleSubscriptionIds } = await sendToSubscriptions(ownerSubs, payload)
+  await pruneStaleSubscriptions(sb, staleSubscriptionIds)
+
+  return json(200, {
+    ok: true,
+    mode: 'staff_booking',
+    sent,
+    failed,
+    staleSubscriptionsRemoved: staleSubscriptionIds.size,
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders })
   if (req.method !== 'POST') return json(405, { ok: false, error: 'POST only' })
@@ -277,13 +417,17 @@ Deno.serve(async (req) => {
   }
 
   const appointmentId = String(requestBody.appointment_id || requestBody.appointmentId || '').trim()
+  const actorOperatorId = String(requestBody.actor_operator_id || requestBody.actorOperatorId || '').trim()
   const isNewBooking = requestBody.mode === 'new_booking'
+  const isStaffBooking = requestBody.mode === 'staff_booking'
   const secret = Deno.env.get('CRON_SECRET') || ''
   const auth = parseBearerToken(req.headers.get('Authorization'))
   const cronAuthorized = Boolean(secret && auth === secret)
 
-  if (!isNewBooking && !cronAuthorized) return json(401, { ok: false, error: 'Unauthorized' })
-  if (isNewBooking && !appointmentId) return json(400, { ok: false, error: 'appointment_id required' })
+  if (!isNewBooking && !isStaffBooking && !cronAuthorized) return json(401, { ok: false, error: 'Unauthorized' })
+  if ((isNewBooking || isStaffBooking) && !appointmentId) {
+    return json(400, { ok: false, error: 'appointment_id required' })
+  }
 
   if (!PROJECT_URL || !SERVICE_ROLE_KEY) {
     return json(500, { ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' })
@@ -299,6 +443,14 @@ Deno.serve(async (req) => {
   })
 
   if (isNewBooking) return handleNewBooking(sb, appointmentId)
+
+  if (isStaffBooking) {
+    if (!auth || cronAuthorized) return json(401, { ok: false, error: 'Unauthorized' })
+    const { data: userData, error: userError } = await sb.auth.getUser(auth)
+    const accountUserId = userData?.user?.id || ''
+    if (userError || !accountUserId) return json(401, { ok: false, error: 'Unauthorized' })
+    return handleStaffBooking(sb, appointmentId, accountUserId, actorOperatorId)
+  }
 
   const { data: subscriptions, error: subsError } = await sb
     .from('push_subscriptions')

@@ -3,7 +3,7 @@ import { Btn, Field, Inp, Sel } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
-import { hashPin, pickMemberColor } from '../lib/operator'
+import { hashPin, pickMemberColor, getAccountOwner, useOperator } from '../lib/operator'
 import {
   isPushSupported,
   getVapidPublicKey,
@@ -51,6 +51,8 @@ const Settings = ({
   const [memberBusy, setMemberBusy] = useState(false)
   const userId = session?.userId
   const professionalMeta = getProfessionalTypeMeta(professionalType)
+  const { operator } = useOperator()
+  const accountOwner = getAccountOwner(teamMembers)
 
   const blockDemoAction = () => {
     if (!isDemo) return false
@@ -135,7 +137,7 @@ const Settings = ({
         morningEnabled: true,
         reminderMinutesBefore: 60,
         progressEnabled: true,
-      })
+      }, operator?.id || null)
       setPushOn(true)
       addToast('Notificações ativadas neste aparelho.', 'success')
     } catch {
@@ -469,8 +471,8 @@ const Settings = ({
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Equipe (quem usa o app)</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
-          Cadastre quem trabalha no estúdio. Ao abrir o app, cada pessoa se identifica — sem login separado.
-          PIN opcional na troca de operador.
+          Cadastre quem trabalha no estúdio. A primeira pessoa é a dona da conta: quando outra pessoa agendar, o aviso vai no celular dela.
+          PIN opcional na troca de perfil.
         </p>
 
         {teamMembers.length > 0 && (
@@ -494,7 +496,14 @@ const Settings = ({
                     {member.name[0]?.toUpperCase() || '?'}
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{member.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>{member.name}</span>
+                      {accountOwner?.id === member.id && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--rose-deep)', background: 'var(--rose-light)', borderRadius: 999, padding: '2px 8px' }}>
+                          Dona da conta
+                        </span>
+                      )}
+                    </div>
                     {member.pinHash && (
                       <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 2 }}>Com PIN</div>
                     )}
@@ -563,7 +572,7 @@ const Settings = ({
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Lembretes no celular</h3>
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 14 }}>
-          Receba aviso quando alguém agenda pelo link público, antes do próximo horário e resumos do dia. Ative quando quiser — não pedimos permissão ao entrar no app.
+          Ative neste aparelho com o perfil que está usando agora (PIN). O aviso de funcionário agendou chega só no celular da dona da conta. Agendamento pelo link público e lembretes de horário chegam em todos os perfis que ativaram.
           No iPhone, instale o app na tela inicial para melhor suporte a notificações.
         </p>
         {!isPushSupported() ? (

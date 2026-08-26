@@ -4,6 +4,7 @@
 create table if not exists public.app_notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
+  operator_id uuid null references public.team_members (id) on delete cascade,
   type text not null default 'public_booking',
   title text not null,
   body text not null default '',
@@ -14,6 +15,9 @@ create table if not exists public.app_notifications (
   updated_at timestamptz not null default now()
 );
 
+alter table public.app_notifications
+  add column if not exists operator_id uuid null references public.team_members (id) on delete cascade;
+
 create index if not exists app_notifications_user_created_idx
   on public.app_notifications (user_id, created_at desc);
 
@@ -21,12 +25,17 @@ create index if not exists app_notifications_user_unread_idx
   on public.app_notifications (user_id)
   where read_at is null;
 
-create unique index if not exists app_notifications_booking_unique_idx
-  on public.app_notifications (user_id, appointment_id)
-  where appointment_id is not null;
+drop index if exists public.app_notifications_booking_unique_idx;
+
+create unique index if not exists app_notifications_booking_operator_unique_idx
+  on public.app_notifications (user_id, operator_id, appointment_id)
+  where appointment_id is not null and operator_id is not null;
+
+create index if not exists app_notifications_operator_idx
+  on public.app_notifications (user_id, operator_id, created_at desc);
 
 comment on table public.app_notifications is
-  'Avisos da profissional no sininho do app (ex.: agendamento público).';
+  'Avisos no sininho, por perfil da equipe (operator_id).';
 
 alter table public.app_notifications enable row level security;
 
@@ -46,7 +55,12 @@ create policy app_notifications_own_delete
   on public.app_notifications for delete
   using (auth.uid() = user_id);
 
-grant select, update, delete on public.app_notifications to authenticated;
+drop policy if exists app_notifications_own_insert on public.app_notifications;
+create policy app_notifications_own_insert
+  on public.app_notifications for insert
+  with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.app_notifications to authenticated;
 
 alter table public.app_notifications replica identity full;
 

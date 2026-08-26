@@ -42,6 +42,21 @@ const getFunctionsBaseUrl = () => {
   return SUPABASE_URL.replace('.supabase.co', '.functions.supabase.co')
 }
 
+const formatApptWhen = (date, time) => {
+  const ymd = String(date || '').slice(0, 10)
+  const parts = ymd.split('-')
+  const hhmm = String(time || '').slice(0, 5)
+  if (parts.length === 3) return `${parts[2]}/${parts[1]} às ${hhmm}`
+  return hhmm
+}
+
+const getAccessToken = async () => {
+  const sb = getClient()
+  if (!sb) return ''
+  const { data } = await sb.auth.getSession()
+  return data?.session?.access_token || ''
+}
+
 /** Avisa a profissional de um agendamento feito pelo link público. Best-effort. */
 export const notifyProfessionalNewBooking = (appointmentId) => {
   const id = String(appointmentId || '').trim()
@@ -55,6 +70,27 @@ export const notifyProfessionalNewBooking = (appointmentId) => {
       Authorization: `Bearer ${SUPABASE_KEY}`,
     },
     body: JSON.stringify({ mode: 'new_booking', appointment_id: id }),
+  }).catch(() => {})
+}
+
+const notifyOwnerStaffBookingPush = async (appointmentId, actorOperatorId) => {
+  const id = String(appointmentId || '').trim()
+  const base = getFunctionsBaseUrl()
+  if (!id || !base) return
+  const token = await getAccessToken()
+  if (!token) return
+  fetch(`${base}/send-scheduled-pushes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      mode: 'staff_booking',
+      appointment_id: id,
+      actor_operator_id: actorOperatorId || '',
+    }),
   }).catch(() => {})
 }
 
@@ -191,6 +227,7 @@ const normalizeNotification = (row) => ({
   title: row.title || 'Notificação',
   body: row.body || '',
   appointmentId: row.appointment_id || row.appointmentId || null,
+  operatorId: row.operator_id || row.operatorId || null,
   payload: row.payload && typeof row.payload === 'object' ? row.payload : {},
   readAt: row.read_at || row.readAt || null,
   createdAt: row.created_at || row.createdAt || new Date().toISOString(),
@@ -820,7 +857,7 @@ export const DB = {
   },
 
   // ── Push Web (PWA) — tabela push_subscriptions (ver supabase/sql/push_subscriptions.sql) ──
-  async savePushSubscription(userId, subscription, prefs = {}) {
+  async savePushSubscription(userId, subscription, prefs = {}, operatorId = null) {
     const subJson = subscription && typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription
     if (!subJson?.endpoint) return false
     const sb = getClient()
@@ -835,11 +872,26 @@ export const DB = {
         progress_enabled: prefs.progressEnabled !== false,
         updated_at: new Date().toISOString(),
       }
-      const { error } = await sb.from('push_subscriptions').upsert(row, { onConflict: 'user_id,endpoint' })
+      if (operatorId) row.operator_id = operatorId
+      let { error } = await sb.from('push_subscriptions').upsert(row, { onConflict: 'user_id,endpoint' })
+      if (error && /operator_id/i.test(error.message || '')) {
+        const { operator_id: _op, ...rest } = row
+        const retry = await sb.from('push_subscriptions').upsert(rest, { onConflict: 'user_id,endpoint' })
+        error = retry.error
+      }
       if (!error) return true
     }
-    uset(userId, 'push_subscription', { ...subJson, prefs, updatedAt: new Date().toISOString() })
+    uset(userId, 'push_subscription', { ...subJson, prefs, operatorId: operatorId || null, updatedAt: new Date().toISOString() })
     return true
+  },
+
+  async bindPushSubscriptionToOperator(userId, subscription, operatorId) {
+    if (!userId || !operatorId || !subscription) return false
+    return this.savePushSubscription(userId, subscription, {
+      morningEnabled: true,
+      reminderMinutesBefore: 60,
+      progressEnabled: true,
+    }, operatorId)
   },
 
   async deletePushSubscription(userId, subscriptionOrEndpoint) {
@@ -959,7 +1011,7 @@ export const DB = {
     return (uget(userId, 'audit_log') || []).map(normalizeAuditEntry).slice(0, limit)
   },
 
-  async getNotifications(userId, { limit = 50 } = {}) {
+  async getNotifications(userId, { limit = 80 } = {}) {
     const sb = getClient()
     if (sb && userId && userId !== 'demo_user') {
       const { data, error } = await sb
@@ -993,16 +1045,100 @@ export const DB = {
     return this.getNotifications(userId)
   },
 
-  async markAllNotificationsRead(userId) {
+  async markAllNotificationsRead(userId, { operatorId = null, includeUnscoped = false } = {}) {
     const nowIso = new Date().toISOString()
     const sb = getClient()
     if (sb && userId && userId !== 'demo_user') {
-      await sb
+      let query = sb
         .from('app_notifications')
         .update({ read_at: nowIso, updated_at: nowIso })
         .eq('user_id', userId)
         .is('read_at', null)
+      if (operatorId && includeUnscoped) {
+        query = query.or(`operator_id.eq.${operatorId},operator_id.is.null`)
+      } else if (operatorId) {
+        query = query.eq('operator_id', operatorId)
+      }
+      await query
     }
     return this.getNotifications(userId)
+  },
+
+  async deleteNotifications(userId, ids) {
+    const idList = (Array.isArray(ids) ? ids : [ids]).filter(Boolean)
+    if (!idList.length) return this.getNotifications(userId)
+    const sb = getClient()
+    if (sb && userId && userId !== 'demo_user') {
+      await sb.from('app_notifications').delete().eq('user_id', userId).in('id', idList)
+    }
+    const remaining = (uget(userId, 'app_notifications') || []).filter((n) => !idList.includes(n.id))
+    uset(userId, 'app_notifications', remaining)
+    return this.getNotifications(userId)
+  },
+
+  async deleteAllNotifications(userId, { operatorId = null, includeUnscoped = false } = {}) {
+    const sb = getClient()
+    if (sb && userId && userId !== 'demo_user') {
+      if (operatorId && includeUnscoped) {
+        await sb.from('app_notifications').delete().eq('user_id', userId).or(`operator_id.eq.${operatorId},operator_id.is.null`)
+      } else if (operatorId) {
+        await sb.from('app_notifications').delete().eq('user_id', userId).eq('operator_id', operatorId)
+      } else {
+        await sb.from('app_notifications').delete().eq('user_id', userId)
+      }
+    } else if (userId) {
+      uset(userId, 'app_notifications', [])
+    }
+    return this.getNotifications(userId)
+  },
+
+  async notifyOwnerStaffBooking(userId, {
+    appointment,
+    ownerOperatorId,
+    actorOperatorId,
+    actorName,
+    clientName,
+    serviceName,
+  } = {}) {
+    if (!userId || userId === 'demo_user' || !appointment?.id || !ownerOperatorId) return
+    if (actorOperatorId && actorOperatorId === ownerOperatorId) return
+    if (appointment.blocked) return
+
+    const when = formatApptWhen(appointment.date, appointment.time)
+    const who = actorName || 'Funcionário'
+    const client = clientName || 'Cliente'
+    const body = serviceName
+      ? `${who} agendou ${client} — ${serviceName} para ${when}`
+      : `${who} agendou ${client} para ${when}`
+    const row = {
+      user_id: userId,
+      operator_id: ownerOperatorId,
+      type: 'staff_booking',
+      title: 'Novo agendamento',
+      body,
+      appointment_id: appointment.id,
+      payload: {
+        date: appointment.date,
+        time: String(appointment.time || '').slice(0, 5),
+        clientName: client,
+        serviceName: serviceName || '',
+        actorName: who,
+      },
+    }
+
+    const sb = getClient()
+    if (sb) {
+      let { error } = await sb.from('app_notifications').insert(row)
+      if (error && /operator_id/i.test(error.message || '')) {
+        const { operator_id: _op, ...rest } = row
+        const retry = await sb.from('app_notifications').insert(rest)
+        error = retry.error
+      }
+      if (error && error.code !== '23505') {
+        console.warn('[notify] failed to insert staff booking inbox', error.message)
+      }
+    }
+
+    notifyOwnerStaffBookingPush(appointment.id, actorOperatorId)
   },
 }

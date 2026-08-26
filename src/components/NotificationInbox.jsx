@@ -29,6 +29,8 @@ const NotificationInbox = ({
   onItemClick,
   onSoonClick,
   onMarkAllRead,
+  onDeleteItem,
+  onDeleteAll,
 }) => {
   const rootRef = useRef(null)
   const hasUnread = unreadCount > 0
@@ -144,24 +146,44 @@ const NotificationInbox = ({
             }}
           >
             <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: 0 }}>Notificações</p>
-            {hasUnread && (
-              <button
-                type="button"
-                onClick={() => onMarkAllRead?.()}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--rose-deep)',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  padding: 0,
-                }}
-              >
-                Marcar como lidas
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {hasUnread && (
+                <button
+                  type="button"
+                  onClick={() => onMarkAllRead?.()}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--rose-deep)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    padding: 0,
+                  }}
+                >
+                  Marcar como lidas
+                </button>
+              )}
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteAll?.()}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-light)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    padding: 0,
+                  }}
+                >
+                  Limpar todas
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -207,7 +229,7 @@ const NotificationInbox = ({
               <div style={{ padding: '28px 20px', textAlign: 'center' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Nenhuma notificação</p>
                 <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.5, margin: 0 }}>
-                  Quando alguém agendar pelo link público, o aviso aparece aqui.
+                  Avisos deste perfil aparecem aqui: agendamento pelo link público e, para a dona da conta, quando outra pessoa da equipe marcar um horário.
                 </p>
               </div>
             ) : (
@@ -229,64 +251,97 @@ const NotificationInbox = ({
                 {items.map((item) => {
                   const unread = !item.readAt
                   return (
-                    <button
+                    <div
                       key={item.id}
-                      type="button"
-                      onClick={() => onItemClick?.(item)}
                       style={{
                         width: '100%',
-                        textAlign: 'left',
                         background: unread ? 'var(--rose-light)' : 'transparent',
-                        border: 'none',
                         borderRadius: 12,
-                        padding: '10px 12px',
                         marginBottom: 4,
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
                         display: 'flex',
-                        gap: 10,
+                        gap: 4,
                         alignItems: 'flex-start',
                       }}
                     >
-                      {unread && (
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            background: 'var(--rose-deep)',
-                            marginTop: 6,
-                            flexShrink: 0,
-                          }}
-                        />
-                      )}
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 8,
-                            alignItems: 'baseline',
-                          }}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.title}</span>
-                          <span style={{ fontSize: 10, color: 'var(--text-light)', whiteSpace: 'nowrap' }}>
-                            {formatRelative(item.createdAt)}
+                      <button
+                        type="button"
+                        onClick={() => onItemClick?.(item)}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          textAlign: 'left',
+                          background: 'transparent',
+                          border: 'none',
+                          borderRadius: 12,
+                          padding: '10px 8px 10px 12px',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          display: 'flex',
+                          gap: 10,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        {unread && (
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background: 'var(--rose-deep)',
+                              marginTop: 6,
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              alignItems: 'baseline',
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.title}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-light)', whiteSpace: 'nowrap' }}>
+                              {formatRelative(item.createdAt)}
+                            </span>
+                          </span>
+                          <span
+                            style={{
+                              display: 'block',
+                              fontSize: 12,
+                              color: 'var(--text-mid)',
+                              marginTop: 4,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {item.body}
                           </span>
                         </span>
-                        <span
-                          style={{
-                            display: 'block',
-                            fontSize: 12,
-                            color: 'var(--text-mid)',
-                            marginTop: 4,
-                            lineHeight: 1.45,
-                          }}
-                        >
-                          {item.body}
-                        </span>
-                      </span>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        title="Apagar notificação"
+                        aria-label="Apagar notificação"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          onDeleteItem?.(item)
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-light)',
+                          cursor: 'pointer',
+                          padding: '10px 10px 8px 4px',
+                          display: 'flex',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
                   )
                 })}
               </div>

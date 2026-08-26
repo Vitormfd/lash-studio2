@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Btn, Field, Inp } from '../components/UI'
 import Icon from '../components/Icon'
-import { hashPin, pickMemberColor } from '../lib/operator'
+import { hashPin, pickMemberColor, getAccountOwner } from '../lib/operator'
 import { DB, uid } from '../lib/supabase'
 
 const cardStyle = {
@@ -34,6 +34,7 @@ const OperatorSelect = ({
   const [setupPin, setSetupPin] = useState('')
 
   const activeMembers = teamMembers.filter((m) => m.active !== false)
+  const ownerId = getAccountOwner(activeMembers)?.id
 
   const handlePick = async (member) => {
     if (member.pinHash) {
@@ -92,7 +93,7 @@ const OperatorSelect = ({
             </div>
             <h2 className="serif" style={{ fontSize: 22, fontWeight: 500, color: 'var(--text)', marginBottom: 6 }}>Quem usa o app?</h2>
             <p style={{ fontSize: 13, color: 'var(--text-light)', lineHeight: 1.6 }}>
-              Cadastre a primeira pessoa da equipe. Depois você pode adicionar mais em Configurações.
+              Cadastre a primeira pessoa da equipe — ela será a dona da conta. Depois você pode adicionar mais em Configurações.
             </p>
           </div>
 
@@ -166,7 +167,14 @@ const OperatorSelect = ({
                 {member.name[0]?.toUpperCase() || '?'}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{member.name}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>{member.name}</span>
+                  {ownerId === member.id && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--rose-deep)', background: 'var(--rose-light)', borderRadius: 999, padding: '2px 8px' }}>
+                      Dona da conta
+                    </span>
+                  )}
+                </div>
                 {member.pinHash && (
                   <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Icon name="lock" size={11} /> PIN protegido

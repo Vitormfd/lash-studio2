@@ -1,10 +1,11 @@
 -- Public booking RPCs (anonymous-safe)
 -- Execute in Supabase SQL Editor.
 --
--- Depois deste SQL, faça o deploy da Edge Function:
+-- Depois deste SQL, rode também supabase/sql/operator_notifications.sql
+-- (vincula o sininho a cada perfil da equipe) e faça o deploy da Edge Function:
 --   supabase functions deploy send-scheduled-pushes --no-verify-jwt
--- Ela envia push para a profissional quando alguém agenda pelo link público.
--- Também grava o aviso no sininho (tabela app_notifications).
+-- Ela envia push no agendamento público (todos os perfis) e quando um
+-- funcionário agenda no app (só a dona da conta).
 
 alter table public.appointments
   add column if not exists owner_notified_at timestamptz null;
@@ -166,6 +167,75 @@ $$;
 
 grant execute on function public.get_public_booking_window(uuid, date) to anon, authenticated;
 
+create or replace function public.insert_team_app_notifications(
+  p_user_id uuid,
+  p_type text,
+  p_title text,
+  p_body text,
+  p_appointment_id uuid,
+  p_payload jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  begin
+    insert into public.app_notifications (
+      user_id, operator_id, type, title, body, appointment_id, payload
+    )
+    select
+      p_user_id,
+      m.id,
+      coalesce(nullif(trim(p_type), ''), 'public_booking'),
+      p_title,
+      coalesce(p_body, ''),
+      p_appointment_id,
+      coalesce(p_payload, '{}'::jsonb)
+    from public.team_members m
+    where m.user_id = p_user_id
+      and m.active = true
+    on conflict do nothing;
+
+    get diagnostics v_count = row_count;
+
+    if v_count = 0 then
+      insert into public.app_notifications (
+        user_id, type, title, body, appointment_id, payload
+      )
+      values (
+        p_user_id,
+        coalesce(nullif(trim(p_type), ''), 'public_booking'),
+        p_title,
+        coalesce(p_body, ''),
+        p_appointment_id,
+        coalesce(p_payload, '{}'::jsonb)
+      )
+      on conflict do nothing;
+    end if;
+  exception
+    when undefined_column then
+      insert into public.app_notifications (
+        user_id, type, title, body, appointment_id, payload
+      )
+      values (
+        p_user_id,
+        coalesce(nullif(trim(p_type), ''), 'public_booking'),
+        p_title,
+        coalesce(p_body, ''),
+        p_appointment_id,
+        coalesce(p_payload, '{}'::jsonb)
+      )
+      on conflict do nothing;
+    when others then
+      null;
+  end;
+end;
+$$;
+
 create or replace function public.create_public_booking(
   p_professional_id uuid,
   p_service_id uuid,
@@ -192,6 +262,7 @@ declare
   v_start_mins int;
   v_end_mins int;
   v_slot_mins int;
+  v_notif_body text;
 begin
   -- Mark this transaction as a public booking to bypass the write access trigger
   perform set_config('app.public_booking', 'true', true);
@@ -344,36 +415,31 @@ begin
     v_duration
   );
 
-  -- Inbox do sininho (best-effort)
+  -- Inbox do sininho: um aviso por perfil da equipe (best-effort)
+  v_notif_body :=
+    case
+      when nullif(trim(coalesce(v_service.name, '')), '') is not null then
+        coalesce(nullif(trim(p_client_name), ''), 'Cliente')
+        || ' agendou '
+        || trim(v_service.name)
+        || ' para '
+        || to_char(p_date, 'DD/MM')
+        || ' às '
+        || to_char(p_time, 'HH24:MI')
+      else
+        coalesce(nullif(trim(p_client_name), ''), 'Cliente')
+        || ' agendou para '
+        || to_char(p_date, 'DD/MM')
+        || ' às '
+        || to_char(p_time, 'HH24:MI')
+    end;
+
   begin
-    insert into public.app_notifications (
-      user_id,
-      type,
-      title,
-      body,
-      appointment_id,
-      payload
-    )
-    values (
+    perform public.insert_team_app_notifications(
       p_professional_id,
       'public_booking',
       'Novo agendamento',
-      case
-        when nullif(trim(coalesce(v_service.name, '')), '') is not null then
-          coalesce(nullif(trim(p_client_name), ''), 'Cliente')
-          || ' agendou '
-          || trim(v_service.name)
-          || ' para '
-          || to_char(p_date, 'DD/MM')
-          || ' às '
-          || to_char(p_time, 'HH24:MI')
-        else
-          coalesce(nullif(trim(p_client_name), ''), 'Cliente')
-          || ' agendou para '
-          || to_char(p_date, 'DD/MM')
-          || ' às '
-          || to_char(p_time, 'HH24:MI')
-      end,
+      v_notif_body,
       v_appointment_id,
       jsonb_build_object(
         'date', p_date,

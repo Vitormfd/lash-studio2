@@ -47,7 +47,7 @@ Resposta esperada: JSON com `sent`, `failed`, `staleSubscriptionsRemoved` e `rem
 
 ## Novo agendamento pelo link público
 
-Quando `create_public_booking` grava o horário, a função recebe `mode = new_booking` e envia um push só para a profissional dona da agenda:
+Quando `create_public_booking` grava o horário, a função recebe `mode = new_booking` e envia um push para **todos os aparelhos** da conta (dona e funcionárias que ativaram):
 
 ```bash
 curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes" \
@@ -57,7 +57,20 @@ curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes"
 
 Esse modo não usa `CRON_SECRET`. Ele só aceita um agendamento recente com `notes = 'Agendamento público'` e evita reenvio via `owner_notified_at`.
 
-Rode também `supabase/sql/public_booking_rpc.sql` no SQL Editor para o banco chamar a função na hora do insert.
+Rode `supabase/sql/public_booking_rpc.sql` e `supabase/sql/operator_notifications.sql` no SQL Editor.
+
+## Funcionário agendou (aviso só para a dona)
+
+Quando uma funcionária cria um horário no app, o cliente chama `mode = staff_booking` com o JWT da conta. O push vai só para os aparelhos vinculados ao perfil da dona (primeira pessoa da equipe):
+
+```bash
+curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes" \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer <USER_ACCESS_TOKEN>" \
+   -d '{"mode":"staff_booking","appointment_id":"<UUID>","actor_operator_id":"<TEAM_MEMBER_UUID>"}'
+```
+
+Cada `push_subscriptions.operator_id` precisa estar preenchido: a pessoa ativa o lembrete (ou entra com o PIN) no próprio celular.
 
 ## Disparo de teste para todos os dispositivos inscritos
 
