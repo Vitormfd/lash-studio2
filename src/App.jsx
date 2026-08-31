@@ -646,6 +646,7 @@ const AppMain = ({ session, onLogout }) => {
           actorName: activeOperator?.name,
           clientName: clients.find((c) => c.id === saved.clientId)?.name || '',
           serviceName: services.find((s) => s.id === saved.serviceId)?.name || '',
+          teamMembers,
         }).catch(() => {})
       }
     }

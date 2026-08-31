@@ -1210,43 +1210,55 @@ export const DB = {
     actorName,
     clientName,
     serviceName,
+    teamMembers = [],
   } = {}) {
     if (!userId || userId === 'demo_user' || !appointment?.id || !ownerOperatorId) return
-    if (actorOperatorId && actorOperatorId === ownerOperatorId) return
     if (appointment.blocked) return
 
+    const actorIsOwner = !!(actorOperatorId && actorOperatorId === ownerOperatorId)
+    const recipientIds = actorIsOwner
+      ? (teamMembers || [])
+        .filter((m) => m && m.active !== false && m.id && m.id !== ownerOperatorId)
+        .map((m) => m.id)
+      : [ownerOperatorId]
+
+    if (!recipientIds.length) return
+
     const when = formatApptWhen(appointment.date, appointment.time)
-    const who = actorName || 'Funcionário'
+    const who = actorName || (actorIsOwner ? 'Dona' : 'Funcionário')
     const client = clientName || 'Cliente'
     const body = serviceName
       ? `${who} agendou ${client} — ${serviceName} para ${when}`
       : `${who} agendou ${client} para ${when}`
-    const row = {
-      user_id: userId,
-      operator_id: ownerOperatorId,
-      type: 'staff_booking',
-      title: 'Novo agendamento',
-      body,
-      appointment_id: appointment.id,
-      payload: {
-        date: appointment.date,
-        time: String(appointment.time || '').slice(0, 5),
-        clientName: client,
-        serviceName: serviceName || '',
-        actorName: who,
-      },
+    const payload = {
+      date: appointment.date,
+      time: String(appointment.time || '').slice(0, 5),
+      clientName: client,
+      serviceName: serviceName || '',
+      actorName: who,
     }
 
     const sb = getClient()
     if (sb) {
-      let { error } = await sb.from('app_notifications').insert(row)
-      if (error && /operator_id/i.test(error.message || '')) {
-        const { operator_id: _op, ...rest } = row
-        const retry = await sb.from('app_notifications').insert(rest)
-        error = retry.error
-      }
-      if (error && error.code !== '23505') {
-        console.warn('[notify] failed to insert staff booking inbox', error.message)
+      for (const operatorId of recipientIds) {
+        const row = {
+          user_id: userId,
+          operator_id: operatorId,
+          type: 'staff_booking',
+          title: 'Novo agendamento',
+          body,
+          appointment_id: appointment.id,
+          payload,
+        }
+        let { error } = await sb.from('app_notifications').insert(row)
+        if (error && /operator_id/i.test(error.message || '')) {
+          const { operator_id: _op, ...rest } = row
+          const retry = await sb.from('app_notifications').insert(rest)
+          error = retry.error
+        }
+        if (error && error.code !== '23505') {
+          console.warn('[notify] failed to insert staff booking inbox', error.message)
+        }
       }
     }
 

@@ -471,7 +471,7 @@ const Settings = ({
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Equipe (quem usa o app)</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
-          Cadastre quem trabalha no estúdio. A primeira pessoa é a dona da conta: quando outra pessoa agendar, o aviso vai no celular dela.
+          Cadastre quem trabalha no estúdio. A primeira pessoa é a dona da conta: funcionária agenda → avisa a dona; dona agenda → avisa as funcionárias.
           PIN opcional na troca de perfil.
         </p>
 
@@ -572,7 +572,7 @@ const Settings = ({
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Lembretes no celular</h3>
         <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 14 }}>
-          Ative neste aparelho com o perfil que está usando agora (PIN). O aviso de funcionário agendou chega só no celular da dona da conta. Agendamento pelo link público e lembretes de horário chegam em todos os perfis que ativaram.
+          Ative neste aparelho com o perfil que está usando agora (PIN). Funcionária agenda → push na dona; dona agenda → push nas funcionárias. Agendamento pelo link público e lembretes de horário chegam em todos os perfis que ativaram.
           No iPhone, instale o app na tela inicial para melhor suporte a notificações.
         </p>
         {!isPushSupported() ? (

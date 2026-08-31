@@ -59,9 +59,12 @@ Esse modo não usa `CRON_SECRET`. Ele só aceita um agendamento recente com `not
 
 Rode `supabase/sql/public_booking_rpc.sql` e `supabase/sql/operator_notifications.sql` no SQL Editor.
 
-## Funcionário agendou (aviso só para a dona)
+## Funcionário ou dona agendou no app
 
-Quando uma funcionária cria um horário no app, o cliente chama `mode = staff_booking` com o JWT da conta. O push vai só para os aparelhos vinculados ao perfil da dona (primeira pessoa da equipe):
+Quando alguém cria um horário no app, o cliente chama `mode = staff_booking` com o JWT da conta:
+
+- **Funcionária agenda** → push só nos aparelhos da dona
+- **Dona agenda** → push nos aparelhos das funcionárias (perfis ativos ≠ dona)
 
 ```bash
 curl -X POST "https://<PROJECT-REF>.functions.supabase.co/send-scheduled-pushes" \

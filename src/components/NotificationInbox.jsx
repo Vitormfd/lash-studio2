@@ -265,7 +265,7 @@ const NotificationInbox = ({
               <div style={{ padding: '28px 20px', textAlign: 'center' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Nenhuma notificação</p>
                 <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.5, margin: 0 }}>
-                  Avisos deste perfil aparecem aqui: agendamento pelo link público e, para a dona da conta, quando outra pessoa da equipe marcar um horário.
+                  Avisos deste perfil aparecem aqui: link público, funcionária → dona, e dona → funcionárias.
                 </p>
               </div>
             ) : (

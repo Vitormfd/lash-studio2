@@ -356,11 +356,10 @@ const handleStaffBooking = async (
 
   const ownerId = await loadAccountOwnerId(sb, appointment.user_id)
   if (!ownerId) return json(200, { ok: true, sent: 0, reason: 'no_owner' })
-  if (actorOperatorId && actorOperatorId === ownerId) {
-    return json(200, { ok: true, sent: 0, reason: 'actor_is_owner' })
-  }
 
-  const [{ data: clientRow }, { data: serviceRow }, { data: actorRow }] = await Promise.all([
+  const actorIsOwner = !!(actorOperatorId && actorOperatorId === ownerId)
+
+  const [{ data: clientRow }, { data: serviceRow }, { data: actorRow }, { data: teamRows }] = await Promise.all([
     appointment.client_id
       ? sb.from('clients').select('name').eq('id', appointment.client_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -370,11 +369,15 @@ const handleStaffBooking = async (
     actorOperatorId
       ? sb.from('team_members').select('name').eq('id', actorOperatorId).eq('user_id', appointment.user_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    actorIsOwner
+      ? sb.from('team_members').select('id').eq('user_id', appointment.user_id).eq('active', true)
+      : Promise.resolve({ data: null }),
   ])
 
   const clientName = String((clientRow as { name?: string } | null)?.name || '').trim() || 'Cliente'
   const serviceName = String((serviceRow as { name?: string } | null)?.name || '').trim()
-  const actorName = String((actorRow as { name?: string } | null)?.name || '').trim() || 'Funcionário'
+  const actorName = String((actorRow as { name?: string } | null)?.name || '').trim()
+    || (actorIsOwner ? 'Dona' : 'Funcionário')
   const when = formatBookingWhen(appointment.date, appointment.time)
   const payload = JSON.stringify({
     title: 'Novo agendamento',
@@ -388,12 +391,28 @@ const handleStaffBooking = async (
   const { subscriptions, error: subsError } = await loadSubscriptions(sb, appointment.user_id)
   if (subsError) return json(500, { ok: false, error: `push_subscriptions query failed: ${subsError}` })
 
-  const ownerSubs = subscriptions.filter((sub) => !sub.operator_id || sub.operator_id === ownerId)
-  if (!ownerSubs.length) {
-    return json(200, { ok: true, mode: 'staff_booking', sent: 0, reason: 'no_owner_subscriptions' })
+  let targetSubs: PushSubscriptionRow[] = []
+  if (actorIsOwner) {
+    const staffIds = new Set(
+      ((teamRows || []) as Array<{ id?: string }>)
+        .map((m) => m.id)
+        .filter((id): id is string => Boolean(id && id !== ownerId)),
+    )
+    if (!staffIds.size) {
+      return json(200, { ok: true, mode: 'staff_booking', sent: 0, reason: 'no_staff' })
+    }
+    targetSubs = subscriptions.filter((sub) => sub.operator_id && staffIds.has(sub.operator_id))
+    if (!targetSubs.length) {
+      return json(200, { ok: true, mode: 'staff_booking', sent: 0, reason: 'no_staff_subscriptions' })
+    }
+  } else {
+    targetSubs = subscriptions.filter((sub) => !sub.operator_id || sub.operator_id === ownerId)
+    if (!targetSubs.length) {
+      return json(200, { ok: true, mode: 'staff_booking', sent: 0, reason: 'no_owner_subscriptions' })
+    }
   }
 
-  const { sent, failed, staleSubscriptionIds } = await sendToSubscriptions(ownerSubs, payload)
+  const { sent, failed, staleSubscriptionIds } = await sendToSubscriptions(targetSubs, payload)
   await pruneStaleSubscriptions(sb, staleSubscriptionIds)
 
   return json(200, {
