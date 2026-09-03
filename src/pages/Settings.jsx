@@ -3,7 +3,7 @@ import { Btn, Field, Inp, Sel } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
-import { hashPin, pickMemberColor, getAccountOwner, useOperator } from '../lib/operator'
+import { hashPin, verifyMemberPin, pickMemberColor, getAccountOwner, useOperator } from '../lib/operator'
 import {
   isPushSupported,
   getVapidPublicKey,
@@ -43,6 +43,9 @@ const Settings = ({
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
+  const [pinForm, setPinForm] = useState({ current: '', next: '', confirm: '' })
+  const [pinError, setPinError] = useState('')
+  const [pinBusy, setPinBusy] = useState(false)
   const [pwaStandalone, setPwaStandalone] = useState(false)
   const [pwaCanInstall, setPwaCanInstall] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -53,6 +56,10 @@ const Settings = ({
   const professionalMeta = getProfessionalTypeMeta(professionalType)
   const { operator } = useOperator()
   const accountOwner = getAccountOwner(teamMembers)
+  const myMember = teamMembers.find((m) => m.id === operator?.id) || null
+  const myHasPin = !!myMember?.pinHash
+
+  const digitsOnly = (value) => String(value || '').replace(/\D/g, '').slice(0, 4)
 
   const blockDemoAction = () => {
     if (!isDemo) return false
@@ -188,6 +195,88 @@ const Settings = ({
       setPwForm({ current: '', next: '', confirm: '' }); setPwError('')
       addToast('Senha alterada!', 'success')
     } catch (e) { setPwError(e.message) }
+  }
+
+  const changeMyPin = async () => {
+    if (blockDemoAction()) return
+    if (!userId || !myMember) {
+      setPinError('Selecione um perfil de operador para alterar o PIN.')
+      return
+    }
+    setPinError('')
+    if (myHasPin) {
+      if (pinForm.current.length !== 4) {
+        setPinError('Informe o PIN atual (4 dígitos).')
+        return
+      }
+      const ok = await verifyMemberPin(myMember, pinForm.current)
+      if (!ok) {
+        setPinError('PIN atual incorreto.')
+        return
+      }
+    }
+    if (pinForm.next.length !== 4) {
+      setPinError('O novo PIN deve ter 4 dígitos.')
+      return
+    }
+    if (pinForm.next !== pinForm.confirm) {
+      setPinError('Os PINs não coincidem.')
+      return
+    }
+    if (myHasPin && pinForm.next === pinForm.current) {
+      setPinError('O novo PIN deve ser diferente do atual.')
+      return
+    }
+    setPinBusy(true)
+    try {
+      const pinHash = await hashPin(pinForm.next)
+      const saved = await DB.saveTeamMember(userId, {
+        ...myMember,
+        pinHash,
+      })
+      const next = teamMembers.map((m) => (m.id === saved.id ? saved : m))
+      onTeamMembersChange?.(next)
+      await refreshTeamMembers?.()
+      setPinForm({ current: '', next: '', confirm: '' })
+      addToast(myHasPin ? 'PIN alterado!' : 'PIN definido!', 'success')
+    } catch {
+      setPinError('Não foi possível salvar o PIN.')
+      addToast('Não foi possível alterar o PIN.', 'error')
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
+  const removeMyPin = async () => {
+    if (blockDemoAction()) return
+    if (!userId || !myMember || !myHasPin) return
+    setPinError('')
+    if (pinForm.current.length !== 4) {
+      setPinError('Informe o PIN atual para remover.')
+      return
+    }
+    const ok = await verifyMemberPin(myMember, pinForm.current)
+    if (!ok) {
+      setPinError('PIN atual incorreto.')
+      return
+    }
+    setPinBusy(true)
+    try {
+      const saved = await DB.saveTeamMember(userId, {
+        ...myMember,
+        pinHash: null,
+      })
+      const next = teamMembers.map((m) => (m.id === saved.id ? saved : m))
+      onTeamMembersChange?.(next)
+      await refreshTeamMembers?.()
+      setPinForm({ current: '', next: '', confirm: '' })
+      addToast('PIN removido.', 'info')
+    } catch {
+      setPinError('Não foi possível remover o PIN.')
+      addToast('Não foi possível remover o PIN.', 'error')
+    } finally {
+      setPinBusy(false)
+    }
   }
 
   const applySelectedTheme = (id) => {
@@ -547,6 +636,74 @@ const Settings = ({
         <Btn onClick={addTeamMember} loading={memberBusy} disabled={isDemo || !memberForm.name.trim() || memberBusy}>
           <Icon name="plus" size={14} color="#fff" /> Adicionar operador
         </Btn>
+      </div>
+
+      {/* Meu PIN (operador ativo) */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Meu PIN</h3>
+        {!myMember ? (
+          <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.55 }}>
+            Selecione um perfil de operador para definir ou alterar o PIN deste aparelho.
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
+              Perfil: <strong style={{ color: 'var(--text)' }}>{myMember.name}</strong>
+              {myHasPin ? ' · PIN ativo' : ' · sem PIN'}. O PIN protege a troca de perfil no app.
+            </p>
+            {myHasPin && (
+              <Field label="PIN atual">
+                <Inp
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={pinForm.current}
+                  onChange={(e) => setPinForm((f) => ({ ...f, current: digitsOnly(e.target.value) }))}
+                  placeholder="4 dígitos"
+                  disabled={isDemo || pinBusy}
+                  autoComplete="off"
+                />
+              </Field>
+            )}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Field label="Novo PIN" half>
+                <Inp
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={pinForm.next}
+                  onChange={(e) => setPinForm((f) => ({ ...f, next: digitsOnly(e.target.value) }))}
+                  placeholder="4 dígitos"
+                  disabled={isDemo || pinBusy}
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Confirmar PIN" half>
+                <Inp
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={pinForm.confirm}
+                  onChange={(e) => setPinForm((f) => ({ ...f, confirm: digitsOnly(e.target.value) }))}
+                  placeholder="Repita"
+                  disabled={isDemo || pinBusy}
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
+            {pinError && <p style={{ fontSize: 12, color: '#C5515F', marginBottom: 10 }}>{pinError}</p>}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Btn onClick={changeMyPin} loading={pinBusy} disabled={isDemo || pinBusy}>
+                <Icon name="check" size={14} color="#fff" /> {myHasPin ? 'Alterar PIN' : 'Definir PIN'}
+              </Btn>
+              {myHasPin && (
+                <Btn variant="ghost" onClick={removeMyPin} disabled={isDemo || pinBusy}>
+                  Remover PIN
+                </Btn>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Account */}
