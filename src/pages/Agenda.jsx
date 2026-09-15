@@ -13,6 +13,7 @@ import { statusMeta } from '../lib/appointmentStatus'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
 import { toLocalYmd, getTodaySummary } from '../lib/dashboardStats'
 import { getHolidaysMap, formatHolidaySummary, holidayTypeLabel } from '../lib/holidays'
+import { buildWhatsappReminderText } from '../lib/whatsappReminder'
 
 const Agenda = ({
   appointments,
@@ -88,10 +89,17 @@ const Agenda = ({
     }
 
     const phone = digits.startsWith('55') ? digits : `55${digits}`
-    const firstName = (client?.name || '').trim().split(/\s+/)[0] || 'tudo bem'
+    const fullName = (client?.name || '').trim()
+    const firstName = fullName.split(/\s+/)[0] || 'tudo bem'
     const dateLabel = new Date(`${appt.date}T12:00:00`).toLocaleDateString('pt-BR')
     const timeLabel = String(appt.time).slice(0, 5)
-    const text = `Oi, ${firstName}! Passando para te lembrar do seu atendimento no dia ${dateLabel} às ${timeLabel}. Te espero ✨🤍`
+    const text = buildWhatsappReminderText(config?.whatsappReminderTemplate, {
+      firstName,
+      fullName: fullName || firstName,
+      date: dateLabel,
+      time: timeLabel,
+      service: getServiceName(appt.serviceId),
+    })
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
 
     window.open(url, '_blank', 'noopener,noreferrer')

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { getActiveOperatorGlobal } from './operator'
 import { normalizeWorkHours } from './workHours'
+import { normalizeWhatsappReminderTemplate } from './whatsappReminder'
 
 // ─── LOCAL STORAGE HELPERS 1───────────────────────────────────────────────────
 export const local = {
@@ -654,6 +655,7 @@ export const DB = {
         stateUf: data.state_uf || '',
         city: data.city || '',
         workHours: normalizeWorkHours(data.work_hours),
+        whatsappReminderTemplate: normalizeWhatsappReminderTemplate(data.whatsapp_reminder_template),
       }
     }
     const stored = uget(userId, 'config')
@@ -663,22 +665,30 @@ export const DB = {
       stateUf: stored?.stateUf || '',
       city: stored?.city || '',
       workHours: normalizeWorkHours(stored?.workHours),
+      whatsappReminderTemplate: normalizeWhatsappReminderTemplate(stored?.whatsappReminderTemplate),
     }
   },
 
   async saveConfig(userId, config) {
     const sb = getClient()
     const workHours = normalizeWorkHours(config.workHours)
-    const nextConfig = { ...config, workHours }
+    const whatsappReminderTemplate = normalizeWhatsappReminderTemplate(config.whatsappReminderTemplate)
+    const nextConfig = { ...config, workHours, whatsappReminderTemplate }
     if (sb) {
-      await sb.from('config').upsert({
+      const row = {
         user_id: userId,
         avg_cost: nextConfig.avgCost,
         salary_percentage: nextConfig.salaryPercentage ?? 50,
         state_uf: nextConfig.stateUf || null,
         city: nextConfig.city || null,
         work_hours: workHours,
-      }, { onConflict: 'user_id' })
+        whatsapp_reminder_template: whatsappReminderTemplate,
+      }
+      const { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error) {
+        delete row.whatsapp_reminder_template
+        await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      }
     }
     uset(userId, 'config', nextConfig)
     await logAudit(userId, {

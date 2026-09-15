@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Btn, Field, Inp, Sel } from '../components/UI'
+import { Btn, Field, Inp, Sel, Textarea } from '../components/UI'
 import Icon from '../components/Icon'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
@@ -20,6 +20,12 @@ import {
   WORK_TIME_OPTIONS,
   normalizeWorkHours,
 } from '../lib/workHours'
+import {
+  DEFAULT_WHATSAPP_REMINDER_TEMPLATE,
+  WHATSAPP_REMINDER_PLACEHOLDERS,
+  buildWhatsappReminderText,
+  normalizeWhatsappReminderTemplate,
+} from '../lib/whatsappReminder'
 
 const SUPPORT_WHATSAPP = '5574999348744'
 const SUPPORT_WHATSAPP_TEXT = 'Olá! Preciso de ajuda com o app.'
@@ -40,6 +46,9 @@ const Settings = ({
   const [stateUf, setStateUf] = useState(config.stateUf || '')
   const [city, setCity] = useState(config.city || '')
   const [workHours, setWorkHours] = useState(() => normalizeWorkHours(config.workHours))
+  const [whatsappReminderTemplate, setWhatsappReminderTemplate] = useState(
+    () => normalizeWhatsappReminderTemplate(config.whatsappReminderTemplate),
+  )
   const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
@@ -101,7 +110,8 @@ const Settings = ({
     setStateUf(config.stateUf || '')
     setCity(config.city || '')
     setWorkHours(normalizeWorkHours(config.workHours))
-  }, [config.avgCost, config.stateUf, config.city, config.workHours])
+    setWhatsappReminderTemplate(normalizeWhatsappReminderTemplate(config.whatsappReminderTemplate))
+  }, [config.avgCost, config.stateUf, config.city, config.workHours, config.whatsappReminderTemplate])
 
   const updateWorkDay = (key, patch) => {
     setWorkHours((prev) => ({
@@ -507,6 +517,112 @@ const Settings = ({
         >
           <Icon name="check" size={14} color="#fff" /> Salvar localização
         </Btn>
+      </div>
+
+      {/* WhatsApp reminder message */}
+      <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Mensagem do WhatsApp</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
+          Texto que abre no WhatsApp ao tocar no botão da agenda. Use as tags para preencher os dados do agendamento.
+        </p>
+        <Field label="Mensagem">
+          <Textarea
+            id="whatsapp-reminder-template"
+            value={whatsappReminderTemplate}
+            onChange={(e) => setWhatsappReminderTemplate(e.target.value)}
+            rows={5}
+            maxLength={1500}
+            disabled={isDemo}
+            placeholder={DEFAULT_WHATSAPP_REMINDER_TEMPLATE}
+          />
+        </Field>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -8, marginBottom: 14 }}>
+          {WHATSAPP_REMINDER_PLACEHOLDERS.map((item) => (
+            <button
+              key={item.token}
+              type="button"
+              disabled={isDemo}
+              onClick={() => {
+                const el = document.getElementById('whatsapp-reminder-template')
+                if (!el) {
+                  setWhatsappReminderTemplate((prev) => `${prev}${item.token}`)
+                  return
+                }
+                const start = el.selectionStart ?? whatsappReminderTemplate.length
+                const end = el.selectionEnd ?? start
+                const next = `${whatsappReminderTemplate.slice(0, start)}${item.token}${whatsappReminderTemplate.slice(end)}`
+                setWhatsappReminderTemplate(next)
+                requestAnimationFrame(() => {
+                  el.focus()
+                  const pos = start + item.token.length
+                  el.setSelectionRange(pos, pos)
+                })
+              }}
+              title={`Inserir ${item.token}`}
+              style={{
+                fontSize: 11,
+                color: 'var(--text-mid)',
+                background: 'var(--off-white)',
+                border: '1px solid var(--rose-light)',
+                borderRadius: 999,
+                padding: '4px 8px',
+                cursor: isDemo ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <code style={{ fontSize: 11 }}>{item.token}</code> {item.label}
+            </button>
+          ))}
+        </div>
+        <div
+          style={{
+            background: 'var(--off-white)',
+            border: '1px dashed var(--rose-light)',
+            borderRadius: 12,
+            padding: '12px 14px',
+            marginBottom: 14,
+          }}
+        >
+          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+            Prévia
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
+            {buildWhatsappReminderText(whatsappReminderTemplate, {
+              firstName: 'Maria',
+              fullName: 'Maria Silva',
+              date: new Date().toLocaleDateString('pt-BR'),
+              time: '14:30',
+              service: 'Volume brasileiro',
+            })}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn
+            onClick={() => {
+              if (blockDemoAction()) return
+              const next = normalizeWhatsappReminderTemplate(whatsappReminderTemplate)
+              setWhatsappReminderTemplate(next)
+              setConfig({
+                ...config,
+                whatsappReminderTemplate: next,
+              })
+              addToast('Mensagem do WhatsApp salva!', 'success')
+            }}
+            disabled={isDemo}
+          >
+            <Icon name="check" size={14} color="#fff" /> Salvar mensagem
+          </Btn>
+          <Btn
+            variant="ghost"
+            onClick={() => {
+              if (blockDemoAction()) return
+              setWhatsappReminderTemplate(DEFAULT_WHATSAPP_REMINDER_TEMPLATE)
+            }}
+            disabled={isDemo}
+          >
+            Restaurar padrão
+          </Btn>
+        </div>
       </div>
 
       {/* Theme settings */}

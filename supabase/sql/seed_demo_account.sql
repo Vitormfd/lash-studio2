@@ -233,7 +233,7 @@ begin
 
   -- ── 4) Configuração ───────────────────────────────────────────────────────
   insert into public.config (
-    user_id, avg_cost, salary_percentage, state_uf, city, work_hours
+    user_id, avg_cost, salary_percentage, state_uf, city, work_hours, whatsapp_reminder_template
   ) values (
     v_user_id,
     18.50,
@@ -248,7 +248,8 @@ begin
       "fri": {"closed": false, "start": "08:00", "end": "18:00"},
       "sat": {"closed": false, "start": "08:00", "end": "14:00"},
       "sun": {"closed": true,  "start": "08:00", "end": "18:00"}
-    }'::jsonb
+    }'::jsonb,
+    'Oi, {nome}! Passando para te lembrar do seu atendimento no dia {data} às {hora}. Te espero ✨🤍'
   );
 
   -- ── 5) Serviços ───────────────────────────────────────────────────────────
