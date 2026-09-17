@@ -7,9 +7,17 @@ import Icon from '../components/Icon'
 
 const SCANNER_ELEMENT_ID = 'loyalty-qr-reader'
 
+const sanitizeSlug = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+
 const LoyaltyScanner = ({ userId, isDemo, addToast, canUserEdit, onBlockedAction }) => {
   const { operator } = useOperator()
-  const [cfg, setCfg] = useState({ goalCount: 10, rewardDescription: '', active: true })
+  const [cfg, setCfg] = useState({ goalCount: 10, rewardDescription: '', active: true, slug: '' })
   const [savingCfg, setSavingCfg] = useState(false)
   const [loadingCfg, setLoadingCfg] = useState(true)
 
@@ -19,7 +27,10 @@ const LoyaltyScanner = ({ userId, isDemo, addToast, canUserEdit, onBlockedAction
   const scannerRef = useRef(null)
   const busyRef = useRef(false)
 
-  const shareLink = userId && userId !== 'demo_user' ? `${window.location.origin}/fidelidade/${userId}` : ''
+  const isRealAccount = userId && userId !== 'demo_user'
+  const shareLink = isRealAccount
+    ? `${window.location.origin}/fidelidade/${cfg.slug || userId}`
+    : ''
   const [posterQr, setPosterQr] = useState('')
 
   useEffect(() => {
@@ -43,8 +54,13 @@ const LoyaltyScanner = ({ userId, isDemo, addToast, canUserEdit, onBlockedAction
     try {
       await DB.saveLoyaltyConfig(userId, cfg)
       addToast?.('Configuração de fidelidade salva!', 'success')
-    } catch {
-      addToast?.('Não foi possível salvar agora.', 'error')
+    } catch (err) {
+      addToast?.(
+        err?.message === 'slug_taken'
+          ? 'Esse nome de link já está em uso. Escolha outro.'
+          : 'Não foi possível salvar agora.',
+        'error'
+      )
     } finally {
       setSavingCfg(false)
     }
@@ -215,6 +231,16 @@ const LoyaltyScanner = ({ userId, isDemo, addToast, canUserEdit, onBlockedAction
                 placeholder="Ex: 1 sessão de manutenção grátis"
               />
             </Field>
+            <Field label="Nome personalizado do link (opcional)">
+              <Inp
+                value={cfg.slug}
+                onChange={(e) => setCfg((c) => ({ ...c, slug: sanitizeSlug(e.target.value) }))}
+                placeholder="ex: estudio-da-ana"
+              />
+            </Field>
+            <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -8, marginBottom: 14 }}>
+              Deixe em branco para usar o link padrão. Apenas letras, números e hífen.
+            </p>
             <Btn onClick={saveCfg} loading={savingCfg}>Salvar</Btn>
           </>
         )}

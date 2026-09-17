@@ -42,10 +42,12 @@ const StampGrid = ({ goal, filled }) => {
   )
 }
 
-const PublicLoyalty = ({ professionalId }) => {
+const PublicLoyalty = ({ professionalId: identifier }) => {
   const sb = useMemo(() => getClient(), [])
-  const hasProfessionalId = !!String(professionalId || '').trim()
+  const hasIdentifier = !!String(identifier || '').trim()
 
+  const [resolving, setResolving] = useState(true)
+  const [professionalId, setProfessionalId] = useState(null)
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -54,6 +56,16 @@ const PublicLoyalty = ({ professionalId }) => {
   const [card, setCard] = useState(null)
   const [qrDataUrl, setQrDataUrl] = useState('')
   const refreshTimer = useRef(null)
+
+  useEffect(() => {
+    let alive = true
+    if (!sb || !hasIdentifier) { setResolving(false); return undefined }
+    sb.rpc('get_public_loyalty_professional_id', { p_identifier: identifier })
+      .then(({ data }) => { if (alive) setProfessionalId(data || null) })
+      .catch(() => { if (alive) setProfessionalId(null) })
+      .finally(() => { if (alive) setResolving(false) })
+    return () => { alive = false }
+  }, [sb, hasIdentifier, identifier])
 
   const fetchCard = async (clientId) => {
     if (!sb || !professionalId || !clientId) return
@@ -133,15 +145,23 @@ const PublicLoyalty = ({ professionalId }) => {
     return () => window.clearInterval(refreshTimer.current)
   }, [card?.client_id])
 
-  if (!hasProfessionalId) {
+  if (!hasIdentifier || (!resolving && !professionalId)) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--off-white)', padding: '20px 14px' }}>
         <div style={{ maxWidth: 480, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 16 }}>
           <h1 className="serif" style={{ fontSize: 24, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Link inválido</h1>
           <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-            Este link de fidelidade está incompleto. Peça o link correto para a profissional.
+            Este link de fidelidade está incompleto ou não existe mais. Peça o link correto para a profissional.
           </p>
         </div>
+      </div>
+    )
+  }
+
+  if (resolving) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--off-white)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ fontSize: 13, color: 'var(--text-light)' }}>Carregando...</p>
       </div>
     )
   }

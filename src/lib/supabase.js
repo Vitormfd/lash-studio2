@@ -1284,6 +1284,7 @@ export const DB = {
         goalCount: Number(data.goal_count ?? 10),
         rewardDescription: data.reward_description || '',
         active: data.active !== false,
+        slug: data.slug || '',
       }
     }
     const stored = uget(userId, 'loyaltyConfig')
@@ -1291,6 +1292,7 @@ export const DB = {
       goalCount: Number(stored?.goalCount ?? 10),
       rewardDescription: stored?.rewardDescription || '',
       active: stored?.active !== false,
+      slug: stored?.slug || '',
     }
   },
 
@@ -1302,8 +1304,13 @@ export const DB = {
         goal_count: Math.max(1, Number(cfg.goalCount) || 10),
         reward_description: cfg.rewardDescription || '',
         active: cfg.active !== false,
+        slug: cfg.slug ? cfg.slug : null,
       }
-      await sb.from('loyalty_config').upsert(row, { onConflict: 'user_id' })
+      const { error } = await sb.from('loyalty_config').upsert(row, { onConflict: 'user_id' })
+      if (error) {
+        if (error.code === '23505') throw new Error('slug_taken')
+        throw error
+      }
     }
     uset(userId, 'loyaltyConfig', cfg)
   },
