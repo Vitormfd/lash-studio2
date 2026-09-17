@@ -31,6 +31,8 @@ import Finance from './pages/Finance'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import PublicBooking from './pages/PublicBooking'
+import PublicLoyalty from './pages/PublicLoyalty'
+import LoyaltyScanner from './pages/LoyaltyScanner'
 import OperatorSelect from './pages/OperatorSelect'
 import ActivityLog from './pages/ActivityLog'
 import {
@@ -52,6 +54,7 @@ const NAV_TITLES = {
   dashboard: 'Dashboard',
   agenda: 'Agenda',
   clients: 'Clientes',
+  loyalty: 'Fidelidade',
   services: 'Serviços',
   inventory: 'Estoque',
   finance: 'Financeiro',
@@ -60,7 +63,7 @@ const NAV_TITLES = {
   settings: 'Configurações',
 }
 
-const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings']
+const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'loyalty', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings']
 
 const BARBER_STARTER_SERVICES = [
   { name: 'Corte', price: 50, color: '#7BAF9A' },
@@ -71,6 +74,7 @@ const BARBER_STARTER_SERVICES = [
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
 const BOOKING_PATH_PREFIX = '/booking/'
+const LOYALTY_PATH_PREFIX = '/fidelidade/'
 
 const isBookingPath = () => {
   if (typeof window === 'undefined') return false
@@ -83,6 +87,20 @@ const getBookingProfessionalIdFromPath = () => {
   const path = window.location.pathname || ''
   if (!path.startsWith(BOOKING_PATH_PREFIX)) return ''
   const id = decodeURIComponent(path.slice(BOOKING_PATH_PREFIX.length)).split('/')[0]
+  return id || ''
+}
+
+const isLoyaltyPath = () => {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname || ''
+  return path === '/fidelidade' || path.startsWith(LOYALTY_PATH_PREFIX)
+}
+
+const getLoyaltyProfessionalIdFromPath = () => {
+  if (typeof window === 'undefined') return ''
+  const path = window.location.pathname || ''
+  if (!path.startsWith(LOYALTY_PATH_PREFIX)) return ''
+  const id = decodeURIComponent(path.slice(LOYALTY_PATH_PREFIX.length)).split('/')[0]
   return id || ''
 }
 
@@ -1076,6 +1094,15 @@ const AppMain = ({ session, onLogout }) => {
               onUpgrade={handleUpgrade}
             />
           )}
+          {page === 'loyalty' && (
+            <LoyaltyScanner
+              userId={userId}
+              isDemo={isDemo}
+              addToast={addToast}
+              canUserEdit={canUserEdit}
+              onBlockedAction={guardRestrictedWrite}
+            />
+          )}
           {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
           {page === 'inventory' && (
             <Inventory
@@ -1295,11 +1322,15 @@ const App = () => {
   const [recoveryMode, setRecoveryMode] = useState(() => isRecoveryFlowActive())
   const [isBookingPublicPath, setIsBookingPublicPath] = useState(() => isBookingPath())
   const [bookingProfessionalId, setBookingProfessionalId] = useState(() => getBookingProfessionalIdFromPath())
+  const [isLoyaltyPublicPath, setIsLoyaltyPublicPath] = useState(() => isLoyaltyPath())
+  const [loyaltyProfessionalId, setLoyaltyProfessionalId] = useState(() => getLoyaltyProfessionalIdFromPath())
 
   useEffect(() => {
     const syncRouteState = () => {
       setIsBookingPublicPath(isBookingPath())
       setBookingProfessionalId(getBookingProfessionalIdFromPath())
+      setIsLoyaltyPublicPath(isLoyaltyPath())
+      setLoyaltyProfessionalId(getLoyaltyProfessionalIdFromPath())
     }
     window.addEventListener('popstate', syncRouteState)
     return () => window.removeEventListener('popstate', syncRouteState)
@@ -1354,6 +1385,7 @@ const App = () => {
   }, [])
 
   if (isBookingPublicPath) return <PublicBooking professionalId={bookingProfessionalId} />
+  if (isLoyaltyPublicPath) return <PublicLoyalty professionalId={loyaltyProfessionalId} />
 
   if (checking) return <Spinner text="Carregando..." />
 

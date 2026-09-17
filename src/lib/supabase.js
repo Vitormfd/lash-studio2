@@ -1274,4 +1274,37 @@ export const DB = {
 
     notifyOwnerStaffBookingPush(appointment.id, actorOperatorId)
   },
+
+  // ── Fidelidade ──
+  async getLoyaltyConfig(userId) {
+    const sb = getClient()
+    if (sb) {
+      const { data } = await sb.from('loyalty_config').select('*').eq('user_id', userId).single()
+      if (data) return {
+        goalCount: Number(data.goal_count ?? 10),
+        rewardDescription: data.reward_description || '',
+        active: data.active !== false,
+      }
+    }
+    const stored = uget(userId, 'loyaltyConfig')
+    return {
+      goalCount: Number(stored?.goalCount ?? 10),
+      rewardDescription: stored?.rewardDescription || '',
+      active: stored?.active !== false,
+    }
+  },
+
+  async saveLoyaltyConfig(userId, cfg) {
+    const sb = getClient()
+    if (sb) {
+      const row = {
+        user_id: userId,
+        goal_count: Math.max(1, Number(cfg.goalCount) || 10),
+        reward_description: cfg.rewardDescription || '',
+        active: cfg.active !== false,
+      }
+      await sb.from('loyalty_config').upsert(row, { onConflict: 'user_id' })
+    }
+    uset(userId, 'loyaltyConfig', cfg)
+  },
 }
