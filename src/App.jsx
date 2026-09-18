@@ -15,6 +15,7 @@ import { ensureServiceCompatibility } from './lib/serviceCompatibility'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Modal from './components/Modal'
+import Icon from './components/Icon'
 import Toast from './components/Toast'
 import AppointmentForm from './components/AppointmentForm'
 import { Spinner } from './components/UI'
@@ -70,6 +71,8 @@ const BARBER_STARTER_SERVICES = [
   { name: 'Barba', price: 35, color: '#9B8FB8' },
   { name: 'Corte + Barba', price: 75, color: '#C17B82' },
 ]
+
+const WHATS_NEW_ID = 'fidelidade-importar-contatos'
 
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
@@ -164,6 +167,8 @@ const AppMain = ({ session, onLogout }) => {
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
   const [pwaCanInstall, setPwaCanInstall] = useState(false)
   const [isIosDevice, setIsIosDevice] = useState(false)
+  const [pwaGateChecked, setPwaGateChecked] = useState(false)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallHint, setPaywallHint] = useState('')
@@ -314,20 +319,21 @@ const AppMain = ({ session, onLogout }) => {
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       window.navigator?.standalone === true
-    if (isStandalone) return undefined
+    if (isStandalone) { setPwaGateChecked(true); return undefined }
 
     const storageKey = `lash-pwa-onboarding-seen:${userId}`
     let seen = false
     try {
       seen = localStorage.getItem(storageKey) === '1'
     } catch {}
-    if (seen) return undefined
+    if (seen) { setPwaGateChecked(true); return undefined }
 
     const ua = window.navigator?.userAgent || ''
     const ios = /iPhone|iPad|iPod/i.test(ua)
     setIsIosDevice(ios)
     setPwaCanInstall(!!window.__lashPwa?.getInstallPrompt?.())
     setPwaOnboardingOpen(true)
+    setPwaGateChecked(true)
 
     const handleInstallReady = () => setPwaCanInstall(true)
     window.addEventListener('lash-pwa-install-ready', handleInstallReady)
@@ -335,6 +341,24 @@ const AppMain = ({ session, onLogout }) => {
     return () => {
       window.removeEventListener('lash-pwa-install-ready', handleInstallReady)
     }
+  }, [userId])
+
+  useEffect(() => {
+    if (!pwaGateChecked || pwaOnboardingOpen) return
+    const storageKey = `lash-whats-new-seen:${WHATS_NEW_ID}:${userId}`
+    let seen = false
+    try {
+      seen = localStorage.getItem(storageKey) === '1'
+    } catch {}
+    if (seen) return
+    setWhatsNewOpen(true)
+  }, [pwaGateChecked, pwaOnboardingOpen, userId])
+
+  const dismissWhatsNew = useCallback(() => {
+    try {
+      localStorage.setItem(`lash-whats-new-seen:${WHATS_NEW_ID}:${userId}`, '1')
+    } catch {}
+    setWhatsNewOpen(false)
   }, [userId])
 
   const dismissPwaOnboarding = useCallback(() => {
@@ -1201,6 +1225,62 @@ const AppMain = ({ session, onLogout }) => {
           <button
             type="button"
             onClick={dismissPwaOnboarding}
+            style={{ background: 'transparent', color: 'var(--text-light)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Entendi
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidades no app">
+        <p style={{ fontSize: 13, color: 'var(--text-light)', lineHeight: 1.6, marginBottom: 18 }}>
+          Preparamos duas novidades para facilitar seu dia a dia:
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14 }}>
+            <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="gift" size={18} />
+            </div>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Sistema de Fidelidade</p>
+              <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
+                Crie um cartão fidelidade para suas clientes e recompense quem mais retorna. Configure a meta, o prêmio e compartilhe o link ou QR code.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14 }}>
+            <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="upload" size={18} />
+            </div>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Importar todos os contatos de uma vez</p>
+              <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
+                Traga sua agenda de contatos do celular direto para a lista de clientes, sem precisar cadastrar um por um.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => { setPage('loyalty'); dismissWhatsNew() }}
+            style={{ background: 'var(--rose-deep)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Ver Fidelidade
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPage('clients'); dismissWhatsNew() }}
+            style={{ background: 'var(--surface)', color: 'var(--rose-dark)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Importar contatos
+          </button>
+          <button
+            type="button"
+            onClick={dismissWhatsNew}
             style={{ background: 'transparent', color: 'var(--text-light)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
           >
             Entendi
