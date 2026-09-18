@@ -656,6 +656,7 @@ export const DB = {
         city: data.city || '',
         workHours: normalizeWorkHours(data.work_hours),
         whatsappReminderTemplate: normalizeWhatsappReminderTemplate(data.whatsapp_reminder_template),
+        themeId: data.theme_id || 'rose',
       }
     }
     const stored = uget(userId, 'config')
@@ -666,6 +667,7 @@ export const DB = {
       city: stored?.city || '',
       workHours: normalizeWorkHours(stored?.workHours),
       whatsappReminderTemplate: normalizeWhatsappReminderTemplate(stored?.whatsappReminderTemplate),
+      themeId: stored?.themeId || 'rose',
     }
   },
 
@@ -683,6 +685,7 @@ export const DB = {
         city: nextConfig.city || null,
         work_hours: workHours,
         whatsapp_reminder_template: whatsappReminderTemplate,
+        theme_id: nextConfig.themeId || null,
       }
       const { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
       if (error) {

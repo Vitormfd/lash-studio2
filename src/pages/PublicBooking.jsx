@@ -3,6 +3,7 @@ import { getClient, notifyProfessionalNewBooking } from '../lib/supabase'
 import { Btn, Field, Inp } from '../components/UI'
 import { apptIntervalsOverlap, formatDurationLabel, timeToMins } from '../lib/utils'
 import { getHolidaysOnDate, formatHolidaySummary } from '../lib/holidays'
+import { applyTheme } from '../lib/theme'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -167,6 +168,15 @@ const PublicBooking = ({ professionalId }) => {
 
   const selectedService = services.find((s) => s.id === selectedServiceId) || null
   const todayYmd = new Date().toISOString().slice(0, 10)
+
+  useEffect(() => {
+    if (!sb || !professionalId) return
+    let alive = true
+    sb.rpc('get_public_theme_id', { p_professional_id: professionalId })
+      .then(({ data }) => { if (alive) applyTheme(data || 'rose') })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [sb, professionalId])
 
   useEffect(() => {
     let alive = true

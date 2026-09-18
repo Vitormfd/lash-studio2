@@ -5,7 +5,7 @@ import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
 import { toLocalYmd } from './lib/dashboardStats'
 import { progressPushBody } from './lib/dayMessages'
 import { useLocalReminders } from './hooks/useLocalReminders'
-import { applyTheme, getSavedThemeId } from './lib/theme'
+import { applyTheme, getSavedThemeId, saveAndApplyTheme } from './lib/theme'
 import { useToast } from './hooks/useToast'
 import { CHECKOUT_URL, openCheckout } from './lib/billing'
 import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
@@ -161,7 +161,7 @@ const AppMain = ({ session, onLogout }) => {
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
   const [cashExpenses, setCashExpenses] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '' })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', themeId: 'rose' })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
@@ -431,6 +431,7 @@ const AppMain = ({ session, onLogout }) => {
       setInventoryMovements(invMovs)
       setCashExpenses(expenses)
       setConfigState(cfg)
+      if (cfg.themeId) saveAndApplyTheme(userId, cfg.themeId)
       setTeamMembers(members)
       setNotifications(notifRows)
       resolveOperatorGate(members)

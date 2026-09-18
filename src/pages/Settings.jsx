@@ -293,6 +293,7 @@ const Settings = ({
     if (blockDemoAction()) return
     const next = saveAndApplyTheme(session?.userId, id)
     setThemeId(next)
+    setConfig({ ...config, themeId: next })
     addToast('Tema aplicado!', 'success')
   }
 
