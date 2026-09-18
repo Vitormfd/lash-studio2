@@ -154,6 +154,7 @@ const Clients = ({
   const [importList, setImportList] = useState([])
   const [importSearch, setImportSearch] = useState('')
   const [importSelected, setImportSelected] = useState(() => new Set())
+  const [tutorialOpen, setTutorialOpen] = useState(false)
   const addClientsSequentially = (items) => {
     for (const item of items) {
       setClients((prev) => [...prev, item])
@@ -323,10 +324,25 @@ const Clients = ({
             Importar contato
           </Btn>
           {!canPickContacts && (
-            <Btn variant="ghost" onClick={openVcfPicker}>
-              <Icon name="upload" size={14} />
-              Importar .vcf (iPhone)
-            </Btn>
+            <>
+              <Btn variant="ghost" onClick={openVcfPicker}>
+                <Icon name="upload" size={14} />
+                Importar .vcf (iPhone)
+              </Btn>
+              <button
+                type="button"
+                onClick={() => setTutorialOpen(true)}
+                className="lash-btn-press"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: 'transparent', border: 'none', color: 'var(--rose-dark)',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '8px 4px',
+                }}
+              >
+                <Icon name="play" size={12} color="var(--rose-dark)" />
+                Como fazer (vídeo)
+              </button>
+            </>
           )}
           {canUserEdit ? (
             <Btn onClick={openNew}><Icon name="plus" size={14} color="#fff" /> Novo cliente</Btn>
@@ -577,6 +593,18 @@ const Clients = ({
             <Icon name="check" size={14} color="#fff" /> Importar selecionados ({importSelected.size})
           </Btn>
         </div>
+      </Modal>
+
+      <Modal open={tutorialOpen} onClose={() => setTutorialOpen(false)} title="Como importar contatos no iPhone">
+        <p style={{ fontSize: 13, color: 'var(--text-mid)', marginBottom: 12 }}>
+          Exporte todos os seus contatos do iPhone em um único arquivo <strong>.vcf</strong> e importe todos de uma vez aqui no sistema.
+        </p>
+        <video
+          src="/tutorials/importar-contatos-iphone.mp4"
+          controls
+          playsInline
+          style={{ width: '100%', borderRadius: 12, display: 'block', background: '#000' }}
+        />
       </Modal>
     </div>
   )
