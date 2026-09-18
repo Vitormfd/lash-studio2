@@ -244,26 +244,32 @@ const Clients = ({
     }
   }
 
+  const readFileAsText = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+
   const openVcfPicker = () => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.vcf,text/vcard'
-    input.multiple = false
-    input.onchange = () => {
-      const file = input.files && input.files[0]
-      if (!file) { addToast('Nenhum arquivo selecionado.', 'info'); return }
-      const reader = new FileReader()
-      reader.onload = () => {
-        const text = typeof reader.result === 'string' ? reader.result : ''
-        const parsed = parseVcf(text)
-        if (parsed.length === 0) { addToast('Nenhum contato encontrado no arquivo.', 'warning'); return }
+    input.multiple = true
+    input.onchange = async () => {
+      const files = Array.from(input.files || [])
+      if (files.length === 0) { addToast('Nenhum arquivo selecionado.', 'info'); return }
+      try {
+        const texts = await Promise.all(files.map(readFileAsText))
+        const parsed = texts.flatMap(parseVcf)
+        if (parsed.length === 0) { addToast('Nenhum contato encontrado no(s) arquivo(s).', 'warning'); return }
         setImportList(parsed.map((p) => ({ ...p, notes: '', createdAt: new Date().toISOString() })))
         setImportSelected(new Set(parsed.map((p) => p.id)))
         setImportSearch('')
         setImportModal(true)
+      } catch {
+        addToast('Falha ao ler o(s) arquivo(s) de contatos.', 'error')
       }
-      reader.onerror = () => addToast('Falha ao ler o arquivo de contatos.', 'error')
-      reader.readAsText(file)
     }
     input.click()
   }
