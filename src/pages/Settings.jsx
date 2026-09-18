@@ -412,31 +412,73 @@ const Settings = ({
                   </label>
                 </div>
                 {!day.closed && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ flex: '1 1 120px', minWidth: 110 }}>
-                      <Sel
-                        value={day.start}
-                        disabled={isDemo}
-                        onChange={(e) => updateWorkDay(key, { start: e.target.value })}
-                      >
-                        {WORK_TIME_OPTIONS.map((t) => (
-                          <option key={`s-${key}-${t}`} value={t}>{t}</option>
-                        ))}
-                      </Sel>
+                  <>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                        <Sel
+                          value={day.start}
+                          disabled={isDemo}
+                          onChange={(e) => updateWorkDay(key, { start: e.target.value })}
+                        >
+                          {WORK_TIME_OPTIONS.map((t) => (
+                            <option key={`s-${key}-${t}`} value={t}>{t}</option>
+                          ))}
+                        </Sel>
+                      </div>
+                      <span style={{ fontSize: 12, color: 'var(--text-light)' }}>até</span>
+                      <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                        <Sel
+                          value={day.end}
+                          disabled={isDemo}
+                          onChange={(e) => updateWorkDay(key, { end: e.target.value })}
+                        >
+                          {WORK_TIME_OPTIONS.map((t) => (
+                            <option key={`e-${key}-${t}`} value={t}>{t}</option>
+                          ))}
+                        </Sel>
+                      </div>
                     </div>
-                    <span style={{ fontSize: 12, color: 'var(--text-light)' }}>até</span>
-                    <div style={{ flex: '1 1 120px', minWidth: 110 }}>
-                      <Sel
-                        value={day.end}
-                        disabled={isDemo}
-                        onChange={(e) => updateWorkDay(key, { end: e.target.value })}
-                      >
-                        {WORK_TIME_OPTIONS.map((t) => (
-                          <option key={`e-${key}-${t}`} value={t}>{t}</option>
-                        ))}
-                      </Sel>
+
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--rose-light)' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-mid)', cursor: isDemo ? 'default' : 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!day.hasLunch}
+                          disabled={isDemo}
+                          onChange={(e) => updateWorkDay(key, { hasLunch: e.target.checked })}
+                          style={{ width: 16, height: 16, accentColor: 'var(--rose-deep)' }}
+                        />
+                        Pausa para almoço
+                      </label>
+                      {day.hasLunch && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                          <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                            <Sel
+                              value={day.lunchStart}
+                              disabled={isDemo}
+                              onChange={(e) => updateWorkDay(key, { lunchStart: e.target.value })}
+                            >
+                              {WORK_TIME_OPTIONS.map((t) => (
+                                <option key={`ls-${key}-${t}`} value={t}>{t}</option>
+                              ))}
+                            </Sel>
+                          </div>
+                          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>até</span>
+                          <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                            <Sel
+                              value={day.lunchEnd}
+                              disabled={isDemo}
+                              onChange={(e) => updateWorkDay(key, { lunchEnd: e.target.value })}
+                            >
+                              {WORK_TIME_OPTIONS.map((t) => (
+                                <option key={`le-${key}-${t}`} value={t}>{t}</option>
+                              ))}
+                            </Sel>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  </>
                 )}
                 {day.closed && (
                   <p style={{ fontSize: 12, color: 'var(--text-light)', margin: 0 }}>Fechado — sem horários no link público</p>
@@ -449,16 +491,18 @@ const Settings = ({
           <Btn
             onClick={() => {
               if (blockDemoAction()) return
-              const normalized = normalizeWorkHours(workHours)
               const invalid = WORK_DAY_ORDER.some(({ key }) => {
-                const d = normalized[key]
+                const d = workHours[key] || DEFAULT_WORK_HOURS[key]
                 if (d.closed) return false
-                return !d.start || !d.end || d.start >= d.end
+                if (!d.start || !d.end || d.start >= d.end) return true
+                if (d.hasLunch && (!d.lunchStart || !d.lunchEnd || d.lunchStart >= d.lunchEnd || d.lunchStart < d.start || d.lunchEnd > d.end)) return true
+                return false
               })
               if (invalid) {
-                addToast('Revise os horários: o fim precisa ser depois do início.', 'warning')
+                addToast('Revise os horários: o fim precisa ser depois do início (e o almoço deve caber dentro do expediente).', 'warning')
                 return
               }
+              const normalized = normalizeWorkHours(workHours)
               setWorkHours(normalized)
               setConfig({
                 ...config,

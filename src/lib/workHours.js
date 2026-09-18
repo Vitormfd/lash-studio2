@@ -15,7 +15,7 @@ export const WORK_DAY_ORDER = [
 /** Índice getDay()/extract(dow): 0=dom … 6=sáb */
 export const WEEKDAY_KEYS_BY_DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
-const DEFAULT_DAY_OPEN = { closed: false, start: '08:00', end: '18:00' }
+const DEFAULT_DAY_OPEN = { closed: false, start: '08:00', end: '18:00', hasLunch: false, lunchStart: '12:00', lunchEnd: '13:00' }
 
 export const DEFAULT_WORK_HOURS = {
   mon: { ...DEFAULT_DAY_OPEN },
@@ -23,8 +23,8 @@ export const DEFAULT_WORK_HOURS = {
   wed: { ...DEFAULT_DAY_OPEN },
   thu: { ...DEFAULT_DAY_OPEN },
   fri: { ...DEFAULT_DAY_OPEN },
-  sat: { closed: false, start: '08:00', end: '14:00' },
-  sun: { closed: true, start: '08:00', end: '18:00' },
+  sat: { closed: false, start: '08:00', end: '14:00', hasLunch: false, lunchStart: '12:00', lunchEnd: '13:00' },
+  sun: { closed: true, start: '08:00', end: '18:00', hasLunch: false, lunchStart: '12:00', lunchEnd: '13:00' },
 }
 
 const toTwo = (n) => String(n).padStart(2, '0')
@@ -51,7 +51,20 @@ export const normalizeWorkDay = (raw, fallback = DEFAULT_DAY_OPEN) => {
     start = base.start
     end = base.end
   }
-  return { closed, start, end }
+
+  let hasLunch = raw?.hasLunch === true || raw?.hasLunch === 'true' || raw?.hasLunch === 1
+  const lunchStart = normalizeTimeHhmm(raw?.lunchStart ?? raw?.lunch_start, base.lunchStart || '12:00')
+  const lunchEnd = normalizeTimeHhmm(raw?.lunchEnd ?? raw?.lunch_end, base.lunchEnd || '13:00')
+  if (
+    hasLunch &&
+    (timeToMins(lunchEnd) <= timeToMins(lunchStart) ||
+      timeToMins(lunchStart) < timeToMins(start) ||
+      timeToMins(lunchEnd) > timeToMins(end))
+  ) {
+    hasLunch = false
+  }
+
+  return { closed, start, end, hasLunch, lunchStart, lunchEnd }
 }
 
 export const normalizeWorkHours = (raw) => {
@@ -77,13 +90,29 @@ export const getWorkWindowForDate = (workHours, ymd) => {
   const weekday = weekdayKeyFromYmd(ymd)
   const hours = normalizeWorkHours(workHours)
   if (!weekday || !hours[weekday]) {
-    return { closed: false, start: DEFAULT_DAY_OPEN.start, end: DEFAULT_DAY_OPEN.end, weekday }
+    return {
+      closed: false,
+      start: DEFAULT_DAY_OPEN.start,
+      end: DEFAULT_DAY_OPEN.end,
+      hasLunch: false,
+      lunchStart: null,
+      lunchEnd: null,
+      weekday,
+    }
   }
   const day = hours[weekday]
   if (day.closed) {
-    return { closed: true, start: null, end: null, weekday }
+    return { closed: true, start: null, end: null, hasLunch: false, lunchStart: null, lunchEnd: null, weekday }
   }
-  return { closed: false, start: day.start, end: day.end, weekday }
+  return {
+    closed: false,
+    start: day.start,
+    end: day.end,
+    hasLunch: day.hasLunch,
+    lunchStart: day.hasLunch ? day.lunchStart : null,
+    lunchEnd: day.hasLunch ? day.lunchEnd : null,
+    weekday,
+  }
 }
 
 /** Opções de horário para selects (06:00–22:00, passo 30 min) */

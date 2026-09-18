@@ -61,7 +61,7 @@ const normalizeTimeValue = (raw) => {
 const resolveWindow = (configRow) => {
   const row = configRow || {}
   if (row.closed === true || row.closed === 'true' || row.closed === 1) {
-    return { closed: true, start: null, end: null }
+    return { closed: true, start: null, end: null, hasLunch: false, lunchStart: null, lunchEnd: null }
   }
 
   const start =
@@ -83,29 +83,44 @@ const resolveWindow = (configRow) => {
     DEFAULT_END
 
   if (timeToMins(end) <= timeToMins(start)) {
-    return { closed: false, start: DEFAULT_START, end: DEFAULT_END }
+    return { closed: false, start: DEFAULT_START, end: DEFAULT_END, hasLunch: false, lunchStart: null, lunchEnd: null }
   }
 
-  return { closed: false, start, end }
+  const lunchStart = normalizeTimeValue(row.lunch_start)
+  const lunchEnd = normalizeTimeValue(row.lunch_end)
+  const hasLunch =
+    !!row.has_lunch &&
+    !!lunchStart &&
+    !!lunchEnd &&
+    timeToMins(lunchEnd) > timeToMins(lunchStart) &&
+    timeToMins(lunchStart) >= timeToMins(start) &&
+    timeToMins(lunchEnd) <= timeToMins(end)
+
+  return { closed: false, start, end, hasLunch, lunchStart: hasLunch ? lunchStart : null, lunchEnd: hasLunch ? lunchEnd : null }
 }
 
-const buildSlots = ({ selectedDate, durationMinutes, appointments, windowStart, windowEnd }) => {
+const buildSlots = ({ selectedDate, durationMinutes, appointments, windowStart, windowEnd, lunchStart, lunchEnd }) => {
   const slots = []
   const begin = timeToMins(windowStart)
   const finish = timeToMins(windowEnd)
   const duration = Number(durationMinutes) || 60
   if (finish <= begin || duration <= 0) return slots
 
+  const lunchBeginMins = lunchStart ? timeToMins(lunchStart) : null
+  const lunchEndMins = lunchEnd ? timeToMins(lunchEnd) : null
+
   for (let mins = begin; mins + duration <= finish; mins += SLOT_STEP_MIN) {
     const hour = toTwo(Math.floor(mins / 60))
     const minute = toTwo(mins % 60)
     const hhmm = `${hour}:${minute}`
-    const blocked = appointments.some((a) =>
+    const blockedByAppointment = appointments.some((a) =>
       apptIntervalsOverlap(selectedDate, hhmm, duration, a.date, a.time, Number(a.durationMinutes) || 60)
     )
+    const blockedByLunch =
+      lunchBeginMins != null && lunchEndMins != null && mins < lunchEndMins && mins + duration > lunchBeginMins
     slots.push({
       time: hhmm,
-      available: !blocked,
+      available: !blockedByAppointment && !blockedByLunch,
     })
   }
 
@@ -157,7 +172,7 @@ const PublicBooking = ({ professionalId }) => {
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedTime, setSelectedTime] = useState('')
   const [slots, setSlots] = useState([])
-  const [workWindow, setWorkWindow] = useState({ closed: false, start: DEFAULT_START, end: DEFAULT_END })
+  const [workWindow, setWorkWindow] = useState({ closed: false, start: DEFAULT_START, end: DEFAULT_END, hasLunch: false, lunchStart: null, lunchEnd: null })
   const [dayClosed, setDayClosed] = useState(false)
   const [dayHolidayLabel, setDayHolidayLabel] = useState('')
   const [clientName, setClientName] = useState('')
@@ -279,6 +294,8 @@ const PublicBooking = ({ professionalId }) => {
         appointments: dayAppointments,
         windowStart: nextWindow.start,
         windowEnd: nextWindow.end,
+        lunchStart: nextWindow.lunchStart,
+        lunchEnd: nextWindow.lunchEnd,
       })
       setSlots(generated)
     } catch {
@@ -533,7 +550,8 @@ const PublicBooking = ({ professionalId }) => {
                   {dayClosed
                     ? 'Dia fechado no horário de trabalho configurado.'
                     : workWindow.start && workWindow.end
-                      ? `Horário de atendimento neste dia: ${workWindow.start} às ${workWindow.end}`
+                      ? `Horário de atendimento neste dia: ${workWindow.start} às ${workWindow.end}` +
+                        (workWindow.hasLunch ? ` (pausa para almoço: ${workWindow.lunchStart} às ${workWindow.lunchEnd})` : '')
                       : 'Selecione uma data para ver o horário de atendimento.'}
                 </p>
 
