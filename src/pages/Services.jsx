@@ -5,7 +5,7 @@ import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
 import { normalizeServiceColor, SERVICE_COLOR_PRESETS } from '../lib/utils'
 
-const Services = ({ services, setServices, appointments, addToast }) => {
+const Services = ({ services, setServices, appointments, addToast, isBarber = false }) => {
   const parseOptionalNumber = (value) => {
     if (value == null) return null
     if (typeof value === 'string' && value.trim() === '') return null
@@ -67,7 +67,7 @@ const Services = ({ services, setServices, appointments, addToast }) => {
           <div key={s.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: normalizeServiceColor(s.color) || 'var(--rose-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: normalizeServiceColor(s.color) ? 'inset 0 0 0 1px rgba(0,0,0,0.06)' : 'none' }}>
-                <Icon name="star" size={16} color={normalizeServiceColor(s.color) ? '#2C1A1E' : 'var(--rose-deep)'} />
+                <Icon name={isBarber ? 'scissors' : 'star'} size={16} color={normalizeServiceColor(s.color) ? (isBarber ? '#fff' : '#2C1A1E') : 'var(--rose-deep)'} />
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
                 <Btn variant="ghost" sm onClick={() => { setForm({ name: s.name, price: s.price, costPerClient: s.costPerClient ?? '', color: s.color || '' }); setModal(s) }}>

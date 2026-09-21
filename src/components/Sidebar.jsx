@@ -14,7 +14,7 @@ const NAV = [
   { id: 'settings', label: 'Configurações', icon: 'settings' },
 ]
 
-const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedNavIds }) => {
+const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedNavIds, isBarber = false }) => {
   const navItems = Array.isArray(allowedNavIds)
     ? NAV.filter((n) => allowedNavIds.includes(n.id))
     : NAV
@@ -39,11 +39,11 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
       <div style={{ padding: '28px 20px 20px', borderBottom: '1px solid var(--rose-light)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--rose) 0%, var(--rose-deep) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="star" size={16} color="#fff" />
+            <Icon name={isBarber ? 'scissors' : 'star'} size={16} color="#fff" />
           </div>
           <div>
             <div className="serif" style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', lineHeight: 1.2 }}>{APP_NAME}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 1 }}>{APP_TAGLINE}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 1 }}>{isBarber ? 'Gestão para barbearias' : APP_TAGLINE}</div>
           </div>
         </div>
       </div>

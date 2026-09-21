@@ -116,6 +116,52 @@ export const THEMES = {
       '--shadow': 'rgba(141, 70, 46, 0.1)',
     },
   },
+  barber: {
+    id: 'barber',
+    label: 'Barber (grafite e âmbar)',
+    vars: {
+      '--rose': '#5A4A38',
+      '--rose-light': '#2E2A26',
+      '--rose-deep': '#D89A3C',
+      '--rose-dark': '#F2C46D',
+      '--nude': '#3A342D',
+      '--nude-light': '#24211E',
+      '--nude-dark': '#8C7A62',
+      '--blush': '#332E28',
+      '--blush-mid': '#4A4037',
+      '--off-white': '#151412',
+      '--surface': '#211F1C',
+      '--text': '#F3EEE6',
+      '--text-mid': '#CFC6B8',
+      '--text-light': '#9A8F7F',
+      '--border': 'rgba(216, 154, 60, 0.2)',
+      '--border-mid': 'rgba(216, 154, 60, 0.38)',
+      '--shadow': 'rgba(0, 0, 0, 0.45)',
+    },
+  },
+  marinho: {
+    id: 'marinho',
+    label: 'Marinho',
+    vars: {
+      '--rose': '#9FB0C8',
+      '--rose-light': '#E6EBF2',
+      '--rose-deep': '#2F4A6D',
+      '--rose-dark': '#1C2F4A',
+      '--nude': '#DDE3EC',
+      '--nude-light': '#F3F5F9',
+      '--nude-dark': '#7F8DA3',
+      '--blush': '#D0D8E4',
+      '--blush-mid': '#B0BDD0',
+      '--off-white': '#F6F7FA',
+      '--surface': '#FFFFFF',
+      '--text': '#141C2A',
+      '--text-mid': '#3E4B62',
+      '--text-light': '#6F7C93',
+      '--border': 'rgba(47, 74, 109, 0.2)',
+      '--border-mid': 'rgba(47, 74, 109, 0.35)',
+      '--shadow': 'rgba(28, 47, 74, 0.1)',
+    },
+  },
   dark: {
     id: 'dark',
     label: 'Dark',
@@ -145,12 +191,22 @@ export const THEME_LIST = Object.values(THEMES)
 
 export const getThemeStorageKey = (userId) => `${THEME_STORAGE_PREFIX}${userId || 'default'}`
 
-export const getSavedThemeId = (userId) => {
+export const getDefaultThemeId = (isBarber) => (isBarber ? 'barber' : 'rose')
+
+export const hasSavedTheme = (userId) => {
+  try {
+    return !!THEMES[localStorage.getItem(getThemeStorageKey(userId))]
+  } catch {
+    return false
+  }
+}
+
+export const getSavedThemeId = (userId, fallbackId = 'rose') => {
   try {
     const id = localStorage.getItem(getThemeStorageKey(userId))
-    return THEMES[id] ? id : 'rose'
+    return THEMES[id] ? id : fallbackId
   } catch {
-    return 'rose'
+    return fallbackId
   }
 }
 

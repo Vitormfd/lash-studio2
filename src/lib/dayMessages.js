@@ -4,7 +4,11 @@ const isBarberType = (professionalType) => professionalType === 'barbeiro'
 
 export const morningPushBody = (clientCount, professionalType) => {
   const isBarber = isBarberType(professionalType)
-  if (clientCount === 0) return 'Bom dia! Aproveita para organizar sua agenda e caprichar no atendimento \uD83D\uDC85'
+  if (clientCount === 0) {
+    return isBarber
+      ? 'Bom dia! Agenda livre hoje \u2014 aproveita pra organizar a barbearia \u2702\uFE0F'
+      : 'Bom dia! Aproveita para organizar sua agenda e caprichar no atendimento \uD83D\uDC85'
+  }
   if (clientCount === 1) {
     return isBarber
       ? 'Bom dia! Voc\u00EA tem 1 corte hoje \u2014 faz bonito! \u2702\uFE0F'
@@ -41,10 +45,22 @@ export const progressPushBody = (revenueDone) => {
 }
 
 /** Linha de "personalidade" no dashboard (contexto do dia) */
-export const getPersonalityMessage = (summary) => {
+export const getPersonalityMessage = (summary, professionalType) => {
   const count = summary?.count ?? 0
   const done = Number(summary?.revenueDone ?? 0)
   const scheduled = Number(summary?.revenueScheduled ?? 0)
+
+  if (isBarberType(professionalType)) {
+    if (count === 0) return 'Cadeira vazia hoje — hora de organizar a barbearia ✂️'
+    if (count >= 8) return 'Barbearia lotada hoje! Foco e navalha afiada 🔥'
+    if (count >= 6) return 'Dia cheio na cadeira. Bora! 💪'
+    if (done >= 500) return 'Que dia — caixa cheio hoje! 💰'
+    if (done >= 250 || (done >= 100 && scheduled === 0)) return 'Ótimo faturamento hoje, segue firme! 💰'
+    if (done > 0 && count >= 3) return 'Ritmo bom — segue o fluxo! ✂️'
+    if (done > 0) return 'Começou bem! O resto do dia é seu 💪'
+    if (count >= 3) return 'Agenda movimentada hoje. Bora pra cadeira! ✂️'
+    return 'Ótimo dia para dar um trato nos cortes ✂️'
+  }
 
   if (count === 0) return 'Dia livre na agenda \u2014 respira e se organiza \u2728'
   if (count >= 8) return 'Agenda lotada hoje! Respira fundo e arrasa \uD83D\uDD25'

@@ -161,7 +161,7 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
         <div style={{ maxWidth: 480, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 16 }}>
           <h1 className="serif" style={{ fontSize: 24, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Link inválido</h1>
           <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-            Este link de fidelidade está incompleto ou não existe mais. Peça o link correto para a profissional.
+            Este link de fidelidade está incompleto ou não existe mais. Peça o link correto a quem te atende.
           </p>
         </div>
       </div>
@@ -285,7 +285,7 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
             </div>
 
             <p style={{ marginTop: 12, fontSize: 11, opacity: 0.75, textAlign: 'center', lineHeight: 1.5 }}>
-              Mostre este código para a profissional escanear a cada atendimento.
+              Mostre este código para ser escaneado a cada atendimento.
               Ele se renova automaticamente.
             </p>
           </div>

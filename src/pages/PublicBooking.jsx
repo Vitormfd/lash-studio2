@@ -219,7 +219,7 @@ const PublicBooking = ({ professionalId }) => {
       } catch {
         if (!alive) return
         setServices([])
-        setErrorMsg('Nao foi possivel carregar os servicos desta profissional.')
+        setErrorMsg('Nao foi possivel carregar os servicos deste link.')
       } finally {
         if (alive) setLoadingServices(false)
       }
@@ -369,7 +369,7 @@ const PublicBooking = ({ professionalId }) => {
         return
       }
       if (!ok && result?.reason === 'plan_required') {
-        setErrorMsg('Esta profissional nao esta com agenda publica ativa no momento.')
+        setErrorMsg('A agenda publica nao esta ativa no momento.')
         return
       }
       if (!ok && result?.detail) {
@@ -415,7 +415,7 @@ const PublicBooking = ({ professionalId }) => {
             Link de agendamento inválido
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-            Este link está incompleto. Peça para a profissional enviar o link de agendamento completo.
+            Este link está incompleto. Peça a quem te atende o link de agendamento completo.
           </p>
         </div>
       </div>
@@ -428,7 +428,7 @@ const PublicBooking = ({ professionalId }) => {
         <h1 className="serif" style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>{pageTitle}</h1>
         {!success && (
           <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 14 }}>
-            Agende com praticidade em três etapas.
+            Escolha o serviço, o horário e confirme em três etapas.
           </p>
         )}
 
@@ -490,7 +490,7 @@ const PublicBooking = ({ professionalId }) => {
                 {loadingServices ? (
                   <BookingSkeleton />
                 ) : services.length === 0 ? (
-                  <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Esta profissional ainda não cadastrou seus serviços.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Ainda não há serviços cadastrados para agendamento.</p>
                 ) : (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
@@ -620,7 +620,7 @@ const PublicBooking = ({ professionalId }) => {
 
             {step === 3 && selectedService && (
               <div>
-                <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Etapa 3 — Dados da cliente e confirmação</h2>
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Etapa 3 — Seus dados e confirmação</h2>
 
                 <Field label="Nome completo">
                   <Inp

@@ -42,7 +42,7 @@ const Dashboard = ({
   const todaySummary = getTodaySummary(appointments, today)
   const nextAppt = getNextAppointmentToday(appointments, today, now)
   const todayOrdered = todayActiveList(appointments, today)
-  const vibeLine = getPersonalityMessage(todaySummary)
+  const vibeLine = getPersonalityMessage(todaySummary, isBarber ? 'barbeiro' : undefined)
 
   const todayAppts = real.filter((a) => a.date === today && a.status !== 'cancelled').sort((a, b) => a.time.localeCompare(b.time))
   const tomorrowAppts = real.filter((a) => a.date === tomorrow && a.status !== 'cancelled')
@@ -56,7 +56,9 @@ const Dashboard = ({
   const svcAccent = (serviceId) => normalizeServiceColor(services.find((s) => s.id === serviceId)?.color)
 
   const h = now.getHours()
-  const greetingLine = h >= 5 && h < 12 ? 'Bom dia! ✨' : h >= 12 && h < 18 ? 'Boa tarde! ✨' : 'Boa noite! 🌙'
+  const greetingLine = isBarber
+    ? (h >= 5 && h < 12 ? 'Bom dia! ☕' : h >= 12 && h < 18 ? 'Boa tarde! ✂️' : 'Boa noite! 🌙')
+    : (h >= 5 && h < 12 ? 'Bom dia! ✨' : h >= 12 && h < 18 ? 'Boa tarde! ✨' : 'Boa noite! 🌙')
   const appointmentsLabel = isBarber ? 'Cortes' : 'Atendimentos'
   const appointmentsTodayLabel = isBarber ? 'Cortes hoje' : 'Atendimentos hoje'
   const noAppointmentsTodayLabel = isBarber ? 'Você não tem cortes hoje' : 'Você não tem atendimentos hoje'

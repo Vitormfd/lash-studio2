@@ -105,9 +105,10 @@ const STARTER_CONTENT_BY_TYPE = {
       { name: 'Bruno Martins', phone: '(11) 96666-3333', notes: 'Faz manutenção de barba quinzenal' },
     ],
     services: [
-      { name: 'Corte', price: 50, color: '#7BAF9A' },
-      { name: 'Barba', price: 35, color: '#9B8FB8' },
-      { name: 'Corte + Barba', price: 75, color: '#C17B82' },
+      { name: 'Corte', price: 50, color: '#3E6B8A' },
+      { name: 'Degradê', price: 55, color: '#2F4A6D' },
+      { name: 'Barba', price: 35, color: '#8A5A2B' },
+      { name: 'Corte + Barba', price: 80, color: '#D89A3C' },
     ],
     inventoryItem: { name: 'Pomada modeladora', category: 'Finalização', supplier: 'BarberLab', costPrice: 29 },
   },

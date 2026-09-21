@@ -5,7 +5,7 @@ import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
 import { toLocalYmd } from './lib/dashboardStats'
 import { progressPushBody } from './lib/dayMessages'
 import { useLocalReminders } from './hooks/useLocalReminders'
-import { applyTheme, getSavedThemeId, saveAndApplyTheme } from './lib/theme'
+import { applyTheme, getDefaultThemeId, getSavedThemeId, hasSavedTheme, saveAndApplyTheme } from './lib/theme'
 import { useToast } from './hooks/useToast'
 import { CHECKOUT_URL, openCheckout } from './lib/billing'
 import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
@@ -67,9 +67,12 @@ const NAV_TITLES = {
 const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'loyalty', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings']
 
 const BARBER_STARTER_SERVICES = [
-  { name: 'Corte', price: 50, color: '#7BAF9A' },
-  { name: 'Barba', price: 35, color: '#9B8FB8' },
-  { name: 'Corte + Barba', price: 75, color: '#C17B82' },
+  { name: 'Corte', price: 50, color: '#3E6B8A' },
+  { name: 'Degradê', price: 55, color: '#2F4A6D' },
+  { name: 'Barba', price: 35, color: '#8A5A2B' },
+  { name: 'Corte + Barba', price: 80, color: '#D89A3C' },
+  { name: 'Sobrancelha', price: 15, color: '#5F6B73' },
+  { name: 'Pigmentação', price: 40, color: '#3A3A3A' },
 ]
 
 const WHATS_NEW_ID = 'fidelidade-importar-contatos'
@@ -161,7 +164,7 @@ const AppMain = ({ session, onLogout }) => {
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
   const [cashExpenses, setCashExpenses] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', themeId: 'rose' })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', themeId: '' })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
@@ -179,7 +182,7 @@ const AppMain = ({ session, onLogout }) => {
   const [inboxOpen, setInboxOpen] = useState(false)
   const [agendaFocus, setAgendaFocus] = useState(null)
 
-  const professionalType = accessProfile.professionalType || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
+  const professionalType = (session.isDemo ? session.professionalType : accessProfile.professionalType) || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
   const isBarber = professionalType === 'barbeiro'
 
   const { toasts, addToast, removeToast } = useToast()
@@ -431,7 +434,12 @@ const AppMain = ({ session, onLogout }) => {
       setInventoryMovements(invMovs)
       setCashExpenses(expenses)
       setConfigState(cfg)
-      if (cfg.themeId) saveAndApplyTheme(userId, cfg.themeId)
+      if (cfg.themeId) {
+        saveAndApplyTheme(userId, cfg.themeId)
+      } else if (isBarber && !hasSavedTheme(userId)) {
+        const barberTheme = saveAndApplyTheme(userId, getDefaultThemeId(true))
+        if (!isDemo) DB.saveConfig(userId, { ...cfg, themeId: barberTheme }).catch(() => {})
+      }
       setTeamMembers(members)
       setNotifications(notifRows)
       resolveOperatorGate(members)
@@ -454,7 +462,7 @@ const AppMain = ({ session, onLogout }) => {
     } finally {
       setLoading(false)
     }
-  }, [userId, addToast, isBarber, resolveOperatorGate])
+  }, [userId, addToast, isBarber, isDemo, resolveOperatorGate])
 
   useEffect(() => {
     reloadData()
@@ -584,8 +592,8 @@ const AppMain = ({ session, onLogout }) => {
   }, [userId, isDemo])
 
   useEffect(() => {
-    applyTheme(getSavedThemeId(userId))
-  }, [userId])
+    applyTheme(getSavedThemeId(userId, getDefaultThemeId(isBarber)))
+  }, [userId, isBarber])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1023,6 +1031,7 @@ const AppMain = ({ session, onLogout }) => {
         session={session}
         onLogout={onLogout}
         allowedNavIds={isDemo ? DEMO_ALLOWED_PAGES : null}
+        isBarber={isBarber}
       />
 
 
@@ -1128,7 +1137,7 @@ const AppMain = ({ session, onLogout }) => {
               onBlockedAction={guardRestrictedWrite}
             />
           )}
-          {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} />}
+          {page === 'services' && <Services services={services} setServices={setServicesCompat} appointments={appointments} addToast={addToast} isBarber={isBarber} />}
           {page === 'inventory' && (
             <Inventory
               items={inventoryItems}

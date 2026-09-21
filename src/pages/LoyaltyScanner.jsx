@@ -168,13 +168,13 @@ const LoyaltyScanner = ({ userId, isDemo, addToast, canUserEdit, onBlockedAction
     <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
       <h1 className="serif" style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Fidelidade</h1>
       <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 20 }}>
-        A cada atendimento, escaneie o QR code que a cliente mostra na tela dela para dar 1 selo.
+        A cada atendimento, escaneie o QR code mostrado na tela do celular para dar 1 selo.
       </p>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 18, marginBottom: 16 }}>
         {!scanning && (
           <Btn full onClick={startScanner}>
-            <Icon name="check" size={16} /> Escanear QR da cliente
+            <Icon name="check" size={16} /> Escanear QR do cartão
           </Btn>
         )}
 
@@ -247,9 +247,9 @@ const LoyaltyScanner = ({ userId, isDemo, addToast, canUserEdit, onBlockedAction
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 18 }}>
-        <h2 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Cartão da cliente</h2>
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Cartão de fidelidade</h2>
         <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 12, lineHeight: 1.6 }}>
-          Compartilhe este link para a cliente acompanhar o progresso dela e mostrar o QR na hora do atendimento.
+          Compartilhe este link para acompanhar o progresso e mostrar o QR na hora do atendimento.
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <Btn variant="outline" onClick={copyShareLink}>Copiar link</Btn>

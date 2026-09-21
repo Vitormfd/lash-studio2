@@ -656,7 +656,7 @@ export const DB = {
         city: data.city || '',
         workHours: normalizeWorkHours(data.work_hours),
         whatsappReminderTemplate: normalizeWhatsappReminderTemplate(data.whatsapp_reminder_template),
-        themeId: data.theme_id || 'rose',
+        themeId: data.theme_id || '',
       }
     }
     const stored = uget(userId, 'config')
@@ -667,7 +667,7 @@ export const DB = {
       city: stored?.city || '',
       workHours: normalizeWorkHours(stored?.workHours),
       whatsappReminderTemplate: normalizeWhatsappReminderTemplate(stored?.whatsappReminderTemplate),
-      themeId: stored?.themeId || 'rose',
+      themeId: stored?.themeId || '',
     }
   },
 

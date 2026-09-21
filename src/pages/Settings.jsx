@@ -11,7 +11,7 @@ import {
   unsubscribePush,
   getExistingPushSubscription,
 } from '../lib/pushClient'
-import { THEME_LIST, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
+import { THEME_LIST, getDefaultThemeId, getSavedThemeId, saveAndApplyTheme } from '../lib/theme'
 import { APP_DESCRIPTION, APP_NAME, getProfessionalTypeMeta } from '../lib/domain'
 import { BRAZIL_STATES } from '../lib/holidays'
 import {
@@ -49,7 +49,7 @@ const Settings = ({
   const [whatsappReminderTemplate, setWhatsappReminderTemplate] = useState(
     () => normalizeWhatsappReminderTemplate(config.whatsappReminderTemplate),
   )
-  const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId))
+  const [themeId, setThemeId] = useState(getSavedThemeId(session?.userId, getDefaultThemeId(professionalType === 'barbeiro')))
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwError, setPwError] = useState('')
   const [pinForm, setPinForm] = useState({ current: '', next: '', confirm: '' })
@@ -102,7 +102,7 @@ const Settings = ({
   }, [])
 
   useEffect(() => {
-    setThemeId(getSavedThemeId(session?.userId))
+    setThemeId(getSavedThemeId(session?.userId, getDefaultThemeId(professionalType === 'barbeiro')))
   }, [session?.userId])
 
   useEffect(() => {
@@ -711,7 +711,7 @@ const Settings = ({
           })}
         </div>
         <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
-          <Btn variant="ghost" sm onClick={() => applySelectedTheme('rose')} disabled={isDemo}>
+          <Btn variant="ghost" sm onClick={() => applySelectedTheme(getDefaultThemeId(professionalType === 'barbeiro'))} disabled={isDemo}>
             Voltar ao tema padrão
           </Btn>
         </div>
