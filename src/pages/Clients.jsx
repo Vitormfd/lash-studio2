@@ -1,9 +1,16 @@
 import { useState } from 'react'
 import Modal from '../components/Modal'
-import { Btn, Field, Inp, Textarea, inputStyle } from '../components/UI'
+import { Btn, Field, Inp, Sel, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
 import { statusMeta } from '../lib/appointmentStatus'
+import {
+  RECURRING_FREQUENCY_OPTIONS,
+  RECURRING_FREQUENCY_LABELS,
+  DEFAULT_RECURRING_FREQUENCY,
+  WEEKDAY_LABELS_FULL,
+  addRecurringInterval,
+} from '../lib/recurringClients'
 
 const normPhone = (v) => (v || '').toString().replace(/\D/g, '')
 const normalizeImportedPhone = (v) => {
@@ -111,6 +118,18 @@ const getClientSpendMetrics = (client, appointments) => {
   }
 }
 
+const getNextFixedDate = (client, appointments) => {
+  if (!client.isFixed || !client.fixedFrequency) return null
+  const last = appointments
+    .filter((a) => a.clientId === client.id && !a.blocked && a.status !== 'cancelled')
+    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0]
+  if (!last) return null
+  return addRecurringInterval(last.date, client.fixedFrequency)
+}
+
+const formatShortDate = (ymd) =>
+  new Date(`${ymd}T12:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+
 const getVisitPattern = (clientId, appointments) => {
   const done = appointments
     .filter((a) => a.clientId === clientId && !a.blocked && a.status === 'done')
@@ -148,7 +167,11 @@ const Clients = ({
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
-  const [form, setForm] = useState({ name: '', phone: '', notes: '' })
+  const emptyClientForm = {
+    name: '', phone: '', notes: '',
+    isFixed: false, fixedFrequency: DEFAULT_RECURRING_FREQUENCY, fixedWeekday: 1, fixedTime: '09:00',
+  }
+  const [form, setForm] = useState(emptyClientForm)
   const canPickContacts = typeof navigator !== 'undefined' && !!navigator.contacts?.select
   const [importModal, setImportModal] = useState(false)
   const [importList, setImportList] = useState([])
@@ -195,13 +218,24 @@ const Clients = ({
     addToast('Cliente removido.', 'success')
   }
 
-  const openEdit = (c) => { setForm({ name: c.name, phone: c.phone, notes: c.notes }); setModal(c) }
+  const openEdit = (c) => {
+    setForm({
+      name: c.name,
+      phone: c.phone,
+      notes: c.notes,
+      isFixed: !!c.isFixed,
+      fixedFrequency: c.fixedFrequency || DEFAULT_RECURRING_FREQUENCY,
+      fixedWeekday: c.fixedWeekday != null ? c.fixedWeekday : 1,
+      fixedTime: c.fixedTime || '09:00',
+    })
+    setModal(c)
+  }
   const openNew = () => {
     if (!canUserEdit) {
       onBlockedAction?.('Desbloqueie para salvar clientes.')
       return
     }
-    setForm({ name: '', phone: '', notes: '' })
+    setForm(emptyClientForm)
     setModal('new')
   }
   const getApptCount = (id) => appointments.filter((a) => a.clientId === id && a.status !== 'cancelled').length
@@ -386,10 +420,28 @@ const Clients = ({
                   {initials}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.name}</span>
+                    {isBarber && c.isFixed && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, color: '#0F766E', background: 'rgba(15,118,110,0.1)', padding: '2px 7px', borderRadius: 999 }}>
+                        <Icon name="repeat" size={10} color="#0F766E" /> Fixo
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{c.phone}</div>
                 </div>
               </div>
+              {isBarber && c.isFixed && (
+                <div style={{ fontSize: 11, color: '#0F766E', background: 'rgba(15,118,110,0.08)', padding: '6px 10px', borderRadius: 8, marginBottom: 10, lineHeight: 1.4 }}>
+                  {RECURRING_FREQUENCY_LABELS[c.fixedFrequency] || ''}
+                  {c.fixedWeekday != null && ` · ${WEEKDAY_LABELS_FULL[c.fixedWeekday]}`}
+                  {c.fixedTime && ` às ${c.fixedTime}`}
+                  {(() => {
+                    const next = getNextFixedDate(c, appointments)
+                    return next ? ` · próximo esperado: ${formatShortDate(next)}` : ''
+                  })()}
+                </div>
+              )}
               {c.notes && (
                 <p style={{ fontSize: 12, color: 'var(--text-mid)', background: 'var(--rose-light)', padding: '6px 10px', borderRadius: 8, marginBottom: 10 }}>
                   {c.notes}
@@ -482,6 +534,45 @@ const Clients = ({
         <Field label="Observações">
           <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Alergias, preferências, etc." rows={3} />
         </Field>
+        {isBarber && (
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: '4px 0 10px' }}>
+              <input
+                type="checkbox"
+                checked={!!form.isFixed}
+                onChange={(e) => setForm((f) => ({ ...f, isFixed: e.target.checked }))}
+                style={{ width: 18, height: 18, accentColor: 'var(--rose-deep)' }}
+              />
+              <Icon name="repeat" size={13} color="var(--rose-deep)" /> Cliente fixo
+            </label>
+            {form.isFixed && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <Field label="Frequência" half>
+                    <Sel value={form.fixedFrequency} onChange={(e) => setForm((f) => ({ ...f, fixedFrequency: e.target.value }))}>
+                      {RECURRING_FREQUENCY_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </Sel>
+                  </Field>
+                  <Field label="Dia da semana" half>
+                    <Sel value={String(form.fixedWeekday)} onChange={(e) => setForm((f) => ({ ...f, fixedWeekday: Number(e.target.value) }))}>
+                      {WEEKDAY_LABELS_FULL.map((label, idx) => (
+                        <option key={label} value={idx}>{label}</option>
+                      ))}
+                    </Sel>
+                  </Field>
+                  <Field label="Horário preferido" half>
+                    <Inp type="time" value={form.fixedTime} onChange={(e) => setForm((f) => ({ ...f, fixedTime: e.target.value }))} />
+                  </Field>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -4, lineHeight: 1.4 }}>
+                  Isso só marca a preferência do cliente. Para criar os próximos cortes automaticamente, marque "Cliente fixo" na hora de agendar um corte para ele.
+                </p>
+              </div>
+            )}
+          </>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 4 }}>
           <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
           {modal === 'new' ? (

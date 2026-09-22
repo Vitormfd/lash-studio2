@@ -11,6 +11,7 @@ import { CHECKOUT_URL, openCheckout } from './lib/billing'
 import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
 import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE } from './lib/domain'
 import { ensureServiceCompatibility } from './lib/serviceCompatibility'
+import { addRecurringInterval, FIXED_CLIENT_FUTURE_OCCURRENCES } from './lib/recurringClients'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -682,9 +683,19 @@ const AppMain = ({ session, onLogout }) => {
       setEditAppt(null); addToast('Agendamento salvo com sucesso!', 'success')
     } else {
       if (overlapsOther(null)) { addToast('Horário conflita com outro agendamento ou bloqueio.', 'error'); return }
-      const newAppt = { ...form, id: uid(), status: form.blocked ? 'blocked' : 'pending', _new: true }
+      const isFixedSeries = isBarber && !!form.fixedClient && !form.blocked
+      const recurrenceId = isFixedSeries ? uid() : null
+      const newAppt = {
+        ...form,
+        id: uid(),
+        status: form.blocked ? 'blocked' : 'pending',
+        _new: true,
+        recurrenceId,
+        recurrenceFrequency: isFixedSeries ? form.fixedFrequency : null,
+      }
       const saved = await DB.saveAppointment(userId, newAppt)
-      setAppointments((a) => [...a, saved])
+      let allAppts = [...appointments, saved]
+      setAppointments(allAppts)
       setNewApptModal(false)
       setNewApptInitial(null)
       addToast(form.blocked ? 'Horário bloqueado com sucesso!' : 'Agendamento criado!', 'success')
@@ -699,6 +710,60 @@ const AppMain = ({ session, onLogout }) => {
           serviceName: services.find((s) => s.id === saved.serviceId)?.name || '',
           teamMembers,
         }).catch(() => {})
+      }
+
+      if (isFixedSeries) {
+        const createdCount = { n: 0 }
+        const skippedDates = []
+        let cursorDate = form.date
+        for (let i = 0; i < FIXED_CLIENT_FUTURE_OCCURRENCES; i += 1) {
+          cursorDate = addRecurringInterval(cursorDate, form.fixedFrequency)
+          const conflict = allAppts.find((a) =>
+            apptIntervalsOverlap(cursorDate, form.time, dur, a.date, a.time, apptDurationMin(a))
+          )
+          if (conflict) { skippedDates.push(cursorDate); continue }
+          try {
+            const savedOcc = await DB.saveAppointment(userId, {
+              ...form,
+              id: uid(),
+              date: cursorDate,
+              status: 'pending',
+              _new: true,
+              recurrenceId,
+              recurrenceFrequency: form.fixedFrequency,
+            })
+            allAppts = [...allAppts, savedOcc]
+            createdCount.n += 1
+          } catch {
+            skippedDates.push(cursorDate)
+          }
+        }
+        if (createdCount.n > 0) setAppointments(allAppts)
+
+        const fixedClientRecord = clients.find((c) => c.id === form.clientId)
+        if (fixedClientRecord) {
+          const weekday = new Date(`${form.date}T12:00:00`).getDay()
+          handleUpdateClient({
+            ...fixedClientRecord,
+            isFixed: true,
+            fixedFrequency: form.fixedFrequency,
+            fixedWeekday: weekday,
+            fixedTime: form.time,
+          }).catch(() => {})
+        }
+
+        if (createdCount.n > 0) {
+          addToast(
+            `Cliente fixo! ${createdCount.n} próximo${createdCount.n > 1 ? 's' : ''} corte${createdCount.n > 1 ? 's' : ''} agendado${createdCount.n > 1 ? 's' : ''}.`,
+            'success'
+          )
+        }
+        if (skippedDates.length > 0) {
+          addToast(
+            `${skippedDates.length} data(s) da recorrência pulada(s) por conflito de horário — confira e reagende manualmente.`,
+            'warning'
+          )
+        }
       }
     }
   }
@@ -1188,12 +1253,13 @@ const AppMain = ({ session, onLogout }) => {
           initial={newApptInitial || undefined}
           clients={clients}
           services={services}
+          isBarber={isBarber}
           onClose={() => { setNewApptModal(false); setNewApptInitial(null) }}
           onSave={saveAppt}
         />
       </Modal>
       <Modal open={!!editAppt} onClose={() => setEditAppt(null)} title="Editar Agendamento">
-        {editAppt && <AppointmentForm initial={editAppt} clients={clients} services={services} onClose={() => setEditAppt(null)} onSave={saveAppt} />}
+        {editAppt && <AppointmentForm initial={editAppt} clients={clients} services={services} isBarber={isBarber} onClose={() => setEditAppt(null)} onSave={saveAppt} />}
       </Modal>
 
       <Modal open={pwaOnboardingOpen} onClose={dismissPwaOnboarding} title="Instale o app no celular">

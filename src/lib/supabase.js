@@ -107,6 +107,10 @@ const normalizeClient = (c) => ({
   phone: toAppPhone(c.phone),
   notes: c.notes || '',
   createdAt: c.created_at || c.createdAt || new Date().toISOString(),
+  isFixed: !!(c.is_fixed ?? c.isFixed),
+  fixedFrequency: c.fixed_frequency || c.fixedFrequency || null,
+  fixedWeekday: (c.fixed_weekday ?? c.fixedWeekday) != null ? Number(c.fixed_weekday ?? c.fixedWeekday) : null,
+  fixedTime: (c.fixed_time || c.fixedTime || '').toString().slice(0, 5) || null,
 })
 
 const toAppPhone = (value) => {
@@ -299,7 +303,7 @@ export const DB = {
       const phoneCandidates = toE164PhoneCandidates(phoneRaw)
       const phonePrimary = toE164Phone(phoneRaw)
       const phoneFallback = phoneDigits ? toE164Phone(phoneDigits) : null
-      const row = {
+      const rowBase = {
         id: client.id,
         user_id: userId,
         name: client.name,
@@ -307,9 +311,29 @@ export const DB = {
         notes: client.notes || '',
         created_at: client.createdAt || new Date().toISOString(),
       }
-      let { data, error } = client._new
-        ? await sb.from('clients').insert(row).select().single()
-        : await sb.from('clients').update(row).eq('id', client.id).eq('user_id', userId).select().single()
+      const rowWithFixed = {
+        ...rowBase,
+        is_fixed: !!client.isFixed,
+        fixed_frequency: client.isFixed ? (client.fixedFrequency || null) : null,
+        fixed_weekday: client.isFixed && client.fixedWeekday != null ? Number(client.fixedWeekday) : null,
+        fixed_time: client.isFixed && client.fixedTime ? String(client.fixedTime).slice(0, 5) : null,
+      }
+      const runClient = (r) =>
+        client._new
+          ? sb.from('clients').insert(r).select().single()
+          : sb.from('clients').update(r).eq('id', client.id).eq('user_id', userId).select().single()
+
+      let row = rowWithFixed
+      let { data, error } = await runClient(row)
+
+      // Fallback for accounts whose DB migration for "cliente fixo" hasn't run yet.
+      const isMissingFixedColumn = String(error?.message || '').includes('fixed') || String(error?.message || '').includes('is_fixed')
+      if (isMissingFixedColumn) {
+        row = rowBase
+        const retry = await runClient(row)
+        data = retry.data
+        error = retry.error
+      }
 
       // If DB rejects phone format, retry without phone to avoid blocking client creation.
       const isPhoneCheckError = error?.code === '23514' && String(error?.message || '').includes('clients_phone_e164_check')
@@ -497,6 +521,8 @@ export const DB = {
           paymentValue: a.payment_value != null ? Number(a.payment_value) : null,
           paymentNotes: a.payment_notes || '',
           paidAt: a.paid_at || null,
+          recurrenceId: a.recurrence_id || null,
+          recurrenceFrequency: a.recurrence_frequency || null,
         }))
         uset(userId, 'appointments', normalized)
         return normalized
@@ -535,6 +561,8 @@ export const DB = {
       paymentValue: a.payment_value != null ? Number(a.payment_value) : null,
       paymentNotes: a.payment_notes || '',
       paidAt: a.paid_at || null,
+      recurrenceId: a.recurrence_id || null,
+      recurrenceFrequency: a.recurrence_frequency || null,
     })
     if (sb) {
       const defaultStatus = appt.blocked ? 'blocked' : 'pending'
@@ -560,6 +588,8 @@ export const DB = {
         payment_value: appt.paymentValue != null ? Number(appt.paymentValue) : null,
         payment_notes: appt.paymentNotes || null,
         paid_at: appt.paidAt || null,
+        recurrence_id: appt.recurrenceId || null,
+        recurrence_frequency: appt.recurrenceFrequency || null,
       }
       const run = async (r) =>
         appt._new
@@ -587,6 +617,8 @@ export const DB = {
           payment_value: _pv,
           payment_notes: _pn,
           paid_at: _pa,
+          recurrence_id: _rid,
+          recurrence_frequency: _rfr,
           ...rest
         } = row
         const second = await run(rest)

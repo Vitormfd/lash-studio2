@@ -11,6 +11,12 @@ import {
   AGENDA_DAY_START,
 } from '../lib/utils'
 import { toLocalYmd } from '../lib/dashboardStats'
+import {
+  RECURRING_FREQUENCY_OPTIONS,
+  FIXED_CLIENT_FUTURE_OCCURRENCES,
+  WEEKDAY_LABELS_FULL,
+  normalizeRecurringFrequency,
+} from '../lib/recurringClients'
 
 const listBoxStyle = {
   maxHeight: 200,
@@ -26,10 +32,11 @@ const durationOptionLabel = (m) => {
   return formatDurationLabel(m)
 }
 
-const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked }) => {
+const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked, isBarber = false }) => {
   const [clientFilter, setClientFilter] = useState('')
   const [serviceFilter, setServiceFilter] = useState('')
   const [saving, setSaving] = useState(false)
+  const isNewAppointment = !initial?.id
 
   const [form, setForm] = useState({
     clientId: '', serviceId: '',
@@ -45,6 +52,8 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
     reminderEnabled: initial?.reminderEnabled != null ? !!initial.reminderEnabled : true,
     reminderMinutesBefore: initial?.reminderMinutesBefore != null && Number(initial.reminderMinutesBefore) > 0
       ? Number(initial.reminderMinutesBefore) : 60,
+    fixedClient: false,
+    fixedFrequency: normalizeRecurringFrequency(initial?.fixedFrequency),
   })
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
@@ -55,6 +64,14 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
       if (svc) set('value', svc.price)
     }
   }, [form.serviceId])
+
+  useEffect(() => {
+    if (!isNewAppointment || !isBarber || !form.clientId) return
+    const c = clients.find((x) => x.id === form.clientId)
+    if (c?.isFixed) {
+      setForm((f) => ({ ...f, fixedClient: true, fixedFrequency: normalizeRecurringFrequency(c.fixedFrequency) }))
+    }
+  }, [form.clientId])
 
   const filteredClients = useMemo(() => {
     const q = clientFilter.trim().toLowerCase()
@@ -283,6 +300,52 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked 
           </p>
         </Field>
       </div>
+
+      {!blocked && isBarber && isNewAppointment && (
+        <div style={{ marginBottom: 14 }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '12px 14px',
+              borderRadius: 12,
+              border: `1.5px solid ${form.fixedClient ? 'var(--rose-deep)' : 'var(--border-mid)'}`,
+              background: form.fixedClient ? 'var(--rose-light)' : 'var(--surface)',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!form.fixedClient}
+              onChange={(e) => set('fixedClient', e.target.checked)}
+              style={{ width: 18, height: 18, marginTop: 1, accentColor: 'var(--rose-deep)', flexShrink: 0 }}
+            />
+            <span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                <Icon name="repeat" size={13} color="var(--rose-deep)" /> Cliente fixo
+              </span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--text-light)', marginTop: 3, lineHeight: 1.4 }}>
+                {`Repete sempre ${WEEKDAY_LABELS_FULL[new Date(`${form.date}T12:00:00`).getDay()]} às ${timeStr}.`}
+              </span>
+            </span>
+          </label>
+          {form.fixedClient && (
+            <div style={{ marginTop: 10 }}>
+              <Field label="Frequência">
+                <Sel value={form.fixedFrequency} onChange={(e) => set('fixedFrequency', e.target.value)}>
+                  {RECURRING_FREQUENCY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </Sel>
+              </Field>
+              <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -6 }}>
+                {`Vamos criar os próximos ${FIXED_CLIENT_FUTURE_OCCURRENCES} cortes automaticamente nesse mesmo horário.`}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {!blocked && (
         <>

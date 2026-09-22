@@ -616,6 +616,7 @@ const Agenda = ({
             blocked={modal.blocked}
             clients={clients}
             services={services}
+            isBarber={isBarber}
             onClose={() => setModal(null)}
             onSave={(form) => {
               if (!canUserEdit) {
