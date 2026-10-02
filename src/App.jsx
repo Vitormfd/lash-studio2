@@ -68,12 +68,12 @@ const NAV_TITLES = {
 const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'loyalty', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings']
 
 const BARBER_STARTER_SERVICES = [
-  { name: 'Corte', price: 50, color: '#3E6B8A' },
-  { name: 'Degradê', price: 55, color: '#2F4A6D' },
-  { name: 'Barba', price: 35, color: '#8A5A2B' },
-  { name: 'Corte + Barba', price: 80, color: '#D89A3C' },
-  { name: 'Sobrancelha', price: 15, color: '#5F6B73' },
-  { name: 'Pigmentação', price: 40, color: '#3A3A3A' },
+  { name: 'Corte', price: 50, color: '#3E6B8A', durationMinutes: 30 },
+  { name: 'Degradê', price: 55, color: '#2F4A6D', durationMinutes: 40 },
+  { name: 'Barba', price: 35, color: '#8A5A2B', durationMinutes: 30 },
+  { name: 'Corte + Barba', price: 80, color: '#D89A3C', durationMinutes: 60 },
+  { name: 'Sobrancelha', price: 15, color: '#5F6B73', durationMinutes: 15 },
+  { name: 'Pigmentação', price: 40, color: '#3A3A3A', durationMinutes: 30 },
 ]
 
 const WHATS_NEW_ID = 'fidelidade-importar-contatos'

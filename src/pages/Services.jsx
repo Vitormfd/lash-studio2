@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import Modal from '../components/Modal'
-import { Btn, Field, Inp, inputStyle } from '../components/UI'
+import { Btn, Field, Inp, Sel, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
-import { normalizeServiceColor, SERVICE_COLOR_PRESETS } from '../lib/utils'
+import { normalizeServiceColor, SERVICE_COLOR_PRESETS, DURATION_OPTIONS, formatDurationLabel } from '../lib/utils'
+
+const SERVICE_DURATION_OPTIONS = [15, 20, 25, ...DURATION_OPTIONS]
 
 const Services = ({ services, setServices, appointments, addToast, isBarber = false }) => {
+  const defaultDuration = isBarber ? 30 : 60
+  const emptyForm = { name: '', price: '', costPerClient: '', color: '', durationMinutes: defaultDuration }
   const parseOptionalNumber = (value) => {
     if (value == null) return null
     if (typeof value === 'string' && value.trim() === '') return null
@@ -15,7 +19,7 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
 
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
-  const [form, setForm] = useState({ name: '', price: '', costPerClient: '', color: '' })
+  const [form, setForm] = useState(emptyForm)
 
   const q = search.trim().toLowerCase()
   const filtered = services.filter((s) => {
@@ -30,11 +34,12 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
     if (!form.name || !form.price) return
     const colorClean = normalizeServiceColor(form.color) || ''
     const costPerClient = parseOptionalNumber(form.costPerClient)
+    const durationMinutes = Number(form.durationMinutes) > 0 ? Number(form.durationMinutes) : defaultDuration
     if (modal === 'new') {
-      setServices([...services, { ...form, price: Number(form.price), costPerClient, color: colorClean, id: uid() }])
+      setServices([...services, { ...form, price: Number(form.price), costPerClient, color: colorClean, durationMinutes, id: uid() }])
       addToast('Serviço criado!', 'success')
     } else {
-      setServices(services.map((s) => s.id === modal.id ? { ...s, ...form, price: Number(form.price), costPerClient, color: colorClean } : s))
+      setServices(services.map((s) => s.id === modal.id ? { ...s, ...form, price: Number(form.price), costPerClient, color: colorClean, durationMinutes } : s))
       addToast('Serviço atualizado!', 'success')
     }
     setModal(null)
@@ -57,7 +62,7 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...inputStyle, flex: '1 1 220px', maxWidth: 360 }}
         />
-        <Btn onClick={() => { setForm({ name: '', price: '', costPerClient: '', color: '' }); setModal('new') }}>
+        <Btn onClick={() => { setForm(emptyForm); setModal('new') }}>
           <Icon name="plus" size={14} color="#fff" /> Novo Serviço
         </Btn>
       </div>
@@ -70,7 +75,7 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
                 <Icon name={isBarber ? 'scissors' : 'star'} size={16} color={normalizeServiceColor(s.color) ? (isBarber ? '#fff' : '#2C1A1E') : 'var(--rose-deep)'} />
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
-                <Btn variant="ghost" sm onClick={() => { setForm({ name: s.name, price: s.price, costPerClient: s.costPerClient ?? '', color: s.color || '' }); setModal(s) }}>
+                <Btn variant="ghost" sm onClick={() => { setForm({ name: s.name, price: s.price, costPerClient: s.costPerClient ?? '', color: s.color || '', durationMinutes: Number(s.durationMinutes) > 0 ? Number(s.durationMinutes) : 60 }); setModal(s) }}>
                   <Icon name="edit" size={12} />
                 </Btn>
                 <Btn variant="ghost" sm onClick={() => del(s.id)}>
@@ -81,6 +86,9 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{s.name}</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--rose-deep)', marginTop: 2 }}>R$ {s.price}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-mid)', marginTop: 4 }}>
+                <Icon name="clock" size={12} /> {formatDurationLabel(Number(s.durationMinutes) > 0 ? s.durationMinutes : 60)}
+              </div>
               <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>
                 Custo: {s.costPerClient != null ? `R$ ${Number(s.costPerClient).toFixed(2).replace('.', ',')}` : 'usa custo padrão'}
               </div>
@@ -102,6 +110,18 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
         </Field>
         <Field label="Preço padrão (R$)">
           <Inp type="number" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="0.00" />
+        </Field>
+        <Field label="Duração do serviço">
+          <Sel value={String(form.durationMinutes)} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}>
+            {[...new Set([...SERVICE_DURATION_OPTIONS, Number(form.durationMinutes) || defaultDuration])]
+              .sort((a, b) => a - b)
+              .map((m) => (
+                <option key={m} value={m}>{formatDurationLabel(m)}</option>
+              ))}
+          </Sel>
+          <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 5 }}>
+            Ao escolher este serviço num agendamento, a duração já vem preenchida (dá para ajustar).
+          </p>
         </Field>
         <Field label="Custo do serviço (R$, opcional)">
           <Inp

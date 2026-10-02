@@ -134,6 +134,7 @@ const normalizeService = (s) => ({
   price: Number(s.price),
   costPerClient: s.service_cost != null ? Number(s.service_cost) : (s.costPerClient != null ? Number(s.costPerClient) : null),
   color: s.color || '',
+  durationMinutes: Number(s.duration_minutes ?? s.durationMinutes) > 0 ? Number(s.duration_minutes ?? s.durationMinutes) : 60,
 })
 
 const isE164Phone = (value) => /^\+[1-9]\d{7,14}$/.test(value)
@@ -412,13 +413,17 @@ export const DB = {
       if (!error && data) {
         const cached = uget(userId, 'services') || []
         const hasServiceCostColumn = data.length === 0 || Object.prototype.hasOwnProperty.call(data[0], 'service_cost')
+        const hasDurationColumn = data.length === 0 || Object.prototype.hasOwnProperty.call(data[0], 'duration_minutes')
         const normalized = data.map((serviceRow) => {
-          const service = normalizeService(serviceRow)
-          if (hasServiceCostColumn) return service
+          let service = normalizeService(serviceRow)
           const cachedService = cached.find((c) => c.id === service.id)
-          return cachedService?.costPerClient != null
-            ? { ...service, costPerClient: Number(cachedService.costPerClient) }
-            : service
+          if (!hasServiceCostColumn && cachedService?.costPerClient != null) {
+            service = { ...service, costPerClient: Number(cachedService.costPerClient) }
+          }
+          if (!hasDurationColumn && Number(cachedService?.durationMinutes) > 0) {
+            service = { ...service, durationMinutes: Number(cachedService.durationMinutes) }
+          }
+          return service
         })
         uset(userId, 'services', normalized)
         return normalized
@@ -437,26 +442,34 @@ export const DB = {
         price: service.price,
         color: service.color && String(service.color).trim() ? String(service.color).trim() : null,
       }
-      const rowWithCost = {
+      const durationMinutes = Number(service.durationMinutes) > 0 ? Number(service.durationMinutes) : 60
+      let row = {
         ...rowBase,
         cost_per_client: service.costPerClient != null ? Number(service.costPerClient) : null,
+        duration_minutes: durationMinutes,
       }
-      const run = (row) =>
+      const run = (r) =>
         service._new
-          ? sb.from('services').insert(row).select().single()
-          : sb.from('services').update(row).eq('id', service.id).eq('user_id', userId).select().single()
+          ? sb.from('services').insert(r).select().single()
+          : sb.from('services').update(r).eq('id', service.id).eq('user_id', userId).select().single()
 
-      let { data, error } = await run(rowWithCost)
-      const isMissingCostColumn = String(error?.message || '').includes('cost_per_client')
-      if (isMissingCostColumn) {
-        const second = await run(rowBase)
-        data = second.data
-        error = second.error
+      let { data, error } = await run(row)
+      // Drop optional columns the account's DB doesn't have yet, one at a time.
+      const optionalColumns = ['duration_minutes', 'cost_per_client']
+      while (error) {
+        const optionalColumn = optionalColumns.find((c) => c in row && String(error.message || '').includes(c))
+        if (!optionalColumn) break
+        const { [optionalColumn]: _dropped, ...rest } = row
+        row = rest
+        const retry = await run(row)
+        data = retry.data
+        error = retry.error
       }
       if (!error && data) {
         const normalized = {
           ...normalizeService(data),
           costPerClient: service.costPerClient != null ? Number(service.costPerClient) : null,
+          durationMinutes,
         }
         const all = uget(userId, 'services') || []
         const exists = all.find((s) => s.id === normalized.id)

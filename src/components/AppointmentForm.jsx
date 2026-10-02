@@ -205,7 +205,14 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked,
                       <button
                         key={s.id}
                         type="button"
-                        onClick={() => { set('serviceId', s.id); setServiceFilter('') }}
+                        onClick={() => {
+                          setForm((f) => ({
+                            ...f,
+                            serviceId: s.id,
+                            durationMinutes: Number(s.durationMinutes) > 0 ? Number(s.durationMinutes) : f.durationMinutes,
+                          }))
+                          setServiceFilter('')
+                        }}
                         style={{
                           width: '100%',
                           textAlign: 'left',
