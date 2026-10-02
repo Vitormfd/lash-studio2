@@ -18,15 +18,15 @@ export const apptIntervalsOverlap = (d1, start1, dur1, d2, start2, dur2) => {
   return s1 < e2 && s2 < e1
 }
 
-export const apptCoversSlotHour = (appt, dateStr, hourLabel) =>
+export const apptCoversSlotHour = (appt, dateStr, hourLabel, slotMinutes = 60) =>
   appt &&
   appt.date === dateStr &&
-  apptIntervalsOverlap(appt.date, appt.time, apptDurationMin(appt), dateStr, hourLabel, 60)
+  apptIntervalsOverlap(appt.date, appt.time, apptDurationMin(appt), dateStr, hourLabel, slotMinutes)
 
-export const apptStartsInHourRow = (appt, hourLabel) => {
+export const apptStartsInHourRow = (appt, hourLabel, slotMinutes = 60) => {
   const a = timeToMins(appt.time)
   const r = timeToMins(hourLabel)
-  return a >= r && a < r + 60
+  return a >= r && a < r + slotMinutes
 }
 
 export const formatDurationLabel = (m) => {
@@ -86,6 +86,9 @@ export const hexToRgba = (hex, alpha) => {
 export const HOURS = Array.from({ length: 13 }, (_, i) => `${(i + 8).toString().padStart(2, '0')}:00`)
 export const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 export const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+
+/** Mesma faixa de HOURS (08:00–21:00), em linhas de 30 min. */
+export const HALF_HOUR_SLOTS = HOURS.flatMap((h) => [h, h.replace(':00', ':30')])
 
 /** Início da grade da agenda (primeiro horário visível). */
 export const AGENDA_DAY_START = HOURS[0]

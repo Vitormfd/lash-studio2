@@ -4,7 +4,7 @@ import AppointmentForm from '../components/AppointmentForm'
 import { Btn, Field, Inp, Textarea } from '../components/UI'
 import Icon from '../components/Icon'
 import {
-  HOURS, DAYS_PT, MONTHS_PT,
+  HOURS, HALF_HOUR_SLOTS, DAYS_PT, MONTHS_PT,
   normalizeServiceColor, hexToRgba,
   apptDurationMin, apptCoversSlotHour, apptStartsInHourRow, apptIntervalsOverlap,
   formatDurationLabel, endTimeLabel, getFullDayBlockMinutes,
@@ -63,6 +63,8 @@ const Agenda = ({
   const dayHolidays = holidaysByDate.get(dateStr) || []
   const daySummary = useMemo(() => getTodaySummary(appointments, dateStr), [appointments, dateStr])
   const appointmentsLabel = isBarber ? 'cortes' : 'atendimentos'
+  const slotMinutes = isBarber ? 30 : 60
+  const slots = isBarber ? HALF_HOUR_SLOTS : HOURS
   const hasLocation = Boolean(location.stateUf)
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Bloqueado'
   const getClient = (id) => clients.find((c) => c.id === id) || null
@@ -193,9 +195,9 @@ const Agenda = ({
     const dayAppts = appointments.filter((a) => a.date === dateStr).sort((a, b) => a.time.localeCompare(b.time))
     return (
       <div style={{ overflowY: 'auto', flex: 1, minWidth: 0, WebkitOverflowScrolling: 'touch' }}>
-        {HOURS.map((h) => {
-          const appt = dayAppts.find((a) => apptStartsInHourRow(a, h))
-          const slotBusy = dayAppts.some((a) => apptCoversSlotHour(a, dateStr, h))
+        {slots.map((h) => {
+          const appt = dayAppts.find((a) => apptStartsInHourRow(a, h, slotMinutes))
+          const slotBusy = dayAppts.some((a) => apptCoversSlotHour(a, dateStr, h, slotMinutes))
           const colors = appt ? statusColor(appt) : null
           const dm = appt ? apptDurationMin(appt) : 60
           return (
@@ -340,14 +342,14 @@ const Agenda = ({
               </div>
             )
           })}
-          {HOURS.map((h) => (
+          {slots.map((h) => (
             <div key={h} style={{ display: 'contents' }}>
               <div style={{ padding: '4px 6px 0', fontSize: 10, color: 'var(--text-light)', textAlign: 'right', borderBottom: '1px solid var(--rose-light)' }}>{h}</div>
               {days.map((d) => {
                 const ds = toLocalYmd(d)
                 const dayList = appointments.filter((a) => a.date === ds)
-                const appt = dayList.find((a) => apptStartsInHourRow(a, h))
-                const slotBusy = dayList.some((a) => apptCoversSlotHour(a, ds, h))
+                const appt = dayList.find((a) => apptStartsInHourRow(a, h, slotMinutes))
+                const slotBusy = dayList.some((a) => apptCoversSlotHour(a, ds, h, slotMinutes))
                 const colors = appt ? statusColor(appt) : null
                 const wdm = appt ? apptDurationMin(appt) : 60
                 return (
