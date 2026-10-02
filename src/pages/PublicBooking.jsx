@@ -99,6 +99,22 @@ const resolveWindow = (configRow) => {
   return { closed: false, start, end, hasLunch, lunchStart: hasLunch ? lunchStart : null, lunchEnd: hasLunch ? lunchEnd : null }
 }
 
+const localTodayYmd = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${toTwo(d.getMonth() + 1)}-${toTwo(d.getDate())}`
+}
+
+const nowMinutes = () => {
+  const d = new Date()
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+const isPastSlot = (dateYmd, hhmm) => {
+  const today = localTodayYmd()
+  if (dateYmd < today) return true
+  return dateYmd === today && timeToMins(hhmm) <= nowMinutes()
+}
+
 const buildSlots = ({ selectedDate, durationMinutes, appointments, windowStart, windowEnd, lunchStart, lunchEnd }) => {
   const slots = []
   const begin = timeToMins(windowStart)
@@ -110,6 +126,7 @@ const buildSlots = ({ selectedDate, durationMinutes, appointments, windowStart, 
   const lunchEndMins = lunchEnd ? timeToMins(lunchEnd) : null
 
   for (let mins = begin; mins + duration <= finish; mins += SLOT_STEP_MIN) {
+    if (isPastSlot(selectedDate, `${toTwo(Math.floor(mins / 60))}:${toTwo(mins % 60)}`)) continue
     const hour = toTwo(Math.floor(mins / 60))
     const minute = toTwo(mins % 60)
     const hhmm = `${hour}:${minute}`
@@ -182,7 +199,7 @@ const PublicBooking = ({ professionalId }) => {
   const [professionalName, setProfessionalName] = useState('Profissional Easy Studio')
 
   const selectedService = services.find((s) => s.id === selectedServiceId) || null
-  const todayYmd = new Date().toISOString().slice(0, 10)
+  const todayYmd = localTodayYmd()
 
   useEffect(() => {
     if (!sb || !professionalId) return
@@ -332,6 +349,13 @@ const PublicBooking = ({ professionalId }) => {
     }
     if (digits.length < 10) {
       setErrorMsg('Informe um telefone válido no formato brasileiro.')
+      return
+    }
+    if (isPastSlot(selectedDate, selectedTime)) {
+      setErrorMsg('Este horário já passou. Por favor, escolha outro horário.')
+      setSelectedTime('')
+      setStep(2)
+      await loadSlots(selectedDate, selectedService)
       return
     }
 
