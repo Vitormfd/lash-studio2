@@ -165,7 +165,7 @@ const AppMain = ({ session, onLogout }) => {
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
   const [cashExpenses, setCashExpenses] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', whatsappAutoEnabled: false, whatsappAutoHoursBefore: 24, themeId: '' })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', whatsappAutoTemplate: '', whatsappAutoEnabled: false, whatsappAutoHoursBefore: 24, themeId: '' })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
@@ -1346,7 +1346,7 @@ const AppMain = ({ session, onLogout }) => {
             },
             {
               title: 'Teste e personalize',
-              body: <>Toque em <b>Testar</b> para receber um exemplo. O texto é o do cartão <b>Mensagem do WhatsApp</b>, que você pode editar quando quiser.</>,
+              body: <>Toque em <b>Testar</b> para receber um exemplo. A mensagem do lembrete fica no próprio cartão e você pode editar quando quiser.</>,
             },
           ].map((item, i) => (
             <li key={item.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>

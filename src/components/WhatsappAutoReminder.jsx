@@ -1,8 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { Btn, Field, Inp, Sel } from './UI'
+import { Btn, Field, Inp, Sel, Textarea } from './UI'
 import Icon from './Icon'
 import { callWhatsappReminders } from '../lib/supabase'
-import { buildWhatsappReminderText } from '../lib/whatsappReminder'
+import {
+  DEFAULT_WHATSAPP_AUTO_TEMPLATE,
+  WHATSAPP_REMINDER_PLACEHOLDERS,
+  buildWhatsappReminderText,
+  resolveWhatsappAutoTemplate,
+} from '../lib/whatsappReminder'
+
+const PREVIEW_VARS = {
+  firstName: 'Maria',
+  fullName: 'Maria Silva',
+  date: new Date().toLocaleDateString('pt-BR'),
+  time: '14:30',
+  service: 'Volume brasileiro',
+}
 
 const HOURS_OPTIONS = [
   { value: 1, label: '1 hora antes' },
@@ -40,6 +53,12 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
   const [busy, setBusy] = useState(false)
   const [testNumber, setTestNumber] = useState('')
   const [testBusy, setTestBusy] = useState(false)
+  const savedAutoTemplate = resolveWhatsappAutoTemplate(config.whatsappAutoTemplate, config.whatsappReminderTemplate)
+  const [autoTemplate, setAutoTemplate] = useState(savedAutoTemplate)
+
+  useEffect(() => {
+    setAutoTemplate(savedAutoTemplate)
+  }, [savedAutoTemplate])
   // No celular não dá pra ler o QR da própria tela: usa código de pareamento.
   const [useCode, setUseCode] = useState(isTouchDevice)
   const [pairPhone, setPairPhone] = useState('')
@@ -145,6 +164,30 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
     addToast(!enabled ? 'Lembretes automáticos ligados!' : 'Lembretes automáticos desligados.', 'success')
   }
 
+  const saveTemplate = () => {
+    if (isDemo) return
+    const next = String(autoTemplate || '').trim() || DEFAULT_WHATSAPP_AUTO_TEMPLATE
+    setAutoTemplate(next)
+    setConfig({ ...config, whatsappAutoTemplate: next })
+    addToast('Mensagem do lembrete salva!', 'success')
+  }
+
+  const insertToken = (token) => {
+    const el = document.getElementById('whatsapp-auto-template')
+    if (!el) {
+      setAutoTemplate((prev) => `${prev}${token}`)
+      return
+    }
+    const start = el.selectionStart ?? autoTemplate.length
+    const end = el.selectionEnd ?? start
+    setAutoTemplate(`${autoTemplate.slice(0, start)}${token}${autoTemplate.slice(end)}`)
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + token.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
   const sendTest = async () => {
     if (isDemo) return
     const digits = testNumber.replace(/\D/g, '')
@@ -153,13 +196,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
       return
     }
     setTestBusy(true)
-    const text = buildWhatsappReminderText(config.whatsappReminderTemplate, {
-      firstName: 'Maria',
-      fullName: 'Maria Silva',
-      date: new Date().toLocaleDateString('pt-BR'),
-      time: '14:30',
-      service: 'Volume brasileiro',
-    })
+    const text = buildWhatsappReminderText(autoTemplate, PREVIEW_VARS)
     const res = await callWhatsappReminders('test', { number: digits, text })
     setTestBusy(false)
     if (res.ok) addToast('Mensagem de teste enviada!', 'success')
@@ -179,7 +216,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
     <div id="whatsapp-auto-reminder" style={{ ...card, scrollMarginTop: 80 }}>
       <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Lembrete automático no WhatsApp</h3>
       <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
-        Conecte o WhatsApp do estúdio e o app manda a mensagem acima sozinho para cada cliente antes do atendimento.
+        Conecte o WhatsApp do estúdio e o app manda o lembrete abaixo sozinho para cada cliente antes do atendimento.
       </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -297,6 +334,57 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
           <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -4, marginBottom: 16, lineHeight: 1.5 }}>
             Vale para agendamentos pendentes e confirmados. Se o horário for remarcado, o lembrete é enviado de novo.
           </p>
+
+          <Field label="Mensagem do lembrete">
+            <Textarea
+              id="whatsapp-auto-template"
+              value={autoTemplate}
+              onChange={(e) => setAutoTemplate(e.target.value)}
+              rows={5}
+              maxLength={1500}
+              disabled={isDemo}
+              placeholder={DEFAULT_WHATSAPP_AUTO_TEMPLATE}
+            />
+          </Field>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -8, marginBottom: 12 }}>
+            {WHATSAPP_REMINDER_PLACEHOLDERS.map((item) => (
+              <button
+                key={item.token}
+                type="button"
+                disabled={isDemo}
+                onClick={() => insertToken(item.token)}
+                title={`Inserir ${item.token}`}
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-mid)',
+                  background: 'var(--off-white)',
+                  border: '1px solid var(--rose-light)',
+                  borderRadius: 999,
+                  padding: '4px 8px',
+                  cursor: isDemo ? 'default' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <code style={{ fontSize: 11 }}>{item.token}</code> {item.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ background: 'var(--off-white)', border: '1px dashed var(--rose-light)', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+              Prévia
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
+              {buildWhatsappReminderText(autoTemplate, PREVIEW_VARS)}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+            <Btn onClick={saveTemplate} disabled={isDemo || autoTemplate.trim() === savedAutoTemplate}>
+              <Icon name="check" size={14} color="#fff" /> Salvar mensagem
+            </Btn>
+            <Btn variant="ghost" onClick={() => setAutoTemplate(DEFAULT_WHATSAPP_AUTO_TEMPLATE)} disabled={isDemo}>
+              Restaurar padrão
+            </Btn>
+          </div>
 
           <Field label="Enviar mensagem de teste para">
             <div style={{ display: 'flex', gap: 8 }}>

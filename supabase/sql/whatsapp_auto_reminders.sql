@@ -10,6 +10,12 @@ alter table public.config
 alter table public.config
   add column if not exists whatsapp_instance text;
 
+alter table public.config
+  add column if not exists whatsapp_auto_template text;
+
+comment on column public.config.whatsapp_auto_template is
+  'Mensagem do lembrete automático. Vazia = usa whatsapp_reminder_template.';
+
 comment on column public.config.whatsapp_instance is
   'Instância atual na Evolution API. Muda a cada conexão (instâncias desconectadas não são reaproveitadas).';
 

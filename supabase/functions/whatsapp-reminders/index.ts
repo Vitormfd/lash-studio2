@@ -13,6 +13,7 @@ type ConfigRow = {
   whatsapp_instance: string | null
   whatsapp_auto_hours_before: number | null
   whatsapp_reminder_template: string | null
+  whatsapp_auto_template: string | null
 }
 
 type AppointmentRow = {
@@ -254,7 +255,7 @@ const brtYmd = (ms: number) => new Date(ms - BRT_OFFSET_MS).toISOString().slice(
 const sendDueReminders = async (sb: Sb) => {
   const { data: configs, error: cfgError } = await sb
     .from('config')
-    .select('user_id,whatsapp_instance,whatsapp_auto_hours_before,whatsapp_reminder_template')
+    .select('user_id,whatsapp_instance,whatsapp_auto_hours_before,whatsapp_reminder_template,whatsapp_auto_template')
     .eq('whatsapp_auto_enabled', true)
 
   if (cfgError) return json(500, { ok: false, error: `config query failed: ${cfgError.message}` })
@@ -346,7 +347,7 @@ const sendDueReminders = async (sb: Sb) => {
         .select('id')
       if (!claimed?.length) continue
 
-      const text = buildMessage(cfg.whatsapp_reminder_template, {
+      const text = buildMessage(cfg.whatsapp_auto_template || cfg.whatsapp_reminder_template, {
         fullName: String(client?.name || ''),
         date: formatDateBr(appt.date),
         time: String(appt.time).slice(0, 5),

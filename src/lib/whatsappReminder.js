@@ -1,6 +1,14 @@
 export const DEFAULT_WHATSAPP_REMINDER_TEMPLATE =
   'Oi, {nome}! Passando para te lembrar do seu atendimento no dia {data} às {hora}. Te espero ✨🤍'
 
+export const DEFAULT_WHATSAPP_AUTO_TEMPLATE =
+  'Oi, {nome}! Lembrete do seu atendimento no dia {data} às {hora}. Se precisar remarcar, é só responder esta mensagem ✨'
+
+/** Mensagem do lembrete automático. Vazia = usa a mensagem manual (comportamento antigo). */
+export function resolveWhatsappAutoTemplate(autoTemplate, manualTemplate) {
+  return String(autoTemplate || '').trim() || String(manualTemplate || '').trim() || DEFAULT_WHATSAPP_AUTO_TEMPLATE
+}
+
 export const WHATSAPP_REMINDER_PLACEHOLDERS = [
   { token: '{nome}', label: 'primeiro nome' },
   { token: '{nomeCompleto}', label: 'nome completo' },
