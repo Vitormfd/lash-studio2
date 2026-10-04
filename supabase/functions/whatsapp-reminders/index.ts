@@ -10,6 +10,7 @@ type RequestBody = {
 
 type ConfigRow = {
   user_id: string
+  whatsapp_instance: string | null
   whatsapp_auto_hours_before: number | null
   whatsapp_reminder_template: string | null
 }
@@ -62,7 +63,27 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const parseBearerToken = (header: string | null) =>
   header?.replace(/^Bearer\s+/i, '').trim() || ''
 
-const instanceNameFor = (userId: string) => `${INSTANCE_PREFIX}_${userId.replace(/-/g, '')}`
+// A fresh name per connection: Evolution 2.3.x can leave a logged-out instance stuck as
+// `open` and refuse to delete it, so we never reuse a name after disconnecting.
+const newInstanceName = (userId: string) =>
+  `${INSTANCE_PREFIX}_${userId.replace(/-/g, '').slice(0, 12)}_${Date.now().toString(36)}`
+
+const loadInstanceName = async (sb: Sb, userId: string) => {
+  const { data } = await sb.from('config').select('whatsapp_instance').eq('user_id', userId).maybeSingle()
+  return String((data as { whatsapp_instance?: string | null } | null)?.whatsapp_instance || '')
+}
+
+const saveInstanceName = async (sb: Sb, userId: string, instance: string | null) => {
+  const patch = instance
+    ? { whatsapp_instance: instance }
+    : { whatsapp_instance: null, whatsapp_auto_enabled: false }
+  const { data, error } = await sb.from('config').update(patch).eq('user_id', userId).select('user_id')
+  if (error) throw new Error(`config update failed: ${error.message}`)
+  if (!data?.length && instance) {
+    const inserted = await sb.from('config').insert({ user_id: userId, ...patch })
+    if (inserted.error) throw new Error(`config insert failed: ${inserted.error.message}`)
+  }
+}
 
 // ─── Evolution API ───────────────────────────────────────────────────────────
 
@@ -138,14 +159,7 @@ const connectInstance = async (instance: string, number?: string) => {
     if (number ? created.pairingCode : created.qr) return { state: 'connecting', ...created }
   }
 
-  let result = await requestConnect(instance, number)
-  if (number && !result.pairingCode) {
-    // Some Evolution builds only issue a pairing code for an instance created with the number.
-    await disconnectInstance(instance)
-    const created = await createInstance(instance, number)
-    result = created.pairingCode ? created : await requestConnect(instance, number)
-  }
-  return { state: 'connecting', ...result }
+  return { state: 'connecting', ...(await requestConnect(instance, number)) }
 }
 
 const disconnectInstance = async (instance: string) => {
@@ -240,7 +254,7 @@ const brtYmd = (ms: number) => new Date(ms - BRT_OFFSET_MS).toISOString().slice(
 const sendDueReminders = async (sb: Sb) => {
   const { data: configs, error: cfgError } = await sb
     .from('config')
-    .select('user_id,whatsapp_auto_hours_before,whatsapp_reminder_template')
+    .select('user_id,whatsapp_instance,whatsapp_auto_hours_before,whatsapp_reminder_template')
     .eq('whatsapp_auto_enabled', true)
 
   if (cfgError) return json(500, { ok: false, error: `config query failed: ${cfgError.message}` })
@@ -282,7 +296,11 @@ const sendDueReminders = async (sb: Sb) => {
     })
     if (!due.length) continue
 
-    const instance = instanceNameFor(cfg.user_id)
+    const instance = String(cfg.whatsapp_instance || '')
+    if (!instance) {
+      skippedAccounts[cfg.user_id] = 'whatsapp_not_connected'
+      continue
+    }
     let state = ''
     try {
       state = await getConnectionState(instance)
@@ -367,32 +385,51 @@ const sendDueReminders = async (sb: Sb) => {
 // ─── Ações do app (usuária logada) ───────────────────────────────────────────
 
 const handleUserAction = async (sb: Sb, userId: string, body: RequestBody) => {
-  const instance = instanceNameFor(userId)
-
   try {
+    let instance = await loadInstanceName(sb, userId)
+
     switch (body.action) {
       case 'status': {
+        if (!instance) return json(200, { ok: true, state: 'not_created', number: '' })
         const state = await getConnectionState(instance)
         const number = state === 'open' ? await getConnectedNumber(instance) : ''
         return json(200, { ok: true, state, number })
       }
       case 'connect': {
         const pairingNumber = body.number ? toWhatsappNumber(body.number) : ''
+        if (instance) {
+          const state = await getConnectionState(instance)
+          if (state === 'open') return json(200, { ok: true, state, qr: null, pairingCode: null })
+          // Start over with a clean instance; a half-paired one can't switch between QR and code.
+          await disconnectInstance(instance)
+        }
+        instance = newInstanceName(userId)
+        await saveInstanceName(sb, userId, instance)
         const result = await connectInstance(instance, pairingNumber || undefined)
         return json(200, { ok: true, ...result })
       }
       case 'disconnect': {
-        await disconnectInstance(instance)
-        await sb.from('config').update({ whatsapp_auto_enabled: false }).eq('user_id', userId)
+        // Best effort on Evolution; the app forgets the instance either way.
+        if (instance) await disconnectInstance(instance).catch(() => {})
+        await saveInstanceName(sb, userId, null)
         return json(200, { ok: true, state: 'not_created' })
       }
       case 'test': {
         const number = toWhatsappNumber(body.number || '')
         const text = String(body.text || '').trim()
         if (!number || !text) return json(400, { ok: false, error: 'Informe número e mensagem.' })
+        if (!instance) return json(409, { ok: false, error: 'WhatsApp não está conectado.' })
         const state = await getConnectionState(instance)
         if (state !== 'open') return json(409, { ok: false, error: 'WhatsApp não está conectado.' })
-        await sendText(instance, number, text.slice(0, 4000))
+        try {
+          await sendText(instance, number, text.slice(0, 4000))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          if (isConnectionClosed(message)) {
+            return json(409, { ok: false, error: 'A conexão com o WhatsApp caiu. Toque em Desconectar e conecte de novo.' })
+          }
+          throw error
+        }
         return json(200, { ok: true })
       }
       default:
@@ -427,6 +464,30 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
   const token = parseBearerToken(req.headers.get('Authorization'))
+
+  // Manutenção: chama a Evolution passo a passo e devolve as respostas cruas.
+  if (body.action === 'diagnose') {
+    if (!CRON_SECRET || token !== CRON_SECRET) return json(401, { ok: false, error: 'Unauthorized' })
+    const instance = String((body as Record<string, unknown>).instance || '')
+    if (!instance.startsWith(`${INSTANCE_PREFIX}_`)) return json(400, { ok: false, error: 'bad_instance' })
+    const allowed: Record<string, [string, string]> = {
+      state: ['GET', `/instance/connectionState/${instance}`],
+      fetch: ['GET', `/instance/fetchInstances?instanceName=${instance}`],
+      restart: ['POST', `/instance/restart/${instance}`],
+      logout: ['DELETE', `/instance/logout/${instance}`],
+      delete: ['DELETE', `/instance/delete/${instance}`],
+    }
+    const steps = Array.isArray((body as Record<string, unknown>).steps) ? (body as { steps: string[] }).steps : ['state']
+    const results = []
+    for (const step of steps) {
+      if (step === 'wait') { await sleep(5000); results.push({ step }); continue }
+      const def = allowed[step]
+      if (!def) continue
+      const res = await evo(def[0], def[1])
+      results.push({ step, status: res.status, data: res.data })
+    }
+    return json(200, { ok: true, results })
+  }
 
   if (body.action === 'send_reminders') {
     if (!CRON_SECRET || token !== CRON_SECRET) return json(401, { ok: false, error: 'Unauthorized' })

@@ -7,6 +7,12 @@ alter table public.config
 alter table public.config
   add column if not exists whatsapp_auto_hours_before integer not null default 24;
 
+alter table public.config
+  add column if not exists whatsapp_instance text;
+
+comment on column public.config.whatsapp_instance is
+  'Instância atual na Evolution API. Muda a cada conexão (instâncias desconectadas não são reaproveitadas).';
+
 comment on column public.config.whatsapp_auto_enabled is
   'Se true, a função whatsapp-reminders envia o lembrete para a cliente pelo WhatsApp conectado.';
 comment on column public.config.whatsapp_auto_hours_before is
