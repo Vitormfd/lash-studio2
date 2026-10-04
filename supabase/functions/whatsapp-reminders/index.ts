@@ -35,8 +35,12 @@ const corsHeaders = {
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const CRON_SECRET = Deno.env.get('CRON_SECRET') || ''
-const EVOLUTION_API_URL = (Deno.env.get('EVOLUTION_API_URL') || '').trim().replace(/\/$/, '')
-const EVOLUTION_API_KEY = (Deno.env.get('EVOLUTION_API_KEY') || '').trim()
+// Pasting into a terminal can wrap the value in bracketed-paste markers or invisible chars,
+// which make fetch() reject the header. Keep only visible ASCII.
+const cleanSecret = (value: string) =>
+  value.replace(/\x1b?\[20[01]~/g, '').replace(/[^\x21-\x7E]/g, '')
+const EVOLUTION_API_URL = cleanSecret(Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
+const EVOLUTION_API_KEY = cleanSecret(Deno.env.get('EVOLUTION_API_KEY') || '')
 const INSTANCE_PREFIX = (Deno.env.get('EVOLUTION_INSTANCE_PREFIX') || 'easystudio').trim()
 
 // Brazil is UTC-3 (no DST for most states including SP/RJ).
