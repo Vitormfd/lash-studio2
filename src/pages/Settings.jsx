@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Btn, Field, Inp, Sel, Textarea } from '../components/UI'
 import Icon from '../components/Icon'
+import WhatsappAutoReminder from '../components/WhatsappAutoReminder'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
 import { hashPin, verifyMemberPin, pickMemberColor, getAccountOwner, useOperator } from '../lib/operator'
@@ -568,7 +569,7 @@ const Settings = ({
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Mensagem do WhatsApp</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
-          Texto que abre no WhatsApp ao tocar no botão da agenda. Use as tags para preencher os dados do agendamento.
+          Texto usado no botão de WhatsApp da agenda e no lembrete automático. Use as tags para preencher os dados do agendamento.
         </p>
         <Field label="Mensagem">
           <Textarea
@@ -669,6 +670,8 @@ const Settings = ({
           </Btn>
         </div>
       </div>
+
+      <WhatsappAutoReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} />
 
       {/* Theme settings */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>

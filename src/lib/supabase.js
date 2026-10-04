@@ -95,6 +95,29 @@ const notifyOwnerStaffBookingPush = async (appointmentId, actorOperatorId) => {
   }).catch(() => {})
 }
 
+/** Chama a função whatsapp-reminders (Evolution API) como a conta logada. */
+export const callWhatsappReminders = async (action, payload = {}) => {
+  const base = getFunctionsBaseUrl()
+  const token = await getAccessToken()
+  if (!base || !token) return { ok: false, error: 'Sessão expirada. Entre novamente.' }
+  try {
+    const res = await fetch(`${base}/whatsapp-reminders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ ...payload, action }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, error: data?.error || `Erro ${res.status}` }
+    return data
+  } catch {
+    return { ok: false, error: 'Sem conexão com o servidor.' }
+  }
+}
+
 // ─── USER-SCOPED LOCAL STORAGE ───────────────────────────────────────────────
 const userKey = (userId, key) => `u_${userId}_${key}`
 const uget = (userId, key) => local.get(userKey(userId, key))
@@ -701,6 +724,8 @@ export const DB = {
         city: data.city || '',
         workHours: normalizeWorkHours(data.work_hours),
         whatsappReminderTemplate: normalizeWhatsappReminderTemplate(data.whatsapp_reminder_template),
+        whatsappAutoEnabled: !!data.whatsapp_auto_enabled,
+        whatsappAutoHoursBefore: Number(data.whatsapp_auto_hours_before) > 0 ? Number(data.whatsapp_auto_hours_before) : 24,
         themeId: data.theme_id || '',
       }
     }
@@ -712,6 +737,8 @@ export const DB = {
       city: stored?.city || '',
       workHours: normalizeWorkHours(stored?.workHours),
       whatsappReminderTemplate: normalizeWhatsappReminderTemplate(stored?.whatsappReminderTemplate),
+      whatsappAutoEnabled: !!stored?.whatsappAutoEnabled,
+      whatsappAutoHoursBefore: Number(stored?.whatsappAutoHoursBefore) > 0 ? Number(stored.whatsappAutoHoursBefore) : 24,
       themeId: stored?.themeId || '',
     }
   },
@@ -730,9 +757,16 @@ export const DB = {
         city: nextConfig.city || null,
         work_hours: workHours,
         whatsapp_reminder_template: whatsappReminderTemplate,
+        whatsapp_auto_enabled: !!nextConfig.whatsappAutoEnabled,
+        whatsapp_auto_hours_before: Number(nextConfig.whatsappAutoHoursBefore) > 0 ? Number(nextConfig.whatsappAutoHoursBefore) : 24,
         theme_id: nextConfig.themeId || null,
       }
-      const { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      let { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error) {
+        delete row.whatsapp_auto_enabled
+        delete row.whatsapp_auto_hours_before
+        ;({ error } = await sb.from('config').upsert(row, { onConflict: 'user_id' }))
+      }
       if (error) {
         delete row.whatsapp_reminder_template
         await sb.from('config').upsert(row, { onConflict: 'user_id' })
