@@ -110,24 +110,42 @@ const pickQr = (data: any) => ({
   pairingCode: String(data?.qrcode?.pairingCode ?? data?.pairingCode ?? '') || null,
 })
 
-const connectInstance = async (instance: string) => {
+const createInstance = async (instance: string, number?: string) => {
+  const created = await evo('POST', '/instance/create', {
+    instanceName: instance,
+    qrcode: true,
+    integration: 'WHATSAPP-BAILEYS',
+    ...(number ? { number } : {}),
+  })
+  if (!created.ok) throw new Error(`Evolution create ${created.status}: ${errorMessageOf(created.data)}`)
+  return pickQr(created.data)
+}
+
+const requestConnect = async (instance: string, number?: string) => {
+  const query = number ? `?number=${encodeURIComponent(number)}` : ''
+  const res = await evo('GET', `/instance/connect/${instance}${query}`)
+  if (!res.ok) throw new Error(`Evolution connect ${res.status}: ${errorMessageOf(res.data)}`)
+  return pickQr(res.data)
+}
+
+/** Sem número: devolve QR Code. Com número: devolve também o código de pareamento (conectar pelo mesmo celular). */
+const connectInstance = async (instance: string, number?: string) => {
   const state = await getConnectionState(instance)
   if (state === 'open') return { state, qr: null, pairingCode: null }
 
   if (state === 'not_created') {
-    const created = await evo('POST', '/instance/create', {
-      instanceName: instance,
-      qrcode: true,
-      integration: 'WHATSAPP-BAILEYS',
-    })
-    if (!created.ok) throw new Error(`Evolution create ${created.status}: ${errorMessageOf(created.data)}`)
-    const qr = pickQr(created.data)
-    if (qr.qr) return { state: 'connecting', ...qr }
+    const created = await createInstance(instance, number)
+    if (number ? created.pairingCode : created.qr) return { state: 'connecting', ...created }
   }
 
-  const res = await evo('GET', `/instance/connect/${instance}`)
-  if (!res.ok) throw new Error(`Evolution connect ${res.status}: ${errorMessageOf(res.data)}`)
-  return { state: 'connecting', ...pickQr(res.data) }
+  let result = await requestConnect(instance, number)
+  if (number && !result.pairingCode) {
+    // Some Evolution builds only issue a pairing code for an instance created with the number.
+    await disconnectInstance(instance)
+    const created = await createInstance(instance, number)
+    result = created.pairingCode ? created : await requestConnect(instance, number)
+  }
+  return { state: 'connecting', ...result }
 }
 
 const disconnectInstance = async (instance: string) => {
@@ -323,7 +341,8 @@ const handleUserAction = async (sb: Sb, userId: string, body: RequestBody) => {
         return json(200, { ok: true, state, number })
       }
       case 'connect': {
-        const result = await connectInstance(instance)
+        const pairingNumber = body.number ? toWhatsappNumber(body.number) : ''
+        const result = await connectInstance(instance, pairingNumber || undefined)
         return json(200, { ok: true, ...result })
       }
       case 'disconnect': {

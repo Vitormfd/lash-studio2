@@ -22,6 +22,14 @@ const formatPhone = (digits) => {
   return d
 }
 
+const isTouchDevice = () =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches
+
+const formatPairingCode = (code) => {
+  const c = String(code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c
+}
+
 const card = { background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }
 
 const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
@@ -32,6 +40,9 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
   const [busy, setBusy] = useState(false)
   const [testNumber, setTestNumber] = useState('')
   const [testBusy, setTestBusy] = useState(false)
+  // No celular não dá pra ler o QR da própria tela: usa código de pareamento.
+  const [useCode, setUseCode] = useState(isTouchDevice)
+  const [pairPhone, setPairPhone] = useState('')
   const pollRef = useRef(null)
 
   const enabled = !!config.whatsappAutoEnabled
@@ -67,8 +78,13 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
 
   const connect = async () => {
     if (isDemo) return
+    const phoneDigits = pairPhone.replace(/\D/g, '')
+    if (useCode && phoneDigits.length < 10) {
+      addToast('Digite o número do WhatsApp do estúdio com DDD.', 'warning')
+      return
+    }
     setBusy(true)
-    const res = await callWhatsappReminders('connect')
+    const res = await callWhatsappReminders('connect', useCode ? { number: phoneDigits } : {})
     setBusy(false)
     if (!res.ok) {
       addToast(res.error || 'Não foi possível gerar o QR Code.', 'error')
@@ -78,9 +94,12 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
       await refreshStatus()
       return
     }
+    if (useCode && !res.pairingCode) {
+      addToast('O servidor não gerou o código. Tente pelo QR Code.', 'error')
+    }
     setState('connecting')
     setQr(res.qr || null)
-    setPairingCode(res.pairingCode || null)
+    setPairingCode(useCode ? res.pairingCode || null : null)
     stopPolling()
     let ticks = 0
     pollRef.current = setInterval(async () => {
@@ -150,7 +169,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
   const statusLabel = {
     loading: { text: 'Verificando...', color: 'var(--text-light)' },
     open: { text: number ? `Conectado: ${formatPhone(number)}` : 'Conectado', color: '#3F8F5A' },
-    connecting: { text: 'Aguardando leitura do QR Code', color: '#C98A2E' },
+    connecting: { text: useCode ? 'Aguardando o código no WhatsApp' : 'Aguardando leitura do QR Code', color: '#C98A2E' },
     close: { text: 'Desconectado', color: '#C5515F' },
     not_created: { text: 'Não conectado', color: 'var(--text-light)' },
     error: { text: 'Servidor do WhatsApp indisponível', color: '#C5515F' },
@@ -168,24 +187,64 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
         <span style={{ fontSize: 13, color: statusLabel.color, fontWeight: 500 }}>{statusLabel.text}</span>
       </div>
 
-      {state === 'connecting' && (qr || pairingCode) && (
+      {state === 'connecting' && useCode && pairingCode && (
         <div style={{ background: 'var(--off-white)', border: '1px dashed var(--rose-light)', borderRadius: 12, padding: 14, marginBottom: 14, textAlign: 'center' }}>
-          {qr && <img src={qr} alt="QR Code do WhatsApp" style={{ width: 220, height: 220, background: '#fff', borderRadius: 8 }} />}
+          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
+            Seu código
+          </p>
+          <p style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--text)', margin: '6px 0 10px', fontFamily: 'monospace' }}>
+            {formatPairingCode(pairingCode)}
+          </p>
+          <Btn
+            variant="outline"
+            sm
+            onClick={() => {
+              navigator.clipboard?.writeText(String(pairingCode).replace(/[^A-Za-z0-9]/g, ''))
+                .then(() => addToast('Código copiado!', 'success'))
+                .catch(() => {})
+            }}
+          >
+            Copiar código
+          </Btn>
+          <ol style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.6, textAlign: 'left', margin: '12px 0 0', paddingLeft: 18 }}>
+            <li>Abra o WhatsApp → <b>Aparelhos conectados</b> → <b>Conectar um aparelho</b>.</li>
+            <li>Toque em <b>Conectar com número de telefone</b>.</li>
+            <li>Digite o código acima e volte para cá. Ele vale por cerca de 1 minuto.</li>
+          </ol>
+          <p style={{ fontSize: 11, color: 'var(--text-light)', margin: '8px 0 0', lineHeight: 1.5 }}>
+            Se o WhatsApp mostrar uma notificação pedindo o código, é só tocar nela e digitar.
+          </p>
+        </div>
+      )}
+
+      {state === 'connecting' && !useCode && qr && (
+        <div style={{ background: 'var(--off-white)', border: '1px dashed var(--rose-light)', borderRadius: 12, padding: 14, marginBottom: 14, textAlign: 'center' }}>
+          <img src={qr} alt="QR Code do WhatsApp" style={{ width: 220, height: 220, background: '#fff', borderRadius: 8 }} />
           <p style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.55, marginTop: 10, marginBottom: 0 }}>
             No celular do estúdio: WhatsApp → <b>Aparelhos conectados</b> → <b>Conectar um aparelho</b> e aponte para o código.
           </p>
-          {pairingCode && (
-            <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 6, marginBottom: 0 }}>
-              Ou use o código: <b style={{ letterSpacing: '0.12em' }}>{pairingCode}</b>
-            </p>
-          )}
         </div>
+      )}
+
+      {!connected && useCode && (
+        <Field label="Número do WhatsApp do estúdio">
+          <Inp
+            value={pairPhone}
+            onChange={(e) => setPairPhone(e.target.value)}
+            placeholder="(11) 99999-9999"
+            inputMode="tel"
+            disabled={isDemo}
+          />
+        </Field>
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: connected ? 18 : 0 }}>
         {!connected && (
           <Btn onClick={connect} loading={busy} disabled={isDemo || state === 'loading'}>
-            <Icon name="whatsapp" size={14} color="#fff" /> {state === 'connecting' ? 'Gerar novo QR Code' : 'Conectar WhatsApp'}
+            <Icon name="whatsapp" size={14} color="#fff" />{' '}
+            {useCode
+              ? (state === 'connecting' ? 'Gerar novo código' : 'Gerar código de conexão')
+              : (state === 'connecting' ? 'Gerar novo QR Code' : 'Conectar WhatsApp')}
           </Btn>
         )}
         {(connected || state === 'connecting' || state === 'close') && (
@@ -194,6 +253,23 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
           </Btn>
         )}
       </div>
+
+      {!connected && (
+        <button
+          type="button"
+          onClick={() => {
+            stopPolling()
+            setQr(null)
+            setPairingCode(null)
+            if (state === 'connecting') setState('close')
+            setUseCode((v) => !v)
+          }}
+          disabled={isDemo}
+          style={{ display: 'block', marginTop: 12, background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--rose-deep)', textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          {useCode ? 'Prefiro ler o QR Code de outro aparelho' : 'Está neste celular? Conectar com código'}
+        </button>
+      )}
 
       {connected && (
         <>
