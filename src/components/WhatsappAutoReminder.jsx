@@ -176,7 +176,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
   }[state] || { text: state, color: 'var(--text-light)' }
 
   return (
-    <div style={card}>
+    <div id="whatsapp-auto-reminder" style={{ ...card, scrollMarginTop: 80 }}>
       <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Lembrete automático no WhatsApp</h3>
       <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
         Conecte o WhatsApp do estúdio e o app manda a mensagem acima sozinho para cada cliente antes do atendimento.

@@ -76,7 +76,7 @@ const BARBER_STARTER_SERVICES = [
   { name: 'Pigmentação', price: 40, color: '#3A3A3A', durationMinutes: 30 },
 ]
 
-const WHATS_NEW_ID = 'fidelidade-importar-contatos'
+const WHATS_NEW_ID = 'whatsapp-lembrete-automatico'
 
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
@@ -1308,58 +1308,79 @@ const AppMain = ({ session, onLogout }) => {
         </div>
       </Modal>
 
-      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidades no app">
-        <p style={{ fontSize: 13, color: 'var(--text-light)', lineHeight: 1.6, marginBottom: 18 }}>
-          Preparamos duas novidades para facilitar seu dia a dia:
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14 }}>
-            <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="gift" size={18} />
-            </div>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Sistema de Fidelidade</p>
-              <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
-                Crie um cartão fidelidade para suas clientes e recompense quem mais retorna. Configure a meta, o prêmio e compartilhe o link ou QR code.
-              </p>
-            </div>
+      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidade: lembrete automático">
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14, marginBottom: 18 }}>
+          <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: '#25D366', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="whatsapp" size={18} color="#fff" />
           </div>
-
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14 }}>
-            <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="upload" size={18} />
-            </div>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Importar todos os contatos de uma vez</p>
-              <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
-                Traga sua agenda de contatos do celular direto para a lista de clientes, sem precisar cadastrar um por um.
-              </p>
-            </div>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Lembrete pelo WhatsApp, sozinho</p>
+            <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
+              Conecte o WhatsApp do estúdio e o app avisa {isBarber ? 'seus clientes' : 'suas clientes'} antes de cada atendimento, sem você mandar mensagem por mensagem. Menos faltas e esquecimentos.
+            </p>
           </div>
         </div>
+
+        <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+          Como conectar
+        </p>
+        <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {[
+            {
+              title: 'Abra Configurações',
+              body: <>Role até o cartão <b>Lembrete automático no WhatsApp</b>.</>,
+            },
+            {
+              title: 'Conecte o WhatsApp do estúdio',
+              body: (
+                <>
+                  <b>No computador:</b> toque em Conectar WhatsApp e leia o QR Code com o celular (WhatsApp → Aparelhos conectados → Conectar um aparelho).
+                  <br />
+                  <b>No próprio celular:</b> digite o número do estúdio, toque em Gerar código e, no WhatsApp, escolha <b>Conectar com número de telefone</b> e digite o código.
+                </>
+              ),
+            },
+            {
+              title: 'Ligue os lembretes',
+              body: <>Ative <b>Enviar lembretes automaticamente</b> e escolha quando enviar: de 1 hora até 2 dias antes.</>,
+            },
+            {
+              title: 'Teste e personalize',
+              body: <>Toque em <b>Testar</b> para receber um exemplo. O texto é o do cartão <b>Mensagem do WhatsApp</b>, que você pode editar quando quiser.</>,
+            },
+          ].map((item, i) => (
+            <li key={item.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <span style={{ width: 24, height: 24, minWidth: 24, borderRadius: 999, background: 'var(--rose-deep)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {i + 1}
+              </span>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{item.title}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.55 }}>{item.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             type="button"
-            onClick={() => { setPage('loyalty'); dismissWhatsNew() }}
+            onClick={() => {
+              setPage('settings')
+              dismissWhatsNew()
+              setTimeout(() => {
+                document.getElementById('whatsapp-auto-reminder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }, 350)
+            }}
             style={{ background: 'var(--rose-deep)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            Ver Fidelidade
-          </button>
-          <button
-            type="button"
-            onClick={() => { setPage('clients'); dismissWhatsNew() }}
-            style={{ background: 'var(--surface)', color: 'var(--rose-dark)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            Importar contatos
+            Conectar agora
           </button>
           <button
             type="button"
             onClick={dismissWhatsNew}
             style={{ background: 'transparent', color: 'var(--text-light)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            Entendi
+            Depois
           </button>
         </div>
       </Modal>
