@@ -161,11 +161,42 @@ const toWhatsappNumber = (value: string) => {
   return digits
 }
 
-const sendText = async (instance: string, number: string, text: string) => {
+const postText = async (instance: string, number: string, text: string) => {
   // Evolution v2 format; falls back to the v1 body shape if rejected.
   let res = await evo('POST', `/message/sendText/${instance}`, { number, text })
-  if (res.status === 400 && /text|textMessage/i.test(errorMessageOf(res.data))) {
+  if (res.status === 400 && /textMessage|text.*(required|should)/i.test(errorMessageOf(res.data))) {
     res = await evo('POST', `/message/sendText/${instance}`, { number, textMessage: { text } })
+  }
+  return res
+}
+
+const isConnectionClosed = (message: string) => /connection closed|not connected|socket/i.test(message)
+
+/**
+ * Right after pairing (and sometimes after idle periods) Baileys drops the socket while
+ * Evolution still reports `open`. Restart the instance and wait for it to come back.
+ */
+const restartInstance = async (instance: string) => {
+  let res = await evo('POST', `/instance/restart/${instance}`)
+  if (res.status === 404 || res.status === 405) res = await evo('PUT', `/instance/restart/${instance}`)
+  for (let i = 0; i < 10; i += 1) {
+    await sleep(2000)
+    try {
+      if ((await getConnectionState(instance)) === 'open') return true
+    } catch {
+      // keep waiting
+    }
+  }
+  return false
+}
+
+const sendText = async (instance: string, number: string, text: string) => {
+  let res = await postText(instance, number, text)
+  if (!res.ok && isConnectionClosed(errorMessageOf(res.data))) {
+    console.warn('[whatsapp] connection closed, restarting instance', { instance })
+    await restartInstance(instance)
+    await sleep(1500)
+    res = await postText(instance, number, text)
   }
   if (!res.ok) throw new Error(`Evolution sendText ${res.status}: ${errorMessageOf(res.data)}`)
   return res.data
@@ -319,6 +350,11 @@ const sendDueReminders = async (sb: Sb) => {
             whatsapp_reminder_error: message.slice(0, 500),
           })
           .eq('id', appt.id)
+        // WhatsApp dropped and didn't come back: try this account again next run.
+        if (isConnectionClosed(message)) {
+          skippedAccounts[cfg.user_id] = 'whatsapp_connection_closed'
+          break
+        }
       }
 
       await sleep(DELAY_BETWEEN_SENDS_MS)
