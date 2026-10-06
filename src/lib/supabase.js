@@ -134,6 +134,8 @@ const normalizeClient = (c) => ({
   fixedFrequency: c.fixed_frequency || c.fixedFrequency || null,
   fixedWeekday: (c.fixed_weekday ?? c.fixedWeekday) != null ? Number(c.fixed_weekday ?? c.fixedWeekday) : null,
   fixedTime: (c.fixed_time || c.fixedTime || '').toString().slice(0, 5) || null,
+  maintenanceReminderFor: c.maintenance_reminder_for || c.maintenanceReminderFor || null,
+  maintenanceReminderSentAt: c.maintenance_reminder_sent_at || c.maintenanceReminderSentAt || null,
 })
 
 const toAppPhone = (value) => {
@@ -727,6 +729,8 @@ export const DB = {
         whatsappAutoTemplate: String(data.whatsapp_auto_template || '').trim(),
         whatsappAutoEnabled: !!data.whatsapp_auto_enabled,
         whatsappAutoHoursBefore: Number(data.whatsapp_auto_hours_before) > 0 ? Number(data.whatsapp_auto_hours_before) : 24,
+        whatsappMaintenanceEnabled: !!data.whatsapp_maintenance_enabled,
+        whatsappMaintenanceTemplate: String(data.whatsapp_maintenance_template || '').trim(),
         themeId: data.theme_id || '',
       }
     }
@@ -741,6 +745,8 @@ export const DB = {
       whatsappAutoTemplate: String(stored?.whatsappAutoTemplate || '').trim(),
       whatsappAutoEnabled: !!stored?.whatsappAutoEnabled,
       whatsappAutoHoursBefore: Number(stored?.whatsappAutoHoursBefore) > 0 ? Number(stored.whatsappAutoHoursBefore) : 24,
+      whatsappMaintenanceEnabled: !!stored?.whatsappMaintenanceEnabled,
+      whatsappMaintenanceTemplate: String(stored?.whatsappMaintenanceTemplate || '').trim(),
       themeId: stored?.themeId || '',
     }
   },
@@ -762,9 +768,17 @@ export const DB = {
         whatsapp_auto_template: String(nextConfig.whatsappAutoTemplate || '').trim() || null,
         whatsapp_auto_enabled: !!nextConfig.whatsappAutoEnabled,
         whatsapp_auto_hours_before: Number(nextConfig.whatsappAutoHoursBefore) > 0 ? Number(nextConfig.whatsappAutoHoursBefore) : 24,
+        whatsapp_maintenance_enabled: !!nextConfig.whatsappMaintenanceEnabled,
+        whatsapp_maintenance_template: String(nextConfig.whatsappMaintenanceTemplate || '').trim() || null,
         theme_id: nextConfig.themeId || null,
       }
       let { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error) {
+        // Colunas de manutenção ainda não criadas (whatsapp_maintenance_reminders.sql)
+        delete row.whatsapp_maintenance_enabled
+        delete row.whatsapp_maintenance_template
+        ;({ error } = await sb.from('config').upsert(row, { onConflict: 'user_id' }))
+      }
       if (error) {
         delete row.whatsapp_auto_template
         delete row.whatsapp_auto_enabled

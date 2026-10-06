@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { initSupabase, DB, uid, getClient } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
@@ -48,6 +48,10 @@ import {
   notificationsForOperator,
 } from './lib/operator'
 import { getExistingPushSubscription } from './lib/pushClient'
+import { LASH_SIMULATOR_PAGE, LASH_SIMULATOR_TITLE, canUseLashSimulator } from './features/lashSimulator/access'
+
+// Carregado sob demanda: o motor de visão computacional só baixa quando a página abre.
+const LashSimulatorPage = lazy(() => import('./features/lashSimulator/LashSimulatorPage'))
 
 const SUPABASE_URL = 'https://mbxfswxjrdikdyzpukmw.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_X8Pu3A3o_MfOKR0octLAyw_p_SzMKO3'
@@ -63,9 +67,10 @@ const NAV_TITLES = {
   reports: 'Relatórios',
   activity: 'Histórico',
   settings: 'Configurações',
+  [LASH_SIMULATOR_PAGE]: LASH_SIMULATOR_TITLE,
 }
 
-const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'loyalty', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings']
+const DEMO_ALLOWED_PAGES = ['dashboard', 'agenda', 'clients', 'loyalty', 'services', 'inventory', 'finance', 'reports', 'activity', 'settings', LASH_SIMULATOR_PAGE]
 
 const BARBER_STARTER_SERVICES = [
   { name: 'Corte', price: 50, color: '#3E6B8A', durationMinutes: 30 },
@@ -165,7 +170,7 @@ const AppMain = ({ session, onLogout }) => {
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
   const [cashExpenses, setCashExpenses] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', whatsappAutoTemplate: '', whatsappAutoEnabled: false, whatsappAutoHoursBefore: 24, themeId: '' })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', whatsappAutoTemplate: '', whatsappAutoEnabled: false, whatsappAutoHoursBefore: 24, whatsappMaintenanceEnabled: false, whatsappMaintenanceTemplate: '', themeId: '' })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
@@ -174,6 +179,7 @@ const AppMain = ({ session, onLogout }) => {
   const [pwaGateChecked, setPwaGateChecked] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
+  const [accessProfileLoaded, setAccessProfileLoaded] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallHint, setPaywallHint] = useState('')
   const [teamMembers, setTeamMembers] = useState([])
@@ -185,6 +191,8 @@ const AppMain = ({ session, onLogout }) => {
 
   const professionalType = (session.isDemo ? session.professionalType : accessProfile.professionalType) || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
   const isBarber = professionalType === 'barbeiro'
+  // Só libera depois de ler o perfil real (o perfil padrão em memória é 'lash').
+  const lashSimulatorEnabled = canUseLashSimulator(professionalType) && (isDemo || accessProfileLoaded)
 
   const { toasts, addToast, removeToast } = useToast()
   const [notifGate, setNotifGate] = useState(0)
@@ -268,6 +276,12 @@ const AppMain = ({ session, onLogout }) => {
     if (DEMO_ALLOWED_PAGES.includes(page)) return
     setPage('dashboard')
   }, [isDemo, page])
+
+  useEffect(() => {
+    if (page !== LASH_SIMULATOR_PAGE || lashSimulatorEnabled) return
+    if (!isDemo && !accessProfileLoaded) return
+    setPage('dashboard')
+  }, [page, lashSimulatorEnabled, isDemo, accessProfileLoaded])
 
   useEffect(() => {
     const bump = () => setNotifGate((g) => g + 1)
@@ -551,10 +565,12 @@ const AppMain = ({ session, onLogout }) => {
       .then((profile) => {
         if (!alive) return
         setAccessProfile(profile)
+        setAccessProfileLoaded(true)
       })
       .catch(() => {
         if (!alive) return
         setAccessProfile(defaultAccessProfile)
+        setAccessProfileLoaded(true)
       })
     return () => { alive = false }
   }, [userId, isDemo])
@@ -1097,6 +1113,7 @@ const AppMain = ({ session, onLogout }) => {
         onLogout={onLogout}
         allowedNavIds={isDemo ? DEMO_ALLOWED_PAGES : null}
         isBarber={isBarber}
+        showLashSimulator={lashSimulatorEnabled}
       />
 
 
@@ -1181,6 +1198,14 @@ const AppMain = ({ session, onLogout }) => {
               appointments={appointments}
               services={services}
               isBarber={isBarber}
+              professionalType={professionalType}
+              config={config}
+              onOpenSettings={() => {
+                setPage('settings')
+                setTimeout(() => {
+                  document.getElementById('whatsapp-maintenance-reminder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 350)
+              }}
               addToast={addToast}
               onScheduleAfterCreate={(clientId) => {
                 if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
@@ -1229,6 +1254,16 @@ const AppMain = ({ session, onLogout }) => {
           )}
           {page === 'reports' && <Reports appointments={appointments} services={services} clients={clients} isBarber={isBarber} />}
           {page === 'activity' && <ActivityLog userId={userId} />}
+          {page === LASH_SIMULATOR_PAGE && lashSimulatorEnabled && (
+            <Suspense fallback={<Spinner text="Abrindo o simulador..." />}>
+              <LashSimulatorPage
+                isDemo={isDemo}
+                canUserEdit={canUserEdit}
+                addToast={addToast}
+                onUpgrade={openPaywall}
+              />
+            </Suspense>
+          )}
           {page === 'settings' && (
             <Settings
               config={config}

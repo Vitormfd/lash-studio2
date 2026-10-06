@@ -17,6 +17,31 @@ export const WHATSAPP_REMINDER_PLACEHOLDERS = [
   { token: '{servico}', label: 'serviço' },
 ]
 
+export const DEFAULT_MAINTENANCE_TEMPLATE =
+  'Oi, {nome}! Já está na hora da sua manutenção ✨ Quer que eu reserve um horário pra você esta semana?'
+
+export const MAINTENANCE_PLACEHOLDERS = [
+  { token: '{nome}', label: 'primeiro nome' },
+  { token: '{nomeCompleto}', label: 'nome completo' },
+  { token: '{servico}', label: 'último serviço' },
+  { token: '{dias}', label: 'dias desde a última visita' },
+]
+
+/** Mesma regra do servidor (whatsapp-reminders) — mantenha as duas iguais. */
+export function buildMaintenanceText(template, vars = {}) {
+  const fullName = String(vars.fullName || '').trim()
+  const firstName = fullName.split(/\s+/)[0] || ''
+  const values = {
+    nomecompleto: fullName,
+    nome: firstName,
+    servico: String(vars.service || '').trim(),
+    serviço: String(vars.service || '').trim(),
+    dias: vars.days != null ? String(vars.days) : '',
+  }
+  const text = String(template || '').trim() || DEFAULT_MAINTENANCE_TEMPLATE
+  return text.replace(/\{(nomeCompleto|nome|servi[cç]o|dias)\}/gi, (_, key) => values[String(key).toLowerCase()] ?? '')
+}
+
 export function normalizeWhatsappReminderTemplate(value) {
   const text = String(value || '').trim()
   return text || DEFAULT_WHATSAPP_REMINDER_TEMPLATE

@@ -252,19 +252,21 @@ const brtYmd = (ms: number) => new Date(ms - BRT_OFFSET_MS).toISOString().slice(
 
 // ─── Cron: envia lembretes ───────────────────────────────────────────────────
 
-const sendDueReminders = async (sb: Sb) => {
+type RunResult = { accounts: number; sent: number; failed: number; skippedAccounts: Record<string, string>; error?: string }
+
+const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
   const { data: configs, error: cfgError } = await sb
     .from('config')
     .select('user_id,whatsapp_instance,whatsapp_auto_hours_before,whatsapp_reminder_template,whatsapp_auto_template')
     .eq('whatsapp_auto_enabled', true)
 
-  if (cfgError) return json(500, { ok: false, error: `config query failed: ${cfgError.message}` })
-  if (!configs?.length) return json(200, { ok: true, sent: 0, reason: 'no_accounts_enabled' })
-
   const nowMs = Date.now()
   let sent = 0
   let failed = 0
   const skippedAccounts: Record<string, string> = {}
+
+  if (cfgError) return { accounts: 0, sent, failed, skippedAccounts, error: `config query failed: ${cfgError.message}` }
+  if (!configs?.length) return { accounts: 0, sent, failed, skippedAccounts }
 
   for (const cfg of configs as ConfigRow[]) {
     if (sent + failed >= MAX_SENDS_PER_RUN) break
@@ -380,7 +382,236 @@ const sendDueReminders = async (sb: Sb) => {
     }
   }
 
-  return json(200, { ok: true, accounts: configs.length, sent, failed, skippedAccounts })
+  return { accounts: configs.length, sent, failed, skippedAccounts }
+}
+
+// ─── Cron: lembrete de manutenção ────────────────────────────────────────────
+// Mesma regra de src/lib/clientInsights.js (getMaintenanceAlerts) — mantenha as duas iguais.
+
+type MaintenanceConfigRow = {
+  user_id: string
+  whatsapp_instance: string | null
+  whatsapp_maintenance_template: string | null
+}
+
+const DEFAULT_MAINTENANCE_DAYS: Record<string, number> = {
+  lash: 21,
+  nail: 21,
+  sobrancelha: 30,
+  estetica: 30,
+  barbeiro: 21,
+}
+const MAINTENANCE_MIN_INTERVAL = 7
+const MAINTENANCE_MAX_INTERVAL = 120
+// Só avisa automaticamente até N dias depois do vencimento; atrasadas há mais tempo ficam para o envio manual.
+const MAINTENANCE_SEND_WINDOW_DAYS = 7
+// Envia só em horário comercial (BRT).
+const MAINTENANCE_SEND_HOURS = { from: 9, to: 19 }
+const MAINTENANCE_HISTORY_DAYS = 400
+
+const DEFAULT_MAINTENANCE_TEMPLATE =
+  'Oi, {nome}! Já está na hora da sua manutenção ✨ Quer que eu reserve um horário pra você esta semana?'
+
+const buildMaintenanceMessage = (template: string | null, vars: { fullName: string; service: string; days: number }) => {
+  const fullName = vars.fullName.trim()
+  const firstName = fullName.split(/\s+/)[0] || ''
+  const values: Record<string, string> = {
+    nomecompleto: fullName,
+    nome: firstName,
+    servico: vars.service,
+    serviço: vars.service,
+    dias: String(vars.days),
+  }
+  const text = String(template || '').trim() || DEFAULT_MAINTENANCE_TEMPLATE
+  return text.replace(/\{(nomeCompleto|nome|servi[cç]o|dias)\}/gi, (_, key) => values[String(key).toLowerCase()] ?? '')
+}
+
+const daysBetween = (fromYmd: string, toYmd: string) =>
+  Math.round((Date.parse(`${toYmd}T12:00:00Z`) - Date.parse(`${fromYmd}T12:00:00Z`)) / 86400000)
+
+const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResult> => {
+  let sent = 0
+  let failed = 0
+  const skippedAccounts: Record<string, string> = {}
+
+  const nowMs = Date.now()
+  const brtHour = new Date(nowMs - BRT_OFFSET_MS).getUTCHours()
+  if (brtHour < MAINTENANCE_SEND_HOURS.from || brtHour >= MAINTENANCE_SEND_HOURS.to) {
+    return { accounts: 0, sent, failed, skippedAccounts }
+  }
+
+  const { data: configs, error: cfgError } = await sb
+    .from('config')
+    .select('user_id,whatsapp_instance,whatsapp_maintenance_template')
+    .eq('whatsapp_maintenance_enabled', true)
+
+  // Coluna ainda não criada (whatsapp_maintenance_reminders.sql): só não envia.
+  if (cfgError) return { accounts: 0, sent, failed, skippedAccounts, error: `maintenance config query failed: ${cfgError.message}` }
+  if (!configs?.length) return { accounts: 0, sent, failed, skippedAccounts }
+
+  const today = brtYmd(nowMs)
+  const historyStart = brtYmd(nowMs - MAINTENANCE_HISTORY_DAYS * 86400000)
+
+  for (const cfg of configs as MaintenanceConfigRow[]) {
+    if (sent + failed >= budget) break
+
+    const [{ data: profile }, { data: appts, error: apptError }] = await Promise.all([
+      sb.from('profiles').select('professional_type').eq('id', cfg.user_id).maybeSingle(),
+      sb
+        .from('appointments')
+        .select('client_id,service_id,date,time,status,blocked')
+        .eq('user_id', cfg.user_id)
+        .gte('date', historyStart)
+        .not('client_id', 'is', null)
+        .in('status', ['pending', 'confirmed', 'done']),
+    ])
+    if (apptError) {
+      console.error('[whatsapp] maintenance appointments query failed', { userId: cfg.user_id, error: apptError.message })
+      continue
+    }
+
+    const fallback = DEFAULT_MAINTENANCE_DAYS[String((profile as any)?.professional_type || '')] || 21
+    const doneByClient = new Map<string, AppointmentRow[]>()
+    const hasFuture = new Set<string>()
+    for (const a of (appts || []) as AppointmentRow[]) {
+      if (!a.client_id || a.blocked) continue
+      if (a.status !== 'done' && a.date >= today) hasFuture.add(a.client_id)
+      if (a.status === 'done') {
+        if (!doneByClient.has(a.client_id)) doneByClient.set(a.client_id, [])
+        doneByClient.get(a.client_id)!.push(a)
+      }
+    }
+
+    const due: { clientId: string; last: AppointmentRow; daysSinceLast: number }[] = []
+    for (const [clientId, done] of doneByClient) {
+      if (hasFuture.has(clientId)) continue
+      done.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+
+      let interval = fallback
+      if (done.length >= 2) {
+        const gaps: number[] = []
+        for (let i = 1; i < done.length; i += 1) {
+          const gap = daysBetween(done[i - 1].date, done[i].date)
+          if (gap > 0) gaps.push(gap)
+        }
+        if (gaps.length) {
+          const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length
+          interval = Math.min(MAINTENANCE_MAX_INTERVAL, Math.max(MAINTENANCE_MIN_INTERVAL, Math.round(avg)))
+        }
+      }
+
+      const last = done[done.length - 1]
+      const daysSinceLast = daysBetween(last.date, today)
+      const daysOverdue = daysSinceLast - interval
+      if (daysOverdue < 0 || daysOverdue > MAINTENANCE_SEND_WINDOW_DAYS) continue
+      due.push({ clientId, last, daysSinceLast })
+    }
+    if (!due.length) continue
+
+    const { data: clients } = await sb
+      .from('clients')
+      .select('id,name,phone,maintenance_reminder_for')
+      .in('id', due.map((d) => d.clientId))
+    const clientById = new Map((clients || []).map((c: any) => [c.id, c]))
+    // Um lembrete por visita: pula quem já recebeu para este último atendimento.
+    const pending = due.filter((d) => {
+      const c = clientById.get(d.clientId) as { maintenance_reminder_for?: string | null } | undefined
+      return c && String(c.maintenance_reminder_for || '').slice(0, 10) !== d.last.date
+    })
+    if (!pending.length) continue
+
+    const instance = String(cfg.whatsapp_instance || '')
+    if (!instance) {
+      skippedAccounts[cfg.user_id] = 'whatsapp_not_connected'
+      continue
+    }
+    let state = ''
+    try {
+      state = await getConnectionState(instance)
+    } catch (error) {
+      skippedAccounts[cfg.user_id] = error instanceof Error ? error.message : String(error)
+      continue
+    }
+    if (state !== 'open') {
+      skippedAccounts[cfg.user_id] = `whatsapp_${state}`
+      continue
+    }
+
+    const serviceIds = [...new Set(pending.map((d) => d.last.service_id).filter(Boolean))] as string[]
+    const { data: services } = serviceIds.length
+      ? await sb.from('services').select('id,name').in('id', serviceIds)
+      : { data: [] }
+    const serviceById = new Map((services || []).map((s: any) => [s.id, s]))
+
+    for (const item of pending) {
+      if (sent + failed >= budget) break
+      const client = clientById.get(item.clientId) as { name?: string; phone?: string } | undefined
+      const number = toWhatsappNumber(client?.phone || '')
+
+      // Claim first so overlapping runs never send twice.
+      const { data: claimed } = await sb
+        .from('clients')
+        .update({
+          maintenance_reminder_for: item.last.date,
+          maintenance_reminder_sent_at: new Date().toISOString(),
+          maintenance_reminder_error: number ? null : 'cliente_sem_telefone',
+        })
+        .eq('id', item.clientId)
+        .or(`maintenance_reminder_for.is.null,maintenance_reminder_for.neq.${item.last.date}`)
+        .select('id')
+      if (!claimed?.length || !number) continue
+
+      const text = buildMaintenanceMessage(cfg.whatsapp_maintenance_template, {
+        fullName: String(client?.name || ''),
+        service: String((serviceById.get(item.last.service_id) as { name?: string } | undefined)?.name || ''),
+        days: item.daysSinceLast,
+      })
+
+      try {
+        await sendText(instance, number, text)
+        sent += 1
+      } catch (error) {
+        failed += 1
+        const message = error instanceof Error ? error.message : String(error)
+        console.error('[whatsapp] maintenance send failed', { clientId: item.clientId, userId: cfg.user_id, message })
+        const permanent = /exists.*false|not.*whatsapp/i.test(message)
+        await sb.from('clients')
+          .update({
+            // Falha temporária: libera para tentar de novo no próximo ciclo.
+            maintenance_reminder_for: permanent ? item.last.date : null,
+            maintenance_reminder_sent_at: permanent ? new Date().toISOString() : null,
+            maintenance_reminder_error: message.slice(0, 500),
+          })
+          .eq('id', item.clientId)
+        if (isConnectionClosed(message)) {
+          skippedAccounts[cfg.user_id] = 'whatsapp_connection_closed'
+          break
+        }
+      }
+
+      await sleep(DELAY_BETWEEN_SENDS_MS)
+    }
+  }
+
+  return { accounts: configs.length, sent, failed, skippedAccounts }
+}
+
+const runCron = async (sb: Sb) => {
+  const reminders = await sendDueReminders(sb)
+  if (reminders.error) return json(500, { ok: false, error: reminders.error })
+  const budget = MAX_SENDS_PER_RUN - reminders.sent - reminders.failed
+  const maintenance = budget > 0
+    ? await sendMaintenanceReminders(sb, budget)
+    : { accounts: 0, sent: 0, failed: 0, skippedAccounts: {} }
+  if (maintenance.error) console.error('[whatsapp] maintenance skipped', maintenance.error)
+  return json(200, {
+    ok: true,
+    accounts: reminders.accounts,
+    sent: reminders.sent,
+    failed: reminders.failed,
+    skippedAccounts: reminders.skippedAccounts,
+    maintenance,
+  })
 }
 
 // ─── Ações do app (usuária logada) ───────────────────────────────────────────
@@ -492,7 +723,7 @@ Deno.serve(async (req) => {
 
   if (body.action === 'send_reminders') {
     if (!CRON_SECRET || token !== CRON_SECRET) return json(401, { ok: false, error: 'Unauthorized' })
-    return sendDueReminders(sb)
+    return runCron(sb)
   }
 
   if (!token) return json(401, { ok: false, error: 'Unauthorized' })

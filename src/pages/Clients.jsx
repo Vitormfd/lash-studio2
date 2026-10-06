@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Modal from '../components/Modal'
 import { Btn, Field, Inp, Sel, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
@@ -11,6 +11,13 @@ import {
   WEEKDAY_LABELS_FULL,
   addRecurringInterval,
 } from '../lib/recurringClients'
+import {
+  getMaintenanceAlerts,
+  getClientRanking,
+  buildMaintenanceWhatsappUrl,
+  wasMaintenanceReminderSent,
+  RANKING_PERIOD_OPTIONS,
+} from '../lib/clientInsights'
 
 const normPhone = (v) => (v || '').toString().replace(/\D/g, '')
 const normalizeImportedPhone = (v) => {
@@ -150,12 +157,166 @@ const getVisitPattern = (clientId, appointments) => {
   return 'Ainda sem visitas concluídas'
 }
 
+const tabStyle = (active) => ({
+  border: `1px solid ${active ? 'var(--rose-deep)' : 'var(--rose-light)'}`,
+  background: active ? 'var(--rose-deep)' : 'var(--surface)',
+  color: active ? '#fff' : 'var(--text-mid)',
+  borderRadius: 999,
+  padding: '7px 14px',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+})
+
+const dueLabel = (daysUntilDue) => {
+  if (daysUntilDue > 0) return { text: `Vence em ${daysUntilDue} dia${daysUntilDue > 1 ? 's' : ''}`, color: '#B7791F', bg: 'rgba(183,121,31,0.1)' }
+  if (daysUntilDue === 0) return { text: 'Vence hoje', color: '#C2410C', bg: 'rgba(194,65,12,0.1)' }
+  const late = -daysUntilDue
+  return { text: `Atrasada há ${late} dia${late > 1 ? 's' : ''}`, color: '#C5515F', bg: 'rgba(197,81,95,0.1)' }
+}
+
+const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedule, config, onOpenSettings }) => {
+  const autoOn = !!config?.whatsappMaintenanceEnabled
+  const autoBanner = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: autoOn ? 'rgba(63,143,90,0.08)' : 'var(--off-white)', border: `1px solid ${autoOn ? 'rgba(63,143,90,0.3)' : 'var(--rose-light)'}`, borderRadius: 12, padding: '10px 12px', marginBottom: 10 }}>
+      <span style={{ fontSize: 12, color: autoOn ? '#3F8F5A' : 'var(--text-mid)', lineHeight: 1.45 }}>
+        {autoOn
+          ? 'Lembrete automático ligado: o WhatsApp avisa a cliente no dia em que a manutenção vence.'
+          : 'Quer que o aviso saia sozinho pelo WhatsApp? Ative o lembrete automático de manutenção.'}
+      </span>
+      {onOpenSettings && (
+        <Btn variant="ghost" sm onClick={onOpenSettings}>
+          <Icon name="settings" size={12} /> {autoOn ? 'Ajustar' : 'Ativar'}
+        </Btn>
+      )}
+    </div>
+  )
+
+  if (alerts.length === 0) {
+    return (
+      <>
+      {autoBanner}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 14, padding: 20, textAlign: 'center' }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Nenhuma manutenção pendente 🎉</p>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>
+          Clientes aparecem aqui quando a manutenção vence (ou está para vencer) e não há horário marcado.
+        </p>
+      </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+    {autoBanner}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+      {alerts.map((m) => {
+        const due = dueLabel(m.daysUntilDue)
+        const serviceName = services.find((s) => s.id === m.lastAppointment.serviceId)?.name || ''
+        const waUrl = buildMaintenanceWhatsappUrl(m.client, {
+          template: config?.whatsappMaintenanceTemplate,
+          service: serviceName,
+          days: m.daysSinceLast,
+        })
+        const autoSent = wasMaintenanceReminderSent(m)
+        return (
+          <div key={m.client.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{m.client.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{m.client.phone}</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: due.color, background: due.bg, padding: '3px 8px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                {due.text}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.45, marginBottom: 10 }}>
+              Último {appointmentLabelSingular}: {formatShortDate(m.lastAppointment.date)}{serviceName ? ` · ${serviceName}` : ''} (há {m.daysSinceLast} dias)
+              <br />
+              <span style={{ color: 'var(--text-light)' }}>
+                Retorno a cada ~{m.interval} dias {m.basedOnHistory ? '(média dela)' : '(padrão)'}
+              </span>
+              {autoSent && (
+                <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#3F8F5A' }}>
+                  ✓ Lembrete automático enviado
+                  {m.client.maintenanceReminderSentAt ? ` em ${new Date(m.client.maintenanceReminderSentAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {waUrl && (
+                <Btn variant="ghost" sm onClick={() => window.open(waUrl, '_blank', 'noopener,noreferrer')}>
+                  <Icon name="whatsapp" size={12} /> Chamar
+                </Btn>
+              )}
+              {onSchedule && (
+                <Btn sm onClick={() => onSchedule(m.client.id)}>
+                  <Icon name="calendar" size={12} color="#fff" /> Agendar
+                </Btn>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+    </>
+  )
+}
+
+const MEDALS = ['🥇', '🥈', '🥉']
+
+const RankingList = ({ ranking, period, onPeriodChange, appointmentsLabel, appointmentLabelSingular }) => (
+  <div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: 'var(--text-light)' }}>Por {appointmentsLabel} concluídos no período</span>
+      <Sel value={period} onChange={(e) => onPeriodChange(e.target.value)} style={{ ...inputStyle, width: 'auto' }}>
+        {RANKING_PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </Sel>
+    </div>
+    {ranking.length === 0 ? (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 14, padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-light)' }}>
+        Nenhum {appointmentLabelSingular} concluído neste período.
+      </div>
+    ) : (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 14, overflow: 'hidden' }}>
+        {ranking.map((r, i) => (
+          <div
+            key={r.client.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px',
+              borderTop: i === 0 ? 'none' : '1px solid var(--rose-light)',
+              background: i < 3 ? 'var(--off-white)' : 'transparent',
+            }}
+          >
+            <div style={{ width: 28, textAlign: 'center', fontSize: i < 3 ? 20 : 13, fontWeight: 700, color: 'var(--text-light)' }}>
+              {MEDALS[i] || `${i + 1}º`}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-light)' }}>Última visita: {formatShortDate(r.lastDate)}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--rose-dark)' }}>
+                {r.count} {r.count === 1 ? appointmentLabelSingular : appointmentsLabel}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{asMoney(r.total)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)
+
 const Clients = ({
   clients,
   setClients,
   appointments,
   services = [],
   isBarber,
+  professionalType,
+  config,
+  onOpenSettings,
   addToast,
   onScheduleAfterCreate,
   canUserEdit,
@@ -184,14 +345,26 @@ const Clients = ({
     }
   }
 
+  const [view, setView] = useState('all')
+  const [rankingPeriod, setRankingPeriod] = useState('all')
+  const maintenanceAlerts = useMemo(
+    () => getMaintenanceAlerts(clients, appointments, professionalType),
+    [clients, appointments, professionalType],
+  )
+  const ranking = useMemo(
+    () => (view === 'ranking' ? getClientRanking(clients, appointments, rankingPeriod) : []),
+    [clients, appointments, rankingPeriod, view],
+  )
+
   const q = search.trim().toLowerCase()
-  const filtered = clients.filter((c) => {
+  const matchesSearch = (c) => {
     if (!q) return true
     const name = (c.name || '').toLowerCase()
     const phone = (c.phone || '').toString()
     const notes = (c.notes || '').toLowerCase()
     return name.includes(q) || phone.includes(search.trim()) || notes.includes(q)
-  })
+  }
+  const filtered = clients.filter(matchesSearch)
 
   const save = (andSchedule) => {
     if (!canUserEdit) {
@@ -406,6 +579,46 @@ const Clients = ({
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {[
+          { value: 'all', label: 'Todas' },
+          { value: 'maintenance', label: `Manutenção${maintenanceAlerts.length ? ` (${maintenanceAlerts.length})` : ''}` },
+          { value: 'ranking', label: 'Ranking' },
+        ].map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            onClick={() => setView(t.value)}
+            className="lash-btn-press"
+            style={tabStyle(view === t.value)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'maintenance' && (
+        <MaintenanceList
+          alerts={maintenanceAlerts.filter((m) => matchesSearch(m.client))}
+          services={services}
+          appointmentLabelSingular={appointmentLabelSingular}
+          onSchedule={onScheduleAfterCreate}
+          config={config}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
+
+      {view === 'ranking' && (
+        <RankingList
+          ranking={ranking.filter((r) => matchesSearch(r.client))}
+          period={rankingPeriod}
+          onPeriodChange={setRankingPeriod}
+          appointmentsLabel={appointmentsLabel}
+          appointmentLabelSingular={appointmentLabelSingular}
+        />
+      )}
+
+      {view === 'all' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
         {filtered.map((c) => {
           const count = getApptCount(c.id)
@@ -517,6 +730,7 @@ const Clients = ({
           )
         })}
       </div>
+      )}
 
       {filtered.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-light)' }}>

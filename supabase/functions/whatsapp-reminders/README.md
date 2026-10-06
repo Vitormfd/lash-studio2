@@ -48,3 +48,15 @@ curl -X POST "https://mbxfswxjrdikdyzpukmw.supabase.co/functions/v1/whatsapp-rem
 - Se o WhatsApp estiver desconectado, não marca como enviado e tenta de novo no próximo ciclo.
 - Falhas ficam em `appointments.whatsapp_reminder_error`.
 - Até 60 mensagens por ciclo, com 1,2 s entre elas, para não parecer spam ao WhatsApp.
+
+## Lembrete de manutenção
+
+Ligado em **Configurações → Lembrete automático no WhatsApp → Lembrete de manutenção**
+(`config.whatsapp_maintenance_enabled`). Precisa de `supabase/sql/whatsapp_maintenance_reminders.sql`.
+Roda no mesmo cron, depois dos lembretes de atendimento, com o que sobrar das 60 mensagens.
+
+- Prazo de retorno = média entre visitas concluídas da cliente (2+ visitas), senão o padrão da profissão
+  (lash/nail/barbeiro 21 dias, sobrancelha/estética 30). Mesma regra de `src/lib/clientInsights.js`.
+- Envia do dia do vencimento até 7 dias depois, só entre 9h e 19h (BRT), se a cliente não tiver horário futuro.
+- Uma mensagem por visita (`clients.maintenance_reminder_for` = data do último atendimento concluído).
+- Falhas ficam em `clients.maintenance_reminder_error`.

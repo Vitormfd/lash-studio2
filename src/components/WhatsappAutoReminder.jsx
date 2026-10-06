@@ -3,6 +3,9 @@ import { Btn, Field, Inp, Sel, Textarea } from './UI'
 import Icon from './Icon'
 import { callWhatsappReminders } from '../lib/supabase'
 import {
+  DEFAULT_MAINTENANCE_TEMPLATE,
+  MAINTENANCE_PLACEHOLDERS,
+  buildMaintenanceText,
   DEFAULT_WHATSAPP_AUTO_TEMPLATE,
   WHATSAPP_REMINDER_PLACEHOLDERS,
   buildWhatsappReminderText,
@@ -41,6 +44,144 @@ const isTouchDevice = () =>
 const formatPairingCode = (code) => {
   const c = String(code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
   return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c
+}
+
+const MAINTENANCE_PREVIEW_VARS = { fullName: 'Maria Silva', service: 'Volume brasileiro', days: 21 }
+
+const TokenChips = ({ items, onPick, disabled }) => (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -8, marginBottom: 12 }}>
+    {items.map((item) => (
+      <button
+        key={item.token}
+        type="button"
+        disabled={disabled}
+        onClick={() => onPick(item.token)}
+        title={`Inserir ${item.token}`}
+        style={{
+          fontSize: 11,
+          color: 'var(--text-mid)',
+          background: 'var(--off-white)',
+          border: '1px solid var(--rose-light)',
+          borderRadius: 999,
+          padding: '4px 8px',
+          cursor: disabled ? 'default' : 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        <code style={{ fontSize: 11 }}>{item.token}</code> {item.label}
+      </button>
+    ))}
+  </div>
+)
+
+const insertAtCursor = (elementId, value, setValue, token) => {
+  const el = document.getElementById(elementId)
+  if (!el) {
+    setValue(`${value}${token}`)
+    return
+  }
+  const start = el.selectionStart ?? value.length
+  const end = el.selectionEnd ?? start
+  setValue(`${value.slice(0, start)}${token}${value.slice(end)}`)
+  requestAnimationFrame(() => {
+    el.focus()
+    const pos = start + token.length
+    el.setSelectionRange(pos, pos)
+  })
+}
+
+/** Lembrete de manutenção: mesma conexão e mesmo cron do lembrete de atendimento */
+const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected }) => {
+  const saved = String(config.whatsappMaintenanceTemplate || '').trim() || DEFAULT_MAINTENANCE_TEMPLATE
+  const [template, setTemplate] = useState(saved)
+  useEffect(() => {
+    setTemplate(saved)
+  }, [saved])
+  const enabled = !!config.whatsappMaintenanceEnabled
+
+  const toggle = () => {
+    if (isDemo) return
+    if (!enabled && !connected) {
+      addToast('Conecte o WhatsApp primeiro.', 'warning')
+      return
+    }
+    setConfig({ ...config, whatsappMaintenanceEnabled: !enabled })
+    addToast(!enabled ? 'Lembrete de manutenção ligado!' : 'Lembrete de manutenção desligado.', 'success')
+  }
+
+  const save = () => {
+    if (isDemo) return
+    const next = String(template || '').trim() || DEFAULT_MAINTENANCE_TEMPLATE
+    setTemplate(next)
+    setConfig({ ...config, whatsappMaintenanceTemplate: next })
+    addToast('Mensagem de manutenção salva!', 'success')
+  }
+
+  return (
+    <div id="whatsapp-maintenance-reminder" style={{ borderTop: '1px solid var(--rose-light)', marginTop: 18, paddingTop: 18, scrollMarginTop: 80 }}>
+      <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Lembrete de manutenção</h4>
+      <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
+        No dia em que a manutenção vence, o app chama a cliente no WhatsApp, se ela ainda não tiver horário marcado.
+        O prazo é a média de retorno dela (ou o padrão da sua área, até ter 2 visitas concluídas).
+      </p>
+
+      {!connected ? (
+        <p style={{ fontSize: 12, color: 'var(--text-mid)', background: 'var(--off-white)', border: '1px dashed var(--rose-light)', borderRadius: 10, padding: '10px 12px', margin: 0 }}>
+          Conecte o WhatsApp acima para ativar.
+        </p>
+      ) : (
+        <>
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer', marginBottom: 14 }}>
+            <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>Enviar lembrete de manutenção automaticamente</span>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={toggle}
+              disabled={isDemo}
+              style={{ width: 20, height: 20, accentColor: 'var(--rose-deep)' }}
+            />
+          </label>
+          <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -4, marginBottom: 16, lineHeight: 1.5 }}>
+            Uma mensagem por visita, enviada entre 9h e 19h. Conta só atendimentos marcados como <b>Concluído</b>.
+            Clientes atrasadas há mais de 7 dias ficam só na aba Manutenção, para você chamar manualmente.
+          </p>
+
+          <Field label="Mensagem de manutenção">
+            <Textarea
+              id="whatsapp-maintenance-template"
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+              rows={4}
+              maxLength={1500}
+              disabled={isDemo}
+              placeholder={DEFAULT_MAINTENANCE_TEMPLATE}
+            />
+          </Field>
+          <TokenChips
+            items={MAINTENANCE_PLACEHOLDERS}
+            disabled={isDemo}
+            onPick={(token) => insertAtCursor('whatsapp-maintenance-template', template, setTemplate, token)}
+          />
+          <div style={{ background: 'var(--off-white)', border: '1px dashed var(--rose-light)', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+              Prévia
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
+              {buildMaintenanceText(template, MAINTENANCE_PREVIEW_VARS)}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn onClick={save} disabled={isDemo || template.trim() === saved}>
+              <Icon name="check" size={14} color="#fff" /> Salvar mensagem
+            </Btn>
+            <Btn variant="ghost" onClick={() => setTemplate(DEFAULT_MAINTENANCE_TEMPLATE)} disabled={isDemo}>
+              Restaurar padrão
+            </Btn>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 const card = { background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }
@@ -172,21 +313,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
     addToast('Mensagem do lembrete salva!', 'success')
   }
 
-  const insertToken = (token) => {
-    const el = document.getElementById('whatsapp-auto-template')
-    if (!el) {
-      setAutoTemplate((prev) => `${prev}${token}`)
-      return
-    }
-    const start = el.selectionStart ?? autoTemplate.length
-    const end = el.selectionEnd ?? start
-    setAutoTemplate(`${autoTemplate.slice(0, start)}${token}${autoTemplate.slice(end)}`)
-    requestAnimationFrame(() => {
-      el.focus()
-      const pos = start + token.length
-      el.setSelectionRange(pos, pos)
-    })
-  }
+  const insertToken = (token) => insertAtCursor('whatsapp-auto-template', autoTemplate, setAutoTemplate, token)
 
   const sendTest = async () => {
     if (isDemo) return
@@ -346,29 +473,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
               placeholder={DEFAULT_WHATSAPP_AUTO_TEMPLATE}
             />
           </Field>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -8, marginBottom: 12 }}>
-            {WHATSAPP_REMINDER_PLACEHOLDERS.map((item) => (
-              <button
-                key={item.token}
-                type="button"
-                disabled={isDemo}
-                onClick={() => insertToken(item.token)}
-                title={`Inserir ${item.token}`}
-                style={{
-                  fontSize: 11,
-                  color: 'var(--text-mid)',
-                  background: 'var(--off-white)',
-                  border: '1px solid var(--rose-light)',
-                  borderRadius: 999,
-                  padding: '4px 8px',
-                  cursor: isDemo ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                <code style={{ fontSize: 11 }}>{item.token}</code> {item.label}
-              </button>
-            ))}
-          </div>
+          <TokenChips items={WHATSAPP_REMINDER_PLACEHOLDERS} disabled={isDemo} onPick={insertToken} />
           <div style={{ background: 'var(--off-white)', border: '1px dashed var(--rose-light)', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
             <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
               Prévia
@@ -402,6 +507,8 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
           </Field>
         </>
       )}
+
+      <MaintenanceReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} connected={connected} />
     </div>
   )
 }
