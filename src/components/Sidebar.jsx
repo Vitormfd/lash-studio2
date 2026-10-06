@@ -1,5 +1,6 @@
 import Icon from './Icon'
 import { APP_NAME, APP_TAGLINE } from '../lib/domain'
+import { LASH_SIMULATOR_PAGE, LASH_SIMULATOR_TITLE } from '../features/lashSimulator/access'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'home' },
@@ -7,6 +8,7 @@ const NAV = [
   { id: 'clients', label: 'Clientes', icon: 'users' },
   { id: 'loyalty', label: 'Fidelidade', icon: 'gift' },
   { id: 'services', label: 'Serviços', icon: 'scissors' },
+  { id: LASH_SIMULATOR_PAGE, label: LASH_SIMULATOR_TITLE, icon: 'eye', lashOnly: true },
   { id: 'inventory', label: 'Estoque', icon: 'box' },
   { id: 'finance', label: 'Financeiro', icon: 'dollar' },
   { id: 'reports', label: 'Relatórios', icon: 'chart' },
@@ -14,10 +16,11 @@ const NAV = [
   { id: 'settings', label: 'Configurações', icon: 'settings' },
 ]
 
-const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedNavIds, isBarber = false }) => {
+const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedNavIds, isBarber = false, showLashSimulator = false }) => {
+  const visibleNav = NAV.filter((n) => !n.lashOnly || showLashSimulator)
   const navItems = Array.isArray(allowedNavIds)
-    ? NAV.filter((n) => allowedNavIds.includes(n.id))
-    : NAV
+    ? visibleNav.filter((n) => allowedNavIds.includes(n.id))
+    : visibleNav
 
   return (
   <>
