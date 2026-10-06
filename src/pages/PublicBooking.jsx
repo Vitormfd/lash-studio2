@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getClient, notifyProfessionalNewBooking } from '../lib/supabase'
 import { Btn, Field, Inp } from '../components/UI'
 import { apptIntervalsOverlap, formatDurationLabel, timeToMins } from '../lib/utils'
 import { getHolidaysOnDate, formatHolidaySummary } from '../lib/holidays'
 import { applyTheme } from '../lib/theme'
+import BookingCalendar from '../components/BookingCalendar'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -192,6 +193,8 @@ const PublicBooking = ({ professionalId }) => {
   const [workWindow, setWorkWindow] = useState({ closed: false, start: DEFAULT_START, end: DEFAULT_END, hasLunch: false, lunchStart: null, lunchEnd: null })
   const [dayClosed, setDayClosed] = useState(false)
   const [dayHolidayLabel, setDayHolidayLabel] = useState('')
+  const [closedWeekdays, setClosedWeekdays] = useState([])
+  const [bookingLoc, setBookingLoc] = useState({ stateUf: '', city: '' })
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -245,6 +248,51 @@ const PublicBooking = ({ professionalId }) => {
     loadServices()
     return () => { alive = false }
   }, [sb, professionalId])
+
+  useEffect(() => {
+    if (!sb || !professionalId) return
+    let alive = true
+
+    // O fechamento depende só do dia da semana, então 7 consultas cobrem o calendário inteiro.
+    const loadWeekSchedule = async () => {
+      try {
+        const base = new Date(`${localTodayYmd()}T12:00:00`)
+        const days = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(base)
+          d.setDate(base.getDate() + i)
+          return { dow: d.getDay(), ymd: `${d.getFullYear()}-${toTwo(d.getMonth() + 1)}-${toTwo(d.getDate())}` }
+        })
+        const results = await Promise.all(
+          days.map((day) => sb.rpc('get_public_booking_window', { p_professional_id: professionalId, p_date: day.ymd }))
+        )
+        if (!alive) return
+        const closed = []
+        let loc = null
+        results.forEach((res, i) => {
+          if (res.error) return
+          const row = Array.isArray(res.data) ? res.data[0] : res.data
+          if (!loc && row) loc = { stateUf: row.state_uf || '', city: row.city || '' }
+          if (resolveWindow(row || null).closed) closed.push(days[i].dow)
+        })
+        setClosedWeekdays(closed)
+        if (loc) setBookingLoc(loc)
+      } catch {
+        // Sem a agenda semanal o calendário só bloqueia datas passadas; loadSlots ainda avisa dias fechados.
+      }
+    }
+
+    loadWeekSchedule()
+    return () => { alive = false }
+  }, [sb, professionalId])
+
+  const isDateUnavailable = useCallback(
+    (ymd) => {
+      const dow = new Date(`${ymd}T12:00:00`).getDay()
+      if (closedWeekdays.includes(dow)) return true
+      return getHolidaysOnDate(ymd, bookingLoc).length > 0
+    },
+    [closedWeekdays, bookingLoc]
+  )
 
   const loadSlots = async (dateYmd, service) => {
     if (!dateYmd || !service) return
@@ -554,91 +602,112 @@ const PublicBooking = ({ professionalId }) => {
               <div>
                 <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Etapa 2 — Escolha de data e horário</h2>
 
-                <div style={{ marginBottom: 12, maxWidth: 280 }}>
-                  <Field label="Data">
-                    <Inp
-                      type="date"
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18, alignItems: 'start' }}>
+                  <div>
+                    <BookingCalendar
                       min={todayYmd}
                       value={selectedDate}
-                      onChange={async (e) => {
-                        const nextDate = e.target.value
+                      isDisabled={isDateUnavailable}
+                      onChange={async (nextDate) => {
+                        if (nextDate === selectedDate) return
                         setSelectedDate(nextDate)
                         setSelectedTime('')
-                        if (nextDate) await loadSlots(nextDate, selectedService)
+                        await loadSlots(nextDate, selectedService)
                       }}
                     />
-                  </Field>
+                    <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 6 }}>
+                      Dias riscados não têm atendimento.
+                    </p>
+                  </div>
+
+                  <div>
+                    {!selectedDate ? (
+                      <div style={{ border: '1px dashed var(--rose-light)', borderRadius: 14, padding: '28px 16px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Escolha uma data no calendário para ver os horários disponíveis.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="serif" style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>
+                          {(() => {
+                            const label = toIsoDateLabel(selectedDate)
+                            return label.charAt(0).toUpperCase() + label.slice(1)
+                          })()}
+                        </p>
+                        {!loadingSlots && !dayClosed && !dayHolidayLabel && (
+                          <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 12 }}>
+                            {`Atendimento das ${workWindow.start} às ${workWindow.end}`}
+                            {workWindow.hasLunch ? ` · almoço ${workWindow.lunchStart}–${workWindow.lunchEnd}` : ''}
+                          </p>
+                        )}
+
+                        {loadingSlots ? (
+                          <div style={{ marginTop: 12 }}><BookingSkeleton /></div>
+                        ) : (
+                          <>
+                            <div style={{ display: 'grid', gap: 14 }}>
+                              {groupedSlots.map((group) => (
+                                <div key={group.key}>
+                                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                    {group.label}
+                                  </p>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 6 }}>
+                                    {group.items.map((slot) => {
+                                      const active = selectedTime === slot.time
+                                      return (
+                                        <button
+                                          key={slot.time}
+                                          type="button"
+                                          disabled={!slot.available}
+                                          onClick={() => setSelectedTime(slot.time)}
+                                          className={slot.available ? 'lash-btn-press' : undefined}
+                                          aria-label={slot.available ? slot.time : `${slot.time} indisponível`}
+                                          aria-pressed={active}
+                                          style={{
+                                            height: 40,
+                                            border: active ? '1px solid var(--rose-deep)' : '1px solid var(--rose-light)',
+                                            background: active ? 'var(--rose-deep)' : 'var(--surface)',
+                                            color: active ? 'var(--surface)' : 'var(--text)',
+                                            borderRadius: 10,
+                                            fontSize: 14,
+                                            fontWeight: 600,
+                                            fontVariantNumeric: 'tabular-nums',
+                                            textDecoration: slot.available ? 'none' : 'line-through',
+                                            cursor: slot.available ? 'pointer' : 'default',
+                                            opacity: slot.available ? 1 : 0.35,
+                                            transition: 'background 0.15s, border-color 0.15s',
+                                          }}
+                                        >
+                                          {slot.time}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {!hasAnyAvailable && (
+                              <p style={{ marginTop: 12, fontSize: 14, color: dayHolidayLabel || dayClosed ? '#9B3D4A' : 'var(--text-light)' }}>
+                                {dayHolidayLabel
+                                  ? `Feriado: ${dayHolidayLabel}. Escolha outra data.`
+                                  : dayClosed
+                                    ? 'Neste dia não há atendimento. Escolha outra data.'
+                                    : 'Não há horários disponíveis neste dia. Tente outra data.'}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
 
-                <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 10 }}>
-                  {dayClosed
-                    ? 'Dia fechado no horário de trabalho configurado.'
-                    : workWindow.start && workWindow.end
-                      ? `Horário de atendimento neste dia: ${workWindow.start} às ${workWindow.end}` +
-                        (workWindow.hasLunch ? ` (pausa para almoço: ${workWindow.lunchStart} às ${workWindow.lunchEnd})` : '')
-                      : 'Selecione uma data para ver o horário de atendimento.'}
-                </p>
-
-                {loadingSlots ? (
-                  <BookingSkeleton />
-                ) : selectedDate ? (
-                  <>
-                    <div style={{ display: 'grid', gap: 10 }}>
-                      {groupedSlots.map((group) => (
-                        <div key={group.key} style={{ border: '1px solid var(--rose-light)', borderRadius: 12, padding: 10, background: 'var(--surface)' }}>
-                          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                            {group.label}
-                          </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-                            {group.items.map((slot) => {
-                              const active = selectedTime === slot.time
-                              return (
-                                <button
-                                  key={slot.time}
-                                  type="button"
-                                  disabled={!slot.available}
-                                  onClick={() => setSelectedTime(slot.time)}
-                                  className="lash-btn-press"
-                                  style={{
-                                    minHeight: 52,
-                                    border: active ? '2px solid var(--rose-deep)' : '1px solid var(--rose-light)',
-                                    background: !slot.available ? '#FAFAFA' : active ? 'var(--rose-light)' : 'var(--surface)',
-                                    color: !slot.available ? 'var(--text-light)' : 'var(--text)',
-                                    borderRadius: 10,
-                                    padding: '10px 8px',
-                                    fontSize: 14,
-                                    fontWeight: 700,
-                                    cursor: slot.available ? 'pointer' : 'not-allowed',
-                                    opacity: slot.available ? 1 : 0.85,
-                                  }}
-                                >
-                                  {slot.available ? slot.time : `${slot.time} · Horário indisponível`}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {!hasAnyAvailable && (
-                      <p style={{ marginTop: 12, fontSize: 14, color: dayHolidayLabel || dayClosed ? '#9B3D4A' : 'var(--text-light)' }}>
-                        {dayHolidayLabel
-                          ? `Feriado: ${dayHolidayLabel}. Escolha outra data.`
-                          : dayClosed
-                            ? 'Neste dia não há atendimento. Escolha outra data.'
-                            : 'Não há horários disponíveis neste dia. Tente outra data.'}
-                      </p>
-                    )}
-
-                    <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                      <Btn variant="ghost" onClick={() => setStep(1)}>Voltar</Btn>
-                      <Btn onClick={toStepThree} disabled={!selectedTime}>Continuar</Btn>
-                    </div>
-                  </>
-                ) : (
-                  <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Escolha uma data para ver os horários disponíveis.</p>
-                )}
+                <div style={{ marginTop: 18, display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <Btn variant="ghost" onClick={() => setStep(1)}>Voltar</Btn>
+                  <Btn onClick={toStepThree} disabled={!selectedTime}>
+                    {selectedTime ? `Continuar · ${selectedTime}` : 'Continuar'}
+                  </Btn>
+                </div>
               </div>
             )}
 
