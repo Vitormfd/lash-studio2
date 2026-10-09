@@ -732,6 +732,8 @@ export const DB = {
         whatsappMaintenanceEnabled: !!data.whatsapp_maintenance_enabled,
         whatsappMaintenanceTemplate: String(data.whatsapp_maintenance_template || '').trim(),
         themeId: data.theme_id || '',
+        businessWhatsapp: String(data.business_whatsapp || '').trim(),
+        bookingConfirmTemplate: String(data.booking_confirm_template || '').trim(),
       }
     }
     const stored = uget(userId, 'config')
@@ -748,6 +750,8 @@ export const DB = {
       whatsappMaintenanceEnabled: !!stored?.whatsappMaintenanceEnabled,
       whatsappMaintenanceTemplate: String(stored?.whatsappMaintenanceTemplate || '').trim(),
       themeId: stored?.themeId || '',
+      businessWhatsapp: String(stored?.businessWhatsapp || '').trim(),
+      bookingConfirmTemplate: String(stored?.bookingConfirmTemplate || '').trim(),
     }
   },
 
@@ -771,8 +775,16 @@ export const DB = {
         whatsapp_maintenance_enabled: !!nextConfig.whatsappMaintenanceEnabled,
         whatsapp_maintenance_template: String(nextConfig.whatsappMaintenanceTemplate || '').trim() || null,
         theme_id: nextConfig.themeId || null,
+        business_whatsapp: String(nextConfig.businessWhatsapp || '').replace(/\D/g, '') || null,
+        booking_confirm_template: String(nextConfig.bookingConfirmTemplate || '').trim() || null,
       }
       let { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error) {
+        // Colunas da confirmação pelo WhatsApp ainda não criadas (booking_whatsapp_confirm.sql)
+        delete row.business_whatsapp
+        delete row.booking_confirm_template
+        ;({ error } = await sb.from('config').upsert(row, { onConflict: 'user_id' }))
+      }
       if (error) {
         // Colunas de manutenção ainda não criadas (whatsapp_maintenance_reminders.sql)
         delete row.whatsapp_maintenance_enabled

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Btn, Field, Inp, Sel, Textarea } from '../components/UI'
 import Icon from '../components/Icon'
 import WhatsappAutoReminder from '../components/WhatsappAutoReminder'
+import BookingWhatsappConfirm from '../components/BookingWhatsappConfirm'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
 import { hashPin, verifyMemberPin, pickMemberColor, getAccountOwner, useOperator } from '../lib/operator'
@@ -672,6 +673,8 @@ const Settings = ({
       </div>
 
       <WhatsappAutoReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} />
+
+      <BookingWhatsappConfirm config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} />
 
       {/* Theme settings */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>

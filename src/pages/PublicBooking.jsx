@@ -5,6 +5,8 @@ import { apptIntervalsOverlap, formatDurationLabel, timeToMins } from '../lib/ut
 import { getHolidaysOnDate, formatHolidaySummary } from '../lib/holidays'
 import { applyTheme } from '../lib/theme'
 import BookingCalendar from '../components/BookingCalendar'
+import Icon from '../components/Icon'
+import { buildBookingConfirmText, toWhatsappDigits } from '../lib/whatsappReminder'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -200,6 +202,7 @@ const PublicBooking = ({ professionalId }) => {
   const [errorMsg, setErrorMsg] = useState('')
   const [success, setSuccess] = useState(null)
   const [professionalName, setProfessionalName] = useState('Profissional Easy Studio')
+  const [contact, setContact] = useState({ whatsapp: '', confirmTemplate: '' })
 
   const selectedService = services.find((s) => s.id === selectedServiceId) || null
   const todayYmd = localTodayYmd()
@@ -209,6 +212,18 @@ const PublicBooking = ({ professionalId }) => {
     let alive = true
     sb.rpc('get_public_theme_id', { p_professional_id: professionalId })
       .then(({ data }) => { if (alive) applyTheme(data || 'rose') })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [sb, professionalId])
+
+  useEffect(() => {
+    if (!sb || !professionalId) return
+    let alive = true
+    sb.rpc('get_public_booking_contact', { p_professional_id: professionalId })
+      .then(({ data }) => {
+        const row = Array.isArray(data) ? data[0] : data
+        if (alive && row) setContact({ whatsapp: toWhatsappDigits(row.whatsapp), confirmTemplate: row.confirm_template || '' })
+      })
       .catch(() => {})
     return () => { alive = false }
   }, [sb, professionalId])
@@ -457,6 +472,7 @@ const PublicBooking = ({ professionalId }) => {
         dateLabel: toIsoDateLabel(selectedDate),
         time: selectedTime,
         professionalName,
+        clientName: cleanName,
       })
     } catch {
       setErrorMsg('Nao foi possivel confirmar o agendamento agora. Tente novamente em instantes.')
@@ -478,6 +494,16 @@ const PublicBooking = ({ professionalId }) => {
   }
 
   const pageTitle = success ? 'Agendamento confirmado! ✓' : 'Agendar atendimento'
+
+  const whatsappConfirmUrl = success && contact.whatsapp
+    ? `https://wa.me/${contact.whatsapp}?text=${encodeURIComponent(buildBookingConfirmText(contact.confirmTemplate, {
+        firstName: success.clientName.split(/\s+/)[0],
+        fullName: success.clientName,
+        date: success.dateLabel,
+        time: success.time,
+        service: success.serviceName,
+      }))}`
+    : ''
 
   if (!hasProfessionalId) {
     return (
@@ -525,8 +551,37 @@ const PublicBooking = ({ professionalId }) => {
               </p>
             </div>
 
+            {whatsappConfirmUrl && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.55, margin: 0 }}>
+                  Falta só um passo: toque no botão abaixo para enviar a confirmação pelo WhatsApp.
+                </p>
+                <a
+                  href={whatsappConfirmUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    background: '#25D366',
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    borderRadius: 12,
+                    padding: '14px 18px',
+                    minHeight: 48,
+                  }}
+                >
+                  <Icon name="whatsapp" size={18} color="#fff" /> Confirmar pelo WhatsApp
+                </a>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-              <Btn onClick={resetFlow}>
+              <Btn variant={whatsappConfirmUrl ? 'ghost' : undefined} onClick={resetFlow}>
                 Fazer novo agendamento
               </Btn>
             </div>

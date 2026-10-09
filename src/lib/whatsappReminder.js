@@ -64,3 +64,18 @@ export function buildWhatsappReminderText(template, vars = {}) {
     (_, key) => values[String(key).toLowerCase()] ?? '',
   )
 }
+
+export const DEFAULT_BOOKING_CONFIRM_TEMPLATE =
+  'Olá! Acabei de agendar pelo link ✨\n\nNome: {nomeCompleto}\nServiço: {servico}\nData: {data}\nHorário: {hora}\n\nPode confirmar meu horário?'
+
+/** Mensagem que a cliente envia à profissional depois de agendar pelo link público. */
+export function buildBookingConfirmText(template, vars = {}) {
+  return buildWhatsappReminderText(String(template || '').trim() || DEFAULT_BOOKING_CONFIRM_TEMPLATE, vars)
+}
+
+/** Dígitos do WhatsApp no formato do wa.me (adiciona 55 em números brasileiros com DDD). */
+export function toWhatsappDigits(value) {
+  const d = String(value || '').replace(/\D/g, '').replace(/^0+/, '')
+  if (d.length === 10 || d.length === 11) return `55${d}`
+  return d.length >= 12 ? d : ''
+}
