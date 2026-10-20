@@ -672,7 +672,7 @@ const Settings = ({
         </div>
       </div>
 
-      <WhatsappAutoReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} />
+      <WhatsappAutoReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} professionalType={professionalType} />
 
       <BookingWhatsappConfirm config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} />
 

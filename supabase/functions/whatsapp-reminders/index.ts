@@ -401,6 +401,8 @@ const DEFAULT_MAINTENANCE_DAYS: Record<string, number> = {
   estetica: 30,
   barbeiro: 21,
 }
+// Barbeiro não recebe lembrete automático de manutenção (mesma regra de src/lib/clientInsights.js).
+const MAINTENANCE_AUTO_EXCLUDED_TYPES = new Set(['barbeiro'])
 const MAINTENANCE_MIN_INTERVAL = 7
 const MAINTENANCE_MAX_INTERVAL = 120
 // Só avisa automaticamente até N dias depois do vencimento; atrasadas há mais tempo ficam para o envio manual.
@@ -455,22 +457,26 @@ const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResu
   for (const cfg of configs as MaintenanceConfigRow[]) {
     if (sent + failed >= budget) break
 
-    const [{ data: profile }, { data: appts, error: apptError }] = await Promise.all([
-      sb.from('profiles').select('professional_type').eq('id', cfg.user_id).maybeSingle(),
-      sb
-        .from('appointments')
-        .select('client_id,service_id,date,time,status,blocked')
-        .eq('user_id', cfg.user_id)
-        .gte('date', historyStart)
-        .not('client_id', 'is', null)
-        .in('status', ['pending', 'confirmed', 'done']),
-    ])
+    const { data: profile } = await sb.from('profiles').select('professional_type').eq('id', cfg.user_id).maybeSingle()
+    const professionalType = String((profile as any)?.professional_type || '')
+    if (MAINTENANCE_AUTO_EXCLUDED_TYPES.has(professionalType)) {
+      skippedAccounts[cfg.user_id] = `maintenance_not_available_for_${professionalType}`
+      continue
+    }
+
+    const { data: appts, error: apptError } = await sb
+      .from('appointments')
+      .select('client_id,service_id,date,time,status,blocked')
+      .eq('user_id', cfg.user_id)
+      .gte('date', historyStart)
+      .not('client_id', 'is', null)
+      .in('status', ['pending', 'confirmed', 'done'])
     if (apptError) {
       console.error('[whatsapp] maintenance appointments query failed', { userId: cfg.user_id, error: apptError.message })
       continue
     }
 
-    const fallback = DEFAULT_MAINTENANCE_DAYS[String((profile as any)?.professional_type || '')] || 21
+    const fallback = DEFAULT_MAINTENANCE_DAYS[professionalType] || 21
     const doneByClient = new Map<string, AppointmentRow[]>()
     const hasFuture = new Set<string>()
     for (const a of (appts || []) as AppointmentRow[]) {

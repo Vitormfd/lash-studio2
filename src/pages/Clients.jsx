@@ -16,6 +16,7 @@ import {
   getClientRanking,
   buildMaintenanceWhatsappUrl,
   wasMaintenanceReminderSent,
+  supportsMaintenanceAutoReminder,
   RANKING_PERIOD_OPTIONS,
 } from '../lib/clientInsights'
 
@@ -175,9 +176,9 @@ const dueLabel = (daysUntilDue) => {
   return { text: `Atrasada há ${late} dia${late > 1 ? 's' : ''}`, color: '#C5515F', bg: 'rgba(197,81,95,0.1)' }
 }
 
-const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedule, config, onOpenSettings }) => {
+const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedule, config, onOpenSettings, autoAvailable }) => {
   const autoOn = !!config?.whatsappMaintenanceEnabled
-  const autoBanner = (
+  const autoBanner = autoAvailable && (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: autoOn ? 'rgba(63,143,90,0.08)' : 'var(--off-white)', border: `1px solid ${autoOn ? 'rgba(63,143,90,0.3)' : 'var(--rose-light)'}`, borderRadius: 12, padding: '10px 12px', marginBottom: 10 }}>
       <span style={{ fontSize: 12, color: autoOn ? '#3F8F5A' : 'var(--text-mid)', lineHeight: 1.45 }}>
         {autoOn
@@ -218,7 +219,7 @@ const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedul
           service: serviceName,
           days: m.daysSinceLast,
         })
-        const autoSent = wasMaintenanceReminderSent(m)
+        const autoSent = autoAvailable && wasMaintenanceReminderSent(m)
         return (
           <div key={m.client.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
@@ -605,6 +606,7 @@ const Clients = ({
           onSchedule={onScheduleAfterCreate}
           config={config}
           onOpenSettings={onOpenSettings}
+          autoAvailable={supportsMaintenanceAutoReminder(professionalType)}
         />
       )}
 

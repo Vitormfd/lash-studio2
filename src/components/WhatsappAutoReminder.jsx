@@ -11,6 +11,7 @@ import {
   buildWhatsappReminderText,
   resolveWhatsappAutoTemplate,
 } from '../lib/whatsappReminder'
+import { MAINTENANCE_PREVIEW_SERVICE, supportsMaintenanceAutoReminder } from '../lib/clientInsights'
 
 const PREVIEW_VARS = {
   firstName: 'Maria',
@@ -45,8 +46,6 @@ const formatPairingCode = (code) => {
   const c = String(code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
   return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c
 }
-
-const MAINTENANCE_PREVIEW_VARS = { fullName: 'Maria Silva', service: 'Volume brasileiro', days: 21 }
 
 const TokenChips = ({ items, onPick, disabled }) => (
   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -8, marginBottom: 12 }}>
@@ -91,7 +90,8 @@ const insertAtCursor = (elementId, value, setValue, token) => {
 }
 
 /** Lembrete de manutenção: mesma conexão e mesmo cron do lembrete de atendimento */
-const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected }) => {
+const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected, professionalType }) => {
+  const previewVars = { fullName: 'Maria Silva', service: MAINTENANCE_PREVIEW_SERVICE[professionalType] || 'Volume brasileiro', days: 21 }
   const saved = String(config.whatsappMaintenanceTemplate || '').trim() || DEFAULT_MAINTENANCE_TEMPLATE
   const [template, setTemplate] = useState(saved)
   useEffect(() => {
@@ -167,7 +167,7 @@ const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected })
               Prévia
             </p>
             <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
-              {buildMaintenanceText(template, MAINTENANCE_PREVIEW_VARS)}
+              {buildMaintenanceText(template, previewVars)}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -186,7 +186,7 @@ const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected })
 
 const card = { background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }
 
-const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
+const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professionalType }) => {
   const [state, setState] = useState(isDemo ? 'not_created' : 'loading')
   const [number, setNumber] = useState('')
   const [qr, setQr] = useState(null)
@@ -508,7 +508,9 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo }) => {
         </>
       )}
 
-      <MaintenanceReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} connected={connected} />
+      {supportsMaintenanceAutoReminder(professionalType) && (
+        <MaintenanceReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} connected={connected} professionalType={professionalType} />
+      )}
     </div>
   )
 }

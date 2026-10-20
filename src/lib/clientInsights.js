@@ -12,6 +12,20 @@ export const DEFAULT_MAINTENANCE_DAYS = {
   barbeiro: 21,
 }
 
+/** Perfis sem lembrete automático de manutenção pelo WhatsApp (mesma regra do servidor) */
+const MAINTENANCE_AUTO_EXCLUDED_TYPES = new Set(['barbeiro'])
+
+export const supportsMaintenanceAutoReminder = (professionalType) =>
+  !MAINTENANCE_AUTO_EXCLUDED_TYPES.has(professionalType)
+
+/** Serviço de exemplo para a prévia da mensagem de manutenção */
+export const MAINTENANCE_PREVIEW_SERVICE = {
+  lash: 'Volume brasileiro',
+  nail: 'Alongamento em gel',
+  sobrancelha: 'Design com henna',
+  estetica: 'Limpeza de pele',
+}
+
 /** Avisa a partir de N dias antes de vencer */
 export const MAINTENANCE_HEADS_UP_DAYS = 3
 
