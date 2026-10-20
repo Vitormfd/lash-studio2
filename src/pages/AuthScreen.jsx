@@ -6,14 +6,21 @@ import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE, PROFESSIONAL_TYPE_OPTIONS } from '
 
 const AUTH_REMEMBER_KEY = 'lash_remember_login'
 
+// Links da landing page usam ?mode=signup para abrir direto na aba "Criar conta"
+const getInitialMode = () => {
+  if (typeof window === 'undefined') return 'login'
+  const mode = new URLSearchParams(window.location.search).get('mode')
+  return mode === 'signup' || mode === 'register' ? 'register' : 'login'
+}
+
 const AuthScreen = ({ onLogin }) => {
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState(getInitialMode)
   const [form, setForm] = useState(() => {
-    const s = local.get(AUTH_REMEMBER_KEY)
+    const s = mode === 'register' ? null : local.get(AUTH_REMEMBER_KEY)
     return { name: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE }
   })
   const [rememberMe, setRememberMe] = useState(() => {
-    const s = local.get(AUTH_REMEMBER_KEY)
+    const s = mode === 'register' ? null : local.get(AUTH_REMEMBER_KEY)
     return !!(s && s.email)
   })
   const [error, setError] = useState('')

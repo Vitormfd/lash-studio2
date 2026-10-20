@@ -1,4 +1,7 @@
 import { getClient, getSupabaseConfig } from './supabase'
+import { trackPixelEvent } from './facebookPixel'
+
+export const PLAN_PRICE_BRL = 59.9
 
 const RAW_CHECKOUT_URL = (import.meta.env.VITE_CHECKOUT_URL || '').trim()
 const CHECKOUT_FUNCTION = (import.meta.env.VITE_STRIPE_CHECKOUT_FUNCTION || 'create-checkout-session').trim()
@@ -39,6 +42,8 @@ const redirectTo = (url) => {
 
 export const openCheckout = async ({ userId, email } = {}) => {
   if (typeof window === 'undefined') return { ok: false }
+
+  trackPixelEvent('InitiateCheckout', { currency: 'BRL', value: PLAN_PRICE_BRL })
 
   const hostedUrl = getHostedCheckoutUrl()
   if (hostedUrl) {

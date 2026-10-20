@@ -7,7 +7,8 @@ import { progressPushBody } from './lib/dayMessages'
 import { useLocalReminders } from './hooks/useLocalReminders'
 import { applyTheme, getDefaultThemeId, getSavedThemeId, hasSavedTheme, saveAndApplyTheme } from './lib/theme'
 import { useToast } from './hooks/useToast'
-import { CHECKOUT_URL, openCheckout } from './lib/billing'
+import { CHECKOUT_URL, PLAN_PRICE_BRL, openCheckout } from './lib/billing'
+import { trackPixelEvent } from './lib/facebookPixel'
 import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
 import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE } from './lib/domain'
 import { ensureServiceCompatibility } from './lib/serviceCompatibility'
@@ -618,6 +619,8 @@ const AppMain = ({ session, onLogout }) => {
     if (!checkoutStatus) return
 
     if (checkoutStatus === 'success') {
+      // O checkout tem 7 dias grátis: voltar com sucesso = início do teste (a cobrança vem depois)
+      trackPixelEvent('StartTrial', { currency: 'BRL', value: PLAN_PRICE_BRL, predicted_ltv: PLAN_PRICE_BRL })
       addToast('Pagamento confirmado. Atualizando seu acesso...', 'success')
       ;(async () => {
         for (const delay of [0, 1500, 3500]) {
