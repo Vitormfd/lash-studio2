@@ -68,7 +68,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          if (res.ok) {
+          // Só o app (SPA) vira /index.html no cache; páginas estáticas como /privacidade.html não.
+          if (res.ok && !/\.html$/.test(url.pathname)) {
             const copy = res.clone();
             caches.open(CACHE_NAME).then((c) => c.put('/index.html', copy));
           }
