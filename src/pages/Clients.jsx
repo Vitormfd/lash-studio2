@@ -386,6 +386,7 @@ const RankingList = ({ ranking, period, onPeriodChange, appointmentsLabel, appoi
 )
 
 const Clients = ({
+  initialView = 'all',
   clients,
   setClients,
   appointments,
@@ -422,7 +423,7 @@ const Clients = ({
     }
   }
 
-  const [view, setView] = useState('all')
+  const [view, setView] = useState(initialView)
   const [rankingPeriod, setRankingPeriod] = useState('all')
   const [maintenanceFilter, setMaintenanceFilter] = useState('active')
   const [maintenanceSort, setMaintenanceSort] = useState('proximity')

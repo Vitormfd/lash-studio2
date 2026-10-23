@@ -28,6 +28,7 @@ import AuthScreen from './pages/AuthScreen'
 import Dashboard from './pages/Dashboard'
 import Agenda from './pages/Agenda'
 import Clients from './pages/Clients'
+import { getDefaultMaintenanceDays } from './lib/clientInsights'
 import Services from './pages/Services'
 import Inventory from './pages/Inventory'
 import Finance from './pages/Finance'
@@ -82,7 +83,7 @@ const BARBER_STARTER_SERVICES = [
   { name: 'Pigmentação', price: 40, color: '#3A3A3A', durationMinutes: 30 },
 ]
 
-const WHATS_NEW_ID = 'whatsapp-lembrete-automatico'
+const WHATS_NEW_ID = 'aba-manutencao-periodo-cliente'
 
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
@@ -179,6 +180,7 @@ const AppMain = ({ session, onLogout }) => {
   const [isIosDevice, setIsIosDevice] = useState(false)
   const [pwaGateChecked, setPwaGateChecked] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const [clientsInitialView, setClientsInitialView] = useState('all')
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
   const [accessProfileLoaded, setAccessProfileLoaded] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
@@ -372,6 +374,11 @@ const AppMain = ({ session, onLogout }) => {
     if (seen) return
     setWhatsNewOpen(true)
   }, [pwaGateChecked, pwaOnboardingOpen, userId])
+
+  // O atalho do popup abre Clientes na aba Manutenção só uma vez
+  useEffect(() => {
+    if (page !== 'clients' && clientsInitialView !== 'all') setClientsInitialView('all')
+  }, [page, clientsInitialView])
 
   const dismissWhatsNew = useCallback(() => {
     try {
@@ -1196,6 +1203,7 @@ const AppMain = ({ session, onLogout }) => {
           )}
           {page === 'clients' && (
             <Clients
+              initialView={clientsInitialView}
               clients={clients}
               setClients={setClientsCompat}
               appointments={appointments}
@@ -1346,50 +1354,43 @@ const AppMain = ({ session, onLogout }) => {
         </div>
       </Modal>
 
-      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidade: lembrete automático">
+      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidade: aba Manutenção">
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14, marginBottom: 18 }}>
-          <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: '#25D366', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="whatsapp" size={18} color="#fff" />
+          <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="repeat" size={18} color="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Lembrete pelo WhatsApp, sozinho</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Saiba quem está na hora de voltar</p>
             <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
-              Conecte o WhatsApp do estúdio e o app avisa {isBarber ? 'seus clientes' : 'suas clientes'} antes de cada atendimento, sem você mandar mensagem por mensagem. Menos faltas e esquecimentos.
+              Em <b>Clientes → Manutenção</b> você vê quando cada cliente deve voltar e chama pelo WhatsApp com um toque.
             </p>
           </div>
         </div>
 
         <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          Como conectar
+          O que tem de novo
         </p>
         <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {[
             {
-              title: 'Abra Configurações',
-              body: <>Role até o cartão <b>Lembrete automático no WhatsApp</b>.</>,
+              icon: 'users',
+              title: `${isBarber ? 'Clientes ativos' : 'Clientes ativas'} (60 dias)`,
+              body: <>Filtre só quem fez {isBarber ? 'corte' : 'atendimento'} nos últimos 60 dias, sem misturar com quem sumiu.</>,
             },
             {
-              title: 'Conecte o WhatsApp do estúdio',
-              body: (
-                <>
-                  <b>No computador:</b> toque em Conectar WhatsApp e leia o QR Code com o celular (WhatsApp → Aparelhos conectados → Conectar um aparelho).
-                  <br />
-                  <b>No próprio celular:</b> digite o número do estúdio, toque em Gerar código e, no WhatsApp, escolha <b>Conectar com número de telefone</b> e digite o código.
-                </>
-              ),
+              icon: 'clock',
+              title: 'Mais próximas da manutenção',
+              body: <>A lista começa por quem está atrasada ou vencendo. Quem já tem horário marcado vai para o fim.</>,
             },
             {
-              title: 'Ligue os lembretes',
-              body: <>Ative <b>Enviar lembretes automaticamente</b> e escolha quando enviar: de 1 hora até 2 dias antes.</>,
+              icon: 'calendar',
+              title: 'Período de cada cliente',
+              body: <>O padrão é <b>{getDefaultMaintenanceDays(professionalType)} dias</b>. Tem cliente que volta com 15, 20 ou 25? Toque em <b>Alterar</b> no cartão dela e ajuste.</>,
             },
-            {
-              title: 'Teste e personalize',
-              body: <>Toque em <b>Testar</b> para receber um exemplo. A mensagem do lembrete fica no próprio cartão e você pode editar quando quiser.</>,
-            },
-          ].map((item, i) => (
+          ].map((item) => (
             <li key={item.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <span style={{ width: 24, height: 24, minWidth: 24, borderRadius: 999, background: 'var(--rose-deep)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {i + 1}
+              <span style={{ width: 28, height: 28, minWidth: 28, borderRadius: 999, background: 'var(--off-white)', border: '1px solid var(--rose-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name={item.icon} size={14} color="var(--rose-deep)" />
               </span>
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{item.title}</p>
@@ -1403,15 +1404,13 @@ const AppMain = ({ session, onLogout }) => {
           <button
             type="button"
             onClick={() => {
-              setPage('settings')
+              setClientsInitialView('maintenance')
+              setPage('clients')
               dismissWhatsNew()
-              setTimeout(() => {
-                document.getElementById('whatsapp-auto-reminder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }, 350)
             }}
             style={{ background: 'var(--rose-deep)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            Conectar agora
+            Ver manutenções
           </button>
           <button
             type="button"
