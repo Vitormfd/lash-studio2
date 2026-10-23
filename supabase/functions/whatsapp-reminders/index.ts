@@ -386,7 +386,7 @@ const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
 }
 
 // ─── Cron: lembrete de manutenção ────────────────────────────────────────────
-// Mesma regra de src/lib/clientInsights.js (getMaintenanceAlerts) — mantenha as duas iguais.
+// Mesma regra de src/lib/clientInsights.js (getMaintenanceOverview + isMaintenanceDue) — mantenha as duas iguais.
 
 type MaintenanceConfigRow = {
   user_id: string
@@ -477,6 +477,19 @@ const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResu
     }
 
     const fallback = DEFAULT_MAINTENANCE_DAYS[professionalType] || 21
+    // Período próprio da cliente; sem a coluna (client_maintenance_interval.sql) todas ficam no padrão.
+    const { data: intervalRows } = await sb
+      .from('clients')
+      .select('id,maintenance_interval_days')
+      .eq('user_id', cfg.user_id)
+      .not('maintenance_interval_days', 'is', null)
+    const customIntervals = new Map<string, number>()
+    for (const r of (intervalRows || []) as { id: string; maintenance_interval_days: number | null }[]) {
+      const n = Number(r.maintenance_interval_days)
+      if (Number.isFinite(n) && n > 0) {
+        customIntervals.set(r.id, Math.min(MAINTENANCE_MAX_INTERVAL, Math.max(MAINTENANCE_MIN_INTERVAL, Math.round(n))))
+      }
+    }
     const doneByClient = new Map<string, AppointmentRow[]>()
     const hasFuture = new Set<string>()
     for (const a of (appts || []) as AppointmentRow[]) {
@@ -493,18 +506,7 @@ const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResu
       if (hasFuture.has(clientId)) continue
       done.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
 
-      let interval = fallback
-      if (done.length >= 2) {
-        const gaps: number[] = []
-        for (let i = 1; i < done.length; i += 1) {
-          const gap = daysBetween(done[i - 1].date, done[i].date)
-          if (gap > 0) gaps.push(gap)
-        }
-        if (gaps.length) {
-          const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length
-          interval = Math.min(MAINTENANCE_MAX_INTERVAL, Math.max(MAINTENANCE_MIN_INTERVAL, Math.round(avg)))
-        }
-      }
+      const interval = customIntervals.get(clientId) || fallback
 
       const last = done[done.length - 1]
       const daysSinceLast = daysBetween(last.date, today)

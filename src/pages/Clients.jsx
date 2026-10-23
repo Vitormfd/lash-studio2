@@ -12,12 +12,22 @@ import {
   addRecurringInterval,
 } from '../lib/recurringClients'
 import {
-  getMaintenanceAlerts,
+  getMaintenanceOverview,
+  isMaintenanceDue,
+  isMaintenanceActive,
+  sortByMaintenanceProximity,
   getClientRanking,
+  getDefaultMaintenanceDays,
+  getCustomMaintenanceDays,
   buildMaintenanceWhatsappUrl,
   wasMaintenanceReminderSent,
   supportsMaintenanceAutoReminder,
   RANKING_PERIOD_OPTIONS,
+  MAINTENANCE_ACTIVE_DAYS,
+  MAINTENANCE_HEADS_UP_DAYS,
+  MAINTENANCE_INTERVAL_PRESETS,
+  MAINTENANCE_MIN_INTERVAL,
+  MAINTENANCE_MAX_INTERVAL,
 } from '../lib/clientInsights'
 
 const normPhone = (v) => (v || '').toString().replace(/\D/g, '')
@@ -170,13 +180,37 @@ const tabStyle = (active) => ({
 })
 
 const dueLabel = (daysUntilDue) => {
+  if (daysUntilDue > MAINTENANCE_HEADS_UP_DAYS) return { text: `Vence em ${daysUntilDue} dias`, color: 'var(--text-mid)', bg: 'var(--off-white)' }
   if (daysUntilDue > 0) return { text: `Vence em ${daysUntilDue} dia${daysUntilDue > 1 ? 's' : ''}`, color: '#B7791F', bg: 'rgba(183,121,31,0.1)' }
   if (daysUntilDue === 0) return { text: 'Vence hoje', color: '#C2410C', bg: 'rgba(194,65,12,0.1)' }
   const late = -daysUntilDue
   return { text: `Atrasada há ${late} dia${late > 1 ? 's' : ''}`, color: '#C5515F', bg: 'rgba(197,81,95,0.1)' }
 }
 
-const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedule, config, onOpenSettings, autoAvailable }) => {
+/** Texto do campo de período: vazio = padrão, senão número limitado ao intervalo aceito */
+const parseIntervalInput = (value) => {
+  const raw = String(value ?? '').trim()
+  const n = Number(raw)
+  if (!raw || !Number.isFinite(n) || n <= 0) return null
+  return Math.min(MAINTENANCE_MAX_INTERVAL, Math.max(MAINTENANCE_MIN_INTERVAL, Math.round(n)))
+}
+
+const MAINTENANCE_SORT_OPTIONS = [
+  { value: 'proximity', label: 'Mais próximas da manutenção' },
+  { value: 'recent', label: 'Visita mais recente' },
+  { value: 'name', label: 'Nome (A–Z)' },
+]
+
+const sortMaintenanceRows = (rows, sort) => {
+  if (sort === 'recent') return [...rows].sort((a, b) => a.daysSinceLast - b.daysSinceLast)
+  if (sort === 'name') return [...rows].sort((a, b) => (a.client.name || '').localeCompare(b.client.name || '', 'pt-BR'))
+  return sortByMaintenanceProximity(rows)
+}
+
+const MaintenanceList = ({
+  rows, counts, filter, onFilterChange, sort, onSortChange, defaultDays,
+  services, appointmentLabelSingular, onSchedule, onEditInterval, config, onOpenSettings, autoAvailable,
+}) => {
   const autoOn = !!config?.whatsappMaintenanceEnabled
   const autoBanner = autoAvailable && (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: autoOn ? 'rgba(63,143,90,0.08)' : 'var(--off-white)', border: `1px solid ${autoOn ? 'rgba(63,143,90,0.3)' : 'var(--rose-light)'}`, borderRadius: 12, padding: '10px 12px', marginBottom: 10 }}>
@@ -193,28 +227,55 @@ const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedul
     </div>
   )
 
-  if (alerts.length === 0) {
-    return (
-      <>
-      {autoBanner}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 14, padding: 20, textAlign: 'center' }}>
-        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Nenhuma manutenção pendente 🎉</p>
-        <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>
-          Clientes aparecem aqui quando a manutenção vence (ou está para vencer) e não há horário marcado.
-        </p>
-      </div>
-      </>
-    )
-  }
+  const filters = [
+    { value: 'active', label: `Ativas · ${MAINTENANCE_ACTIVE_DAYS} dias`, count: counts.active },
+    { value: 'due', label: 'Vencendo', count: counts.due },
+    { value: 'all', label: 'Todas', count: counts.all },
+  ]
+  const emptyText = {
+    active: `Nenhuma cliente com ${appointmentLabelSingular} concluído nos últimos ${MAINTENANCE_ACTIVE_DAYS} dias.`,
+    due: 'Clientes aparecem aqui quando a manutenção vence (ou está para vencer) e não há horário marcado.',
+    all: `Nenhuma cliente com ${appointmentLabelSingular} concluído ainda.`,
+  }[filter]
 
   return (
     <>
     {autoBanner}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {filters.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => onFilterChange(f.value)}
+            className="lash-btn-press"
+            style={{ ...tabStyle(filter === f.value), padding: '5px 11px', fontSize: 12 }}
+          >
+            {f.label} ({f.count})
+          </button>
+        ))}
+      </div>
+      <Sel value={sort} onChange={(e) => onSortChange(e.target.value)} style={{ ...inputStyle, width: 'auto' }} aria-label="Ordenar">
+        {MAINTENANCE_SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </Sel>
+    </div>
+    <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 10 }}>
+      Manutenção padrão a cada {defaultDays} dias. Use “Alterar” para definir o período de cada cliente.
+    </p>
+    {rows.length === 0 ? (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 14, padding: 20, textAlign: 'center' }}>
+        {filter === 'due' && <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Nenhuma manutenção pendente 🎉</p>}
+        <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>{emptyText}</p>
+      </div>
+    ) : (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-      {alerts.map((m) => {
-        const due = dueLabel(m.daysUntilDue)
+      {rows.map((m) => {
+        const booked = m.nextAppointment
+        const due = booked
+          ? { text: `Agendada ${formatShortDate(booked.date)}`, color: '#3F8F5A', bg: 'rgba(63,143,90,0.1)' }
+          : dueLabel(m.daysUntilDue)
         const serviceName = services.find((s) => s.id === m.lastAppointment.serviceId)?.name || ''
-        const waUrl = buildMaintenanceWhatsappUrl(m.client, {
+        const waUrl = booked ? '' : buildMaintenanceWhatsappUrl(m.client, {
           template: config?.whatsappMaintenanceTemplate,
           service: serviceName,
           days: m.daysSinceLast,
@@ -223,7 +284,7 @@ const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedul
         return (
           <div key={m.client.id} style={{ background: 'var(--surface)', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--rose-light)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{m.client.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{m.client.phone}</div>
               </div>
@@ -234,9 +295,21 @@ const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedul
             <div style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.45, marginBottom: 10 }}>
               Último {appointmentLabelSingular}: {formatShortDate(m.lastAppointment.date)}{serviceName ? ` · ${serviceName}` : ''} (há {m.daysSinceLast} dias)
               <br />
-              <span style={{ color: 'var(--text-light)' }}>
-                Retorno a cada ~{m.interval} dias {m.basedOnHistory ? '(média dela)' : '(padrão)'}
-              </span>
+              Próxima manutenção: <strong style={{ color: 'var(--text)' }}>{formatShortDate(m.dueDate)}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                <span style={{ color: 'var(--text-light)' }}>
+                  A cada {m.interval} dias {m.isCustomInterval ? '(desta cliente)' : '(padrão)'}
+                </span>
+                {onEditInterval && (
+                  <button
+                    type="button"
+                    onClick={() => onEditInterval(m)}
+                    style={{ background: 'none', border: 'none', padding: 0, color: 'var(--rose-dark)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Alterar
+                  </button>
+                )}
+              </div>
               {autoSent && (
                 <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: '#3F8F5A' }}>
                   ✓ Lembrete automático enviado
@@ -244,22 +317,25 @@ const MaintenanceList = ({ alerts, services, appointmentLabelSingular, onSchedul
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {waUrl && (
-                <Btn variant="ghost" sm onClick={() => window.open(waUrl, '_blank', 'noopener,noreferrer')}>
-                  <Icon name="whatsapp" size={12} /> Chamar
-                </Btn>
-              )}
-              {onSchedule && (
-                <Btn sm onClick={() => onSchedule(m.client.id)}>
-                  <Icon name="calendar" size={12} color="#fff" /> Agendar
-                </Btn>
-              )}
-            </div>
+            {!booked && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {waUrl && (
+                  <Btn variant="ghost" sm onClick={() => window.open(waUrl, '_blank', 'noopener,noreferrer')}>
+                    <Icon name="whatsapp" size={12} /> Chamar
+                  </Btn>
+                )}
+                {onSchedule && (
+                  <Btn sm onClick={() => onSchedule(m.client.id)}>
+                    <Icon name="calendar" size={12} color="#fff" /> Agendar
+                  </Btn>
+                )}
+              </div>
+            )}
           </div>
         )
       })}
     </div>
+    )}
     </>
   )
 }
@@ -330,7 +406,7 @@ const Clients = ({
   const [modal, setModal] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
   const emptyClientForm = {
-    name: '', phone: '', notes: '',
+    name: '', phone: '', notes: '', maintenanceIntervalDays: '',
     isFixed: false, fixedFrequency: DEFAULT_RECURRING_FREQUENCY, fixedWeekday: 1, fixedTime: '09:00',
   }
   const [form, setForm] = useState(emptyClientForm)
@@ -348,10 +424,20 @@ const Clients = ({
 
   const [view, setView] = useState('all')
   const [rankingPeriod, setRankingPeriod] = useState('all')
-  const maintenanceAlerts = useMemo(
-    () => getMaintenanceAlerts(clients, appointments, professionalType),
+  const [maintenanceFilter, setMaintenanceFilter] = useState('active')
+  const [maintenanceSort, setMaintenanceSort] = useState('proximity')
+  const [intervalEdit, setIntervalEdit] = useState(null)
+  const [intervalDraft, setIntervalDraft] = useState('')
+  const defaultMaintenanceDays = getDefaultMaintenanceDays(professionalType)
+  const maintenanceOverview = useMemo(
+    () => getMaintenanceOverview(clients, appointments, professionalType),
     [clients, appointments, professionalType],
   )
+  const maintenanceCounts = useMemo(() => ({
+    active: maintenanceOverview.filter(isMaintenanceActive).length,
+    due: maintenanceOverview.filter(isMaintenanceDue).length,
+    all: maintenanceOverview.length,
+  }), [maintenanceOverview])
   const ranking = useMemo(
     () => (view === 'ranking' ? getClientRanking(clients, appointments, rankingPeriod) : []),
     [clients, appointments, rankingPeriod, view],
@@ -373,14 +459,15 @@ const Clients = ({
       return
     }
     if (!form.name) return
+    const data = { ...form, maintenanceIntervalDays: parseIntervalInput(form.maintenanceIntervalDays) }
     if (modal === 'new') {
       const newId = uid()
-      setClients([...clients, { ...form, id: newId, createdAt: new Date().toISOString() }])
+      setClients([...clients, { ...data, id: newId, createdAt: new Date().toISOString() }])
       addToast('Cliente salvo com sucesso!', 'success')
       setModal(null)
       if (andSchedule && onScheduleAfterCreate) onScheduleAfterCreate(newId)
     } else {
-      setClients(clients.map((c) => (c.id === modal.id ? { ...c, ...form } : c)))
+      setClients(clients.map((c) => (c.id === modal.id ? { ...c, ...data } : c)))
       addToast('Cliente salvo com sucesso!', 'success')
       setModal(null)
     }
@@ -397,6 +484,7 @@ const Clients = ({
       name: c.name,
       phone: c.phone,
       notes: c.notes,
+      maintenanceIntervalDays: getCustomMaintenanceDays(c) ? String(getCustomMaintenanceDays(c)) : '',
       isFixed: !!c.isFixed,
       fixedFrequency: c.fixedFrequency || DEFAULT_RECURRING_FREQUENCY,
       fixedWeekday: c.fixedWeekday != null ? c.fixedWeekday : 1,
@@ -412,6 +500,23 @@ const Clients = ({
     setForm(emptyClientForm)
     setModal('new')
   }
+  const openIntervalEdit = (row) => {
+    if (!canUserEdit) {
+      onBlockedAction?.('Desbloqueie para editar clientes.')
+      return
+    }
+    setIntervalDraft(row.isCustomInterval ? String(row.interval) : '')
+    setIntervalEdit(row)
+  }
+  const saveInterval = (value) => {
+    if (!intervalEdit) return
+    const days = parseIntervalInput(value)
+    const id = intervalEdit.client.id
+    setClients(clients.map((c) => (c.id === id ? { ...c, maintenanceIntervalDays: days } : c)))
+    addToast(days ? `Manutenção a cada ${days} dias.` : `Voltou para o padrão de ${defaultMaintenanceDays} dias.`, 'success')
+    setIntervalEdit(null)
+  }
+
   const getApptCount = (id) => appointments.filter((a) => a.clientId === id && a.status !== 'cancelled').length
 
   const getClientHistory = (clientId) =>
@@ -583,7 +688,7 @@ const Clients = ({
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {[
           { value: 'all', label: 'Todas' },
-          { value: 'maintenance', label: `Manutenção${maintenanceAlerts.length ? ` (${maintenanceAlerts.length})` : ''}` },
+          { value: 'maintenance', label: `Manutenção${maintenanceCounts.due ? ` (${maintenanceCounts.due})` : ''}` },
           { value: 'ranking', label: 'Ranking' },
         ].map((t) => (
           <button
@@ -600,7 +705,21 @@ const Clients = ({
 
       {view === 'maintenance' && (
         <MaintenanceList
-          alerts={maintenanceAlerts.filter((m) => matchesSearch(m.client))}
+          rows={sortMaintenanceRows(
+            maintenanceOverview.filter((m) => {
+              if (maintenanceFilter === 'active' && !isMaintenanceActive(m)) return false
+              if (maintenanceFilter === 'due' && !isMaintenanceDue(m)) return false
+              return matchesSearch(m.client)
+            }),
+            maintenanceSort,
+          )}
+          counts={maintenanceCounts}
+          filter={maintenanceFilter}
+          onFilterChange={setMaintenanceFilter}
+          sort={maintenanceSort}
+          onSortChange={setMaintenanceSort}
+          defaultDays={defaultMaintenanceDays}
+          onEditInterval={openIntervalEdit}
           services={services}
           appointmentLabelSingular={appointmentLabelSingular}
           onSchedule={onScheduleAfterCreate}
@@ -750,6 +869,17 @@ const Clients = ({
         <Field label="Observações">
           <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Alergias, preferências, etc." rows={3} />
         </Field>
+        <Field label="Manutenção a cada (dias)">
+          <Inp
+            type="number"
+            inputMode="numeric"
+            min={MAINTENANCE_MIN_INTERVAL}
+            max={MAINTENANCE_MAX_INTERVAL}
+            value={form.maintenanceIntervalDays}
+            onChange={(e) => setForm((f) => ({ ...f, maintenanceIntervalDays: e.target.value }))}
+            placeholder={`Padrão: ${defaultMaintenanceDays} dias`}
+          />
+        </Field>
         {isBarber && (
           <>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: '4px 0 10px' }}>
@@ -802,6 +932,49 @@ const Clients = ({
             <Btn onClick={() => save(false)} disabled={!form.name}><Icon name="check" size={14} color="#fff" /> Salvar</Btn>
           )}
         </div>
+      </Modal>
+
+      <Modal open={!!intervalEdit} onClose={() => setIntervalEdit(null)} title={intervalEdit ? `Manutenção — ${intervalEdit.client.name}` : ''}>
+        {intervalEdit && (
+          <>
+            <p style={{ fontSize: 13, color: 'var(--text-mid)', marginBottom: 12, lineHeight: 1.45 }}>
+              De quantos em quantos dias essa cliente faz a manutenção? O padrão é {defaultMaintenanceDays} dias.
+              {intervalEdit.historyAverage ? ` Pelo histórico, ela volta em média a cada ${intervalEdit.historyAverage} dias.` : ''}
+            </p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {MAINTENANCE_INTERVAL_PRESETS.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setIntervalDraft(String(d))}
+                  className="lash-btn-press"
+                  style={tabStyle(intervalDraft === String(d))}
+                >
+                  {d} dias
+                </button>
+              ))}
+            </div>
+            <Field label="Outro período (dias)">
+              <Inp
+                type="number"
+                inputMode="numeric"
+                min={MAINTENANCE_MIN_INTERVAL}
+                max={MAINTENANCE_MAX_INTERVAL}
+                value={intervalDraft}
+                onChange={(e) => setIntervalDraft(e.target.value)}
+                placeholder={`Padrão: ${defaultMaintenanceDays} dias`}
+              />
+            </Field>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 4 }}>
+              {intervalEdit.isCustomInterval && (
+                <Btn variant="ghost" onClick={() => saveInterval('')}>Usar padrão ({defaultMaintenanceDays} dias)</Btn>
+              )}
+              <Btn onClick={() => saveInterval(intervalDraft)} disabled={!parseIntervalInput(intervalDraft)}>
+                <Icon name="check" size={14} color="#fff" /> Salvar
+              </Btn>
+            </div>
+          </>
+        )}
       </Modal>
 
       <Modal open={!!historyClient} onClose={() => setHistoryClient(null)} title={historyClient ? `Histórico — ${historyClient.name}` : ''}>

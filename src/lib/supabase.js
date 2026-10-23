@@ -136,6 +136,9 @@ const normalizeClient = (c) => ({
   fixedTime: (c.fixed_time || c.fixedTime || '').toString().slice(0, 5) || null,
   maintenanceReminderFor: c.maintenance_reminder_for || c.maintenanceReminderFor || null,
   maintenanceReminderSentAt: c.maintenance_reminder_sent_at || c.maintenanceReminderSentAt || null,
+  maintenanceIntervalDays: (c.maintenance_interval_days ?? c.maintenanceIntervalDays) != null
+    ? Number(c.maintenance_interval_days ?? c.maintenanceIntervalDays)
+    : null,
 })
 
 const toAppPhone = (value) => {
@@ -349,8 +352,20 @@ export const DB = {
           ? sb.from('clients').insert(r).select().single()
           : sb.from('clients').update(r).eq('id', client.id).eq('user_id', userId).select().single()
 
-      let row = rowWithFixed
+      const intervalDays = Number(client.maintenanceIntervalDays)
+      let row = {
+        ...rowWithFixed,
+        maintenance_interval_days: Number.isFinite(intervalDays) && intervalDays > 0 ? Math.round(intervalDays) : null,
+      }
       let { data, error } = await runClient(row)
+
+      // Fallback for accounts whose DB migration for the per-client maintenance interval hasn't run yet.
+      if (String(error?.message || '').includes('maintenance_interval_days')) {
+        row = rowWithFixed
+        const retry = await runClient(row)
+        data = retry.data
+        error = retry.error
+      }
 
       // Fallback for accounts whose DB migration for "cliente fixo" hasn't run yet.
       const isMissingFixedColumn = String(error?.message || '').includes('fixed') || String(error?.message || '').includes('is_fixed')
