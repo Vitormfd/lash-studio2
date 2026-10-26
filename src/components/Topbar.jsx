@@ -12,6 +12,7 @@ const Topbar = ({
   offline,
   isDemo,
   canUserEdit,
+  trialDays,
   onUpgrade,
   operator,
   onSwitchOperator,
@@ -36,6 +37,16 @@ const Topbar = ({
         <span style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74' }}>
           Teste gratis
         </span>
+      )}
+      {!isDemo && trialDays != null && (
+        <button
+          type="button"
+          onClick={() => onUpgrade?.()}
+          title="Assinar o Easy Studio"
+          style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          Teste grátis · {trialDays <= 1 ? 'último dia' : `${trialDays} dias`}
+        </button>
       )}
       {offline && (
         <span style={{ fontSize: 11, fontWeight: 600, color: '#92400E', background: '#FEF3C7', padding: '4px 10px', borderRadius: 20, border: '1px solid #FCD34D' }}>

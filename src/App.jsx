@@ -9,7 +9,7 @@ import { applyTheme, getDefaultThemeId, getSavedThemeId, hasSavedTheme, saveAndA
 import { useToast } from './hooks/useToast'
 import { CHECKOUT_URL, PLAN_PRICE_BRL, openCheckout } from './lib/billing'
 import { trackPixelEvent } from './lib/facebookPixel'
-import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, fetchUserAccessProfile } from './lib/access'
+import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, effectiveAccessLevel, fetchUserAccessProfile, isTrialExpired, trialDaysLeft } from './lib/access'
 import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE } from './lib/domain'
 import { ensureServiceCompatibility } from './lib/serviceCompatibility'
 import { addRecurringInterval, FIXED_CLIENT_FUTURE_OCCURRENCES } from './lib/recurringClients'
@@ -200,7 +200,9 @@ const AppMain = ({ session, onLogout }) => {
   const { toasts, addToast, removeToast } = useToast()
   const [notifGate, setNotifGate] = useState(0)
 
-  const canUserEdit = canUserEditByLevel(accessProfile.accessLevel)
+  const canUserEdit = canUserEditByLevel(effectiveAccessLevel(accessProfile))
+  const trialDays = canUserEdit ? trialDaysLeft(accessProfile) : null
+  const trialExpired = isTrialExpired(accessProfile)
 
   const openPaywall = useCallback((hint = '') => {
     setPaywallHint(hint)
@@ -590,7 +592,7 @@ const AppMain = ({ session, onLogout }) => {
       fetchUserAccessProfile(userId, isDemo)
         .then((profile) => {
           setAccessProfile(profile)
-          if (canUserEditByLevel(profile.accessLevel)) {
+          if (canUserEditByLevel(effectiveAccessLevel(profile))) {
             setPaywallOpen(false)
           }
         })
@@ -626,8 +628,8 @@ const AppMain = ({ session, onLogout }) => {
     if (!checkoutStatus) return
 
     if (checkoutStatus === 'success') {
-      // O checkout tem 7 dias grátis: voltar com sucesso = início do teste (a cobrança vem depois)
-      trackPixelEvent('StartTrial', { currency: 'BRL', value: PLAN_PRICE_BRL, predicted_ltv: PLAN_PRICE_BRL })
+      // O teste grátis acontece no app (sem cartão); voltar do checkout com sucesso = assinatura paga
+      trackPixelEvent('Subscribe', { currency: 'BRL', value: PLAN_PRICE_BRL, predicted_ltv: PLAN_PRICE_BRL * 6 })
       addToast('Pagamento confirmado. Atualizando seu acesso...', 'success')
       ;(async () => {
         for (const delay of [0, 1500, 3500]) {
@@ -635,7 +637,7 @@ const AppMain = ({ session, onLogout }) => {
           await AUTH.getSession().catch(() => null)
           const profile = await fetchUserAccessProfile(userId, isDemo)
           setAccessProfile(profile)
-          if (canUserEditByLevel(profile.accessLevel)) break
+          if (canUserEditByLevel(effectiveAccessLevel(profile))) break
         }
       })().catch(() => {})
     } else if (checkoutStatus === 'canceled') {
@@ -1154,6 +1156,7 @@ const AppMain = ({ session, onLogout }) => {
           offline={!online}
           isDemo={!canUserEdit}
           canUserEdit={canUserEdit}
+          trialDays={trialDays}
           onUpgrade={() => openPaywall('Organize seu negócio sem limitações')}
           operator={activeOperator}
           onSwitchOperator={requestOperatorSwitch}
@@ -1428,6 +1431,8 @@ const AppMain = ({ session, onLogout }) => {
         onClose={() => setPaywallOpen(false)}
         subtitle={paywallHint}
         onUpgrade={handleUpgrade}
+        trialDays={trialDays}
+        trialExpired={trialExpired}
       />
 
       {/* PWA update banner */}

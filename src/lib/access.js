@@ -5,7 +5,7 @@ import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
 const FALLBACK_KEY = (userId) => `u_${userId}_access_profile`
 
 export const normalizePlan = (value) => {
-  if (value === 'active' || value === 'canceled') return value
+  if (value === 'active' || value === 'canceled' || value === 'trial') return value
   return 'free'
 }
 
@@ -15,6 +15,28 @@ export const normalizeAccessLevel = (value) => {
 }
 
 export const canUserEdit = (accessLevel) => normalizeAccessLevel(accessLevel) === 'full'
+
+const isExpired = (expiresAt) => {
+  if (!expiresAt) return false
+  const t = new Date(expiresAt).getTime()
+  return Number.isFinite(t) && t <= Date.now()
+}
+
+/** Mesma regra de public.is_full_access(): acesso completo vencido vira modo demonstração. */
+export const effectiveAccessLevel = (profile) =>
+  normalizeAccessLevel(profile?.accessLevel) === 'full' && !isExpired(profile?.subscriptionExpiresAt) ? 'full' : 'demo'
+
+/** Dias restantes do teste grátis (arredonda para cima), ou null se não está em teste. */
+export const trialDaysLeft = (profile) => {
+  if (normalizePlan(profile?.plan) !== 'trial' || !profile?.subscriptionExpiresAt) return null
+  const ms = new Date(profile.subscriptionExpiresAt).getTime() - Date.now()
+  if (!Number.isFinite(ms)) return null
+  return Math.max(0, Math.ceil(ms / 86400000))
+}
+
+/** Teste grátis que já acabou (para a mensagem do paywall). */
+export const isTrialExpired = (profile) =>
+  normalizePlan(profile?.plan) === 'trial' && isExpired(profile?.subscriptionExpiresAt)
 
 export const defaultAccessProfile = {
   plan: 'free',

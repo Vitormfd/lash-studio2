@@ -1,7 +1,13 @@
 import { getClient, getSupabaseConfig, local, uid } from './supabase'
 import { toLocalYmd } from './dashboardStats'
 import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
-import { trackCompleteRegistration } from './facebookPixel'
+import { trackCompleteRegistration, trackPixelEvent } from './facebookPixel'
+
+// Toda conta nova começa com 7 dias grátis sem cartão (profiles.plan = 'trial')
+const trackSignup = () => {
+  trackCompleteRegistration()
+  trackPixelEvent('StartTrial', { currency: 'BRL', value: 0, predicted_ltv: 59.9 })
+}
 
 const uset = (userId, key, val) => local.set(`u_${userId}_${key}`, val)
 const DEMO_USER_ID = 'demo_user'
@@ -228,15 +234,15 @@ export const AUTH = {
       if (error) throw new Error(error.message)
       if (!data.session) {
         const signedIn = await AUTH.signIn(email, password)
-        trackCompleteRegistration()
+        trackSignup()
         return { ...signedIn, professionalType: normalizedType }
       }
       await syncStripeAccessByEmail(sb)
-      trackCompleteRegistration()
+      trackSignup()
       return { userId: data.user.id, name, email, professionalType: normalizedType }
     }
     const result = AUTH._localRegister(name, email, password, normalizedType)
-    trackCompleteRegistration()
+    trackSignup()
     return result
   },
 
