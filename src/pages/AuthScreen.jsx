@@ -3,6 +3,8 @@ import { AUTH } from '../lib/auth'
 import { local, getSupabaseConfig } from '../lib/supabase'
 import Icon from '../components/Icon'
 import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE, PROFESSIONAL_TYPE_OPTIONS } from '../lib/domain'
+import { maskPhoneBr, normalizePhoneDigits } from '../lib/phone'
+import { toWhatsappDigits } from '../lib/whatsappReminder'
 
 const AUTH_REMEMBER_KEY = 'lash_remember_login'
 
@@ -17,7 +19,7 @@ const AuthScreen = ({ onLogin }) => {
   const [mode, setMode] = useState(getInitialMode)
   const [form, setForm] = useState(() => {
     const s = mode === 'register' ? null : local.get(AUTH_REMEMBER_KEY)
-    return { name: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE }
+    return { name: '', whatsapp: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE }
   })
   const [rememberMe, setRememberMe] = useState(() => {
     const s = mode === 'register' ? null : local.get(AUTH_REMEMBER_KEY)
@@ -36,13 +38,13 @@ const AuthScreen = ({ onLogin }) => {
     setError('')
     setNotice('')
     if (m === 'register') {
-      setForm({ name: '', email: '', password: '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
+      setForm({ name: '', whatsapp: '', email: '', password: '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
       setRememberMe(false)
     } else if (m === 'forgot') {
       setForm((prev) => ({ ...prev, password: '', confirm: '' }))
     } else {
       const s = local.get(AUTH_REMEMBER_KEY)
-      setForm({ name: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
+      setForm({ name: '', whatsapp: '', email: s?.email || '', password: s?.password || '', confirm: '', professionalType: DEFAULT_PROFESSIONAL_TYPE })
       setRememberMe(!!(s && s.email))
     }
   }
@@ -55,6 +57,7 @@ const AuthScreen = ({ onLogin }) => {
     }
     if (mode === 'register') {
       if (!form.name) { setError('Preencha seu nome.'); return }
+      if (normalizePhoneDigits(form.whatsapp).length < 10) { setError('Informe seu WhatsApp com DDD.'); return }
       if (form.password.length < 6) { setError('Senha deve ter ao menos 6 caracteres.'); return }
       if (form.password !== form.confirm) { setError('As senhas não coincidem.'); return }
     }
@@ -69,7 +72,7 @@ const AuthScreen = ({ onLogin }) => {
 
       const session = mode === 'login'
         ? await AUTH.signIn(form.email, form.password)
-        : await AUTH.signUp(form.name, form.email, form.password, form.professionalType)
+        : await AUTH.signUp(form.name, form.email, form.password, form.professionalType, toWhatsappDigits(form.whatsapp))
       if (mode === 'login') {
         if (rememberMe) local.set(AUTH_REMEMBER_KEY, { email: form.email, password: form.password })
         else local.del(AUTH_REMEMBER_KEY)
@@ -126,6 +129,12 @@ const AuthScreen = ({ onLogin }) => {
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seu nome</label>
                 <input className="auth-input" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Juliana Silva" style={inputBase} />
+              </div>
+            )}
+            {mode === 'register' && (
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seu WhatsApp</label>
+                <input className="auth-input" type="tel" inputMode="numeric" autoComplete="tel-national" value={form.whatsapp} onChange={(e) => set('whatsapp', maskPhoneBr(e.target.value))} placeholder="(00) 00000-0000" style={inputBase} />
               </div>
             )}
             {mode === 'register' && (

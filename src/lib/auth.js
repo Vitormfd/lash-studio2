@@ -222,14 +222,14 @@ export const AUTH = {
     }
   },
 
-  async signUp(name, email, password, professionalType = DEFAULT_PROFESSIONAL_TYPE) {
+  async signUp(name, email, password, professionalType = DEFAULT_PROFESSIONAL_TYPE, whatsapp = '') {
     const normalizedType = normalizeProfessionalType(professionalType)
     const sb = getClient()
     if (sb) {
       const { data, error } = await sb.auth.signUp({
         email,
         password,
-        options: { data: { name, professional_type: normalizedType } },
+        options: { data: { name, professional_type: normalizedType, whatsapp } },
       })
       if (error) throw new Error(error.message)
       if (!data.session) {

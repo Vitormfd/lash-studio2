@@ -7,6 +7,7 @@ import { applyTheme } from '../lib/theme'
 import BookingCalendar from '../components/BookingCalendar'
 import Icon from '../components/Icon'
 import { buildBookingConfirmText, toWhatsappDigits } from '../lib/whatsappReminder'
+import { maskPhoneBr, normalizePhoneDigits } from '../lib/phone'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -16,16 +17,6 @@ const toTwo = (n) => String(n).padStart(2, '0')
 
 const formatCurrencyBr = (value) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-const normalizePhoneDigits = (value) => String(value || '').replace(/\D/g, '').slice(0, 11)
-
-const maskPhoneBr = (value) => {
-  const d = normalizePhoneDigits(value)
-  if (!d) return ''
-  if (d.length <= 2) return `(${d}`
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`
-  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`
-}
 
 const toIsoDateLabel = (ymd) => {
   if (!ymd) return ''
