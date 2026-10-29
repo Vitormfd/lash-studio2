@@ -2,6 +2,7 @@ import { StatCard } from '../components/UI'
 import { Btn } from '../components/UI'
 import Icon from '../components/Icon'
 import EmptyState from '../components/EmptyState'
+import FirstSteps from '../components/FirstSteps'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
 import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin, getAppointmentCost } from '../lib/utils'
 import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList, toLocalYmd } from '../lib/dashboardStats'
@@ -23,6 +24,7 @@ const Dashboard = ({
   canUserEdit,
   onUpgrade,
   onCopyBookingLink,
+  firstSteps,
 }) => {
   const now = new Date()
   const today = getTodayStr(now)
@@ -77,6 +79,17 @@ const Dashboard = ({
           {vibeLine}
         </p>
       </div>
+
+      {canUserEdit && firstSteps && (
+        <FirstSteps
+          {...firstSteps}
+          isBarber={isBarber}
+          hasClient={clients.length > 0}
+          hasAppointment={real.length > 0}
+          reminderOn={!!config.whatsappAutoEnabled}
+          onNewAppointment={onNewAppointment}
+        />
+      )}
 
       {!canUserEdit && (
         <div style={{ marginBottom: 14, border: '1px solid var(--rose-light)', background: 'linear-gradient(135deg, var(--rose-light) 0%, var(--surface) 100%)', borderRadius: 14, padding: 14 }}>

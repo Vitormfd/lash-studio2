@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Modal from '../components/Modal'
 import { Btn, Field, Inp, Sel, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
@@ -387,6 +387,7 @@ const RankingList = ({ ranking, period, onPeriodChange, appointmentsLabel, appoi
 
 const Clients = ({
   initialView = 'all',
+  autoOpenNew = false,
   clients,
   setClients,
   appointments,
@@ -501,6 +502,11 @@ const Clients = ({
     setForm(emptyClientForm)
     setModal('new')
   }
+  // Vindo do "Primeiros passos" do painel: já abre o cadastro da primeira cliente
+  useEffect(() => {
+    if (autoOpenNew) openNew()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const openIntervalEdit = (row) => {
     if (!canUserEdit) {
       onBlockedAction?.('Desbloqueie para editar clientes.')

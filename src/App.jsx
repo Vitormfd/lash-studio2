@@ -48,6 +48,7 @@ import {
   isOperatorSessionExpired,
   getAccountOwner,
   notificationsForOperator,
+  pickMemberColor,
 } from './lib/operator'
 import { getExistingPushSubscription } from './lib/pushClient'
 import { LASH_SIMULATOR_PAGE, LASH_SIMULATOR_TITLE, canUseLashSimulator } from './features/lashSimulator/access'
@@ -82,6 +83,33 @@ const BARBER_STARTER_SERVICES = [
   { name: 'Sobrancelha', price: 15, color: '#5F6B73', durationMinutes: 15 },
   { name: 'Pigmentação', price: 40, color: '#3A3A3A', durationMinutes: 30 },
 ]
+
+// Conta nova já começa com os serviços da área (preços sugeridos), para conseguir agendar na hora
+const STARTER_SERVICES_BY_TYPE = {
+  barbeiro: BARBER_STARTER_SERVICES,
+  lash: [
+    { name: 'Volume brasileiro', price: 160, color: '#C17B82', durationMinutes: 120 },
+    { name: 'Fio a fio', price: 130, color: '#9B8FB8', durationMinutes: 120 },
+    { name: 'Manutenção', price: 90, color: '#7BAF9A', durationMinutes: 60 },
+    { name: 'Lash lifting', price: 120, color: '#D89A3C', durationMinutes: 60 },
+  ],
+  nail: [
+    { name: 'Alongamento em gel', price: 170, color: '#C17B82', durationMinutes: 150 },
+    { name: 'Blindagem', price: 110, color: '#9B8FB8', durationMinutes: 90 },
+    { name: 'Manutenção', price: 95, color: '#7BAF9A', durationMinutes: 90 },
+    { name: 'Esmaltação em gel', price: 70, color: '#D89A3C', durationMinutes: 60 },
+  ],
+  sobrancelha: [
+    { name: 'Design de sobrancelha', price: 70, color: '#C17B82', durationMinutes: 45 },
+    { name: 'Henna', price: 55, color: '#9B8FB8', durationMinutes: 45 },
+    { name: 'Brow lamination', price: 130, color: '#7BAF9A', durationMinutes: 60 },
+  ],
+  estetica: [
+    { name: 'Limpeza de pele', price: 150, color: '#C17B82', durationMinutes: 90 },
+    { name: 'Hidratação facial', price: 120, color: '#9B8FB8', durationMinutes: 60 },
+    { name: 'Sessão de manutenção', price: 95, color: '#7BAF9A', durationMinutes: 60 },
+  ],
+}
 
 const WHATS_NEW_ID = 'aba-manutencao-periodo-cliente'
 
@@ -181,6 +209,7 @@ const AppMain = ({ session, onLogout }) => {
   const [pwaGateChecked, setPwaGateChecked] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [clientsInitialView, setClientsInitialView] = useState('all')
+  const [clientsAutoNew, setClientsAutoNew] = useState(false)
   const [accessProfile, setAccessProfile] = useState(defaultAccessProfile)
   const [accessProfileLoaded, setAccessProfileLoaded] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
@@ -336,8 +365,12 @@ const AppMain = ({ session, onLogout }) => {
     }
   }, [])
 
+  // Conta nova não recebe popups logo de cara: o convite para instalar espera o primeiro agendamento
+  const hasRealAppointment = appointments.some((a) => !a.blocked)
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
+    if (loading || !hasRealAppointment) return undefined
 
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
@@ -364,23 +397,30 @@ const AppMain = ({ session, onLogout }) => {
     return () => {
       window.removeEventListener('lash-pwa-install-ready', handleInstallReady)
     }
-  }, [userId])
+  }, [userId, loading, hasRealAppointment])
 
   useEffect(() => {
-    if (!pwaGateChecked || pwaOnboardingOpen) return
+    if (loading) return
     const storageKey = `lash-whats-new-seen:${WHATS_NEW_ID}:${userId}`
+    // Quem ainda não agendou nada não precisa de aviso de novidade
+    if (!hasRealAppointment) {
+      try { localStorage.setItem(storageKey, '1') } catch {}
+      return
+    }
+    if (!pwaGateChecked || pwaOnboardingOpen) return
     let seen = false
     try {
       seen = localStorage.getItem(storageKey) === '1'
     } catch {}
     if (seen) return
     setWhatsNewOpen(true)
-  }, [pwaGateChecked, pwaOnboardingOpen, userId])
+  }, [loading, hasRealAppointment, pwaGateChecked, pwaOnboardingOpen, userId])
 
   // O atalho do popup abre Clientes na aba Manutenção só uma vez
   useEffect(() => {
     if (page !== 'clients' && clientsInitialView !== 'all') setClientsInitialView('all')
-  }, [page, clientsInitialView])
+    if (page !== 'clients' && clientsAutoNew) setClientsAutoNew(false)
+  }, [page, clientsInitialView, clientsAutoNew])
 
   const dismissWhatsNew = useCallback(() => {
     try {
@@ -419,6 +459,7 @@ const AppMain = ({ session, onLogout }) => {
     addToast('Instalacao cancelada. Voce pode tentar novamente em Configuracoes.', 'warning')
   }, [addToast, dismissPwaOnboarding])
 
+  const ownerCreationTried = useRef(false)
   const reloadData = useCallback(async () => {
     setLoading(true)
     setLoadError(false)
@@ -439,21 +480,8 @@ const AppMain = ({ session, onLogout }) => {
         appointments: a,
         createId: uid,
       })
-      let nextServices = compatibility.services
-
-      if (isBarber && nextServices.length === 0) {
-        const created = []
-        for (const svc of BARBER_STARTER_SERVICES) {
-          try {
-            const saved = await DB.saveService(userId, { id: uid(), ...svc, _new: true })
-            created.push(saved)
-          } catch {}
-        }
-        if (created.length > 0) nextServices = created
-      }
-
       setClients(c)
-      setServices(nextServices)
+      setServices(compatibility.services)
       setAppointments(compatibility.appointments)
       setInventoryItems(invItems)
       setInventoryMovements(invMovs)
@@ -465,9 +493,29 @@ const AppMain = ({ session, onLogout }) => {
         const barberTheme = saveAndApplyTheme(userId, getDefaultThemeId(true))
         if (!isDemo) DB.saveConfig(userId, { ...cfg, themeId: barberTheme }).catch(() => {})
       }
-      setTeamMembers(members)
       setNotifications(notifRows)
-      resolveOperatorGate(members)
+      // Conta sem ninguém da equipe: cria a dona com o nome do cadastro, sem pedir PIN na primeira entrada
+      let owner = null
+      if (!members.some((m) => m.active !== false) && !ownerCreationTried.current) {
+        ownerCreationTried.current = true
+        try {
+          owner = await DB.saveTeamMember(userId, {
+            id: uid(),
+            name: (session?.name || '').trim() || 'Eu',
+            color: pickMemberColor(0),
+            pinHash: null,
+            active: true,
+            _new: true,
+          })
+        } catch {}
+      }
+      if (owner) {
+        setTeamMembers([owner])
+        handleOperatorSelected(owner)
+      } else {
+        setTeamMembers(members)
+        resolveOperatorGate(members)
+      }
 
       if (compatibility.createdService || compatibility.patchedAppointments.length > 0) {
         Promise.resolve().then(async () => {
@@ -487,11 +535,30 @@ const AppMain = ({ session, onLogout }) => {
     } finally {
       setLoading(false)
     }
-  }, [userId, addToast, isBarber, isDemo, resolveOperatorGate])
+  }, [userId, addToast, isBarber, isDemo, session?.name, resolveOperatorGate, handleOperatorSelected])
 
   useEffect(() => {
     reloadData()
   }, [reloadData])
+
+  // Serviços iniciais da área: espera o perfil real carregar (o padrão em memória é 'lash')
+  const starterServicesTried = useRef(false)
+  useEffect(() => {
+    if (loading || loadError || starterServicesTried.current) return
+    if (!isDemo && !accessProfileLoaded) return
+    if (services.length > 0 || !canUserEdit) return
+    starterServicesTried.current = true
+    const starter = STARTER_SERVICES_BY_TYPE[professionalType] || STARTER_SERVICES_BY_TYPE[DEFAULT_PROFESSIONAL_TYPE]
+    Promise.resolve().then(async () => {
+      const created = []
+      for (const svc of starter) {
+        try {
+          created.push(await DB.saveService(userId, { id: uid(), ...svc, _new: true }))
+        } catch {}
+      }
+      if (created.length > 0) setServices((prev) => (prev.length > 0 ? prev : created))
+    })
+  }, [loading, loadError, isDemo, accessProfileLoaded, services.length, canUserEdit, professionalType, userId])
 
   const refreshNotifications = useCallback(async () => {
     const rows = await DB.getNotifications(userId)
@@ -1180,6 +1247,17 @@ const AppMain = ({ session, onLogout }) => {
               canUserEdit={canUserEdit}
               onUpgrade={() => openPaywall('Desbloqueie para salvar clientes')}
               onCopyBookingLink={copyBookingLink}
+              firstSteps={isDemo ? null : {
+                userId,
+                onNewClient: () => { setClientsAutoNew(true); setPage('clients') },
+                onReminder: () => {
+                  setPage('settings')
+                  setTimeout(() => {
+                    document.getElementById('whatsapp-auto-reminder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }, 350)
+                },
+                onServices: () => setPage('services'),
+              }}
             />
           )}
           {page === 'agenda' && (
@@ -1207,6 +1285,7 @@ const AppMain = ({ session, onLogout }) => {
           {page === 'clients' && (
             <Clients
               initialView={clientsInitialView}
+              autoOpenNew={clientsAutoNew}
               clients={clients}
               setClients={setClientsCompat}
               appointments={appointments}
