@@ -2,10 +2,11 @@ import { useState } from 'react'
 import Modal from '../components/Modal'
 import { StatCard, Btn, Field, Inp, Sel, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
-import { MONTHS_PT, getAppointmentCost } from '../lib/utils'
+import { MONTHS_PT } from '../lib/utils'
 import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
 import { uid } from '../lib/supabase'
+import { summarizeMonth, revenueByService, shiftMonth, monthKey, paidAmount, scheduledAmount, isDoneAppointment } from '../lib/finance'
 
 const formatMoney = (n) => `R$ ${Number(n || 0).toFixed(2).replace('.', ',')}`
 
@@ -50,19 +51,17 @@ const Finance = ({
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm)
   const [savingExpense, setSavingExpense] = useState(false)
 
-  const target = new Date(); target.setMonth(target.getMonth() + monthOffset)
-  const monthStr = target.toISOString().slice(0, 7)
+  const target = shiftMonth(monthOffset)
+  const monthStr = monthKey(target)
   const monthLabel = `${MONTHS_PT[target.getMonth()]} ${target.getFullYear()}`
   const todayStr = toLocalYmd(new Date())
 
-  const real = appointments.filter((a) => !a.blocked && a.date.startsWith(monthStr) && a.status !== 'cancelled')
-  const revenue = real.reduce((s, a) => s + Number(a.value), 0)
-  const count = real.length
-  const cost = real.reduce((sum, a) => sum + getAppointmentCost(a, services, config.avgCost), 0)
-  const monthExpenses = cashExpenses.filter((e) => String(e.expenseDate || '').startsWith(monthStr))
-  const materialsOut = monthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
-  const profit = revenue - cost - materialsOut
-  const avg = count ? revenue / count : 0
+  const summary = summarizeMonth({ appointments, services, avgCost: config.avgCost, cashExpenses, month: monthStr })
+  const { revenue, expected, cost, materialsOut, profit, count } = summary
+  const monthExpenses = summary.expenses
+  const avg = summary.avgTicket
+  const byService = revenueByService(summary.done, services)
+  const real = appointments.filter((a) => !a.blocked && String(a.date || '').startsWith(monthStr) && a.status !== 'cancelled')
 
   const salaryPercentage = Math.min(100, Math.max(0, Number(salaryPct) || 0))
   const salaryAmount = profit > 0 ? profit * (salaryPercentage / 100) : 0
@@ -82,13 +81,13 @@ const Finance = ({
     .filter((e) => String(e.expenseDate || '') === todayStr)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
-  const totalPaidToday = paidToday.reduce((sum, a) => sum + Number(a.paymentValue != null ? a.paymentValue : a.value || 0), 0)
+  const totalPaidToday = paidToday.reduce((sum, a) => sum + paidAmount(a), 0)
   const totalOutToday = expensesToday.reduce((sum, e) => sum + Number(e.amount || 0), 0)
   const netToday = totalPaidToday - totalOutToday
 
   const paidByMethod = paidToday.reduce((acc, a) => {
     const key = a.paymentMethod || 'cash'
-    const value = Number(a.paymentValue != null ? a.paymentValue : a.value || 0)
+    const value = paidAmount(a)
     acc[key] = (acc[key] || 0) + value
     return acc
   }, {})
@@ -170,13 +169,19 @@ const Finance = ({
 
       {/* Summary cards */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-        <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" color="var(--rose-deep)" />
+        <StatCard label="Faturamento" value={formatMoney(revenue)} sub="concluídos, valor cobrado" icon="dollar" color="var(--rose-deep)" />
+        <StatCard label="Previsto" value={formatMoney(expected)} sub="pendentes e confirmados" icon="calendar" color="#6B8FD4" />
         <StatCard label="Custo estimado" value={`R$ ${cost.toFixed(2).replace('.', ',')}`} icon="settings" color="#D4915A" />
         <StatCard label="Gastos materiais" value={formatMoney(materialsOut)} icon="box" color="#C45A5A" />
         <StatCard label="Lucro real" value={formatMoney(profit)} icon="chart" color="#7BAF7B" />
-        <StatCard label={appointmentsLabel} value={count} icon="check" color="var(--rose)" />
+        <StatCard label={`${appointmentsLabel} concluídos`} value={count} icon="check" color="var(--rose)" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" color="var(--rose-dark)" />
       </div>
+
+      <p style={{ fontSize: 12, color: 'var(--text-light)', margin: '-8px 0 18px', lineHeight: 1.5 }}>
+        O faturamento soma só {isBarber ? 'os cortes concluídos' : 'os atendimentos concluídos'}, pelo valor cobrado.
+        Marque como concluído na agenda para entrar aqui; o que ainda está marcado aparece em Previsto.
+      </p>
 
       {/* Divisão salário / empresa */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 20 }}>
@@ -231,16 +236,18 @@ const Finance = ({
       {/* Per-service breakdown */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 14 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Faturamento por Serviço</h3>
-        {services.map((s) => {
-          const appts = real.filter((a) => a.serviceId === s.id)
-          const rev = appts.reduce((sum, a) => sum + Number(a.value), 0)
+        {byService.length === 0 && (
+          <p style={{ textAlign: 'center', padding: 10, fontSize: 13, color: 'var(--text-light)', margin: 0 }}>Nenhum {isBarber ? 'corte concluído' : 'atendimento concluído'} neste mês</p>
+        )}
+        {byService.map((s) => {
+          const rev = s.total
           const pct = revenue ? rev / revenue * 100 : 0
           return (
             <div key={s.id} style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ fontSize: 13, color: 'var(--text)' }}>{s.name}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rose-dark)' }}>
-                  R$ {rev.toFixed(2).replace('.', ',')} <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 400 }}>({appts.length}x)</span>
+                  R$ {rev.toFixed(2).replace('.', ',')} <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 400 }}>({s.count}x)</span>
                 </span>
               </div>
               <div style={{ height: 6, borderRadius: 3, background: 'var(--rose-light)', overflow: 'hidden' }}>
@@ -398,7 +405,7 @@ const Finance = ({
               </tr>
             </thead>
             <tbody>
-              {real.sort((a, b) => b.date.localeCompare(a.date)).map((a) => {
+              {[...real].sort((a, b) => b.date.localeCompare(a.date) || String(b.time || '').localeCompare(String(a.time || ''))).map((a) => {
                 const client = clients.find((c) => c.id === a.clientId)
                 const service = services.find((s) => s.id === a.serviceId)
                 const sm = statusMeta(a.status)
@@ -410,7 +417,7 @@ const Finance = ({
                     <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text)' }}>{new Date(a.date + 'T12:00').toLocaleDateString('pt-BR')} {a.time}</td>
                     <td style={{ padding: '8px 10px', fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{client?.name || '—'}</td>
                     <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-mid)' }}>{service?.name || '—'}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: 'var(--rose-dark)' }}>R$ {Number(a.value).toFixed(2).replace('.', ',')}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: isDoneAppointment(a) ? 'var(--rose-dark)' : 'var(--text-light)' }}>{formatMoney(isDoneAppointment(a) ? paidAmount(a) : scheduledAmount(a))}</td>
                     <td style={{ padding: '8px 10px' }}>
                       <span style={{ background: bg, color: tc, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20 }}>{label}</span>
                     </td>

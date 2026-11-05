@@ -4,9 +4,10 @@ import Icon from '../components/Icon'
 import EmptyState from '../components/EmptyState'
 import FirstSteps from '../components/FirstSteps'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
-import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin, getAppointmentCost } from '../lib/utils'
+import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin } from '../lib/utils'
 import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList, toLocalYmd } from '../lib/dashboardStats'
 import { getPersonalityMessage } from '../lib/dayMessages'
+import { summarizeMonth } from '../lib/finance'
 
 const cardInteractive = {
   transition: 'transform 0.15s ease, box-shadow 0.15s ease',
@@ -14,6 +15,7 @@ const cardInteractive = {
 
 const Dashboard = ({
   appointments,
+  cashExpenses = [],
   clients,
   services,
   config,
@@ -35,11 +37,10 @@ const Dashboard = ({
   const monthStr = today.slice(0, 7)
 
   const real = appointments.filter((a) => !a.blocked)
-  const monthAppts = real.filter((a) => a.date.startsWith(monthStr) && a.status !== 'cancelled')
-  const revenue = monthAppts.reduce((s, a) => s + Number(a.value), 0)
-  const cost = monthAppts.reduce((sum, a) => sum + getAppointmentCost(a, services, config.avgCost), 0)
-  const profit = revenue - cost
-  const avg = monthAppts.length ? revenue / monthAppts.length : 0
+  // Mesma regra do Financeiro: concluídos pelo valor cobrado, descontando custo e saídas de materiais.
+  const monthSummary = summarizeMonth({ appointments, services, avgCost: config.avgCost, cashExpenses, month: monthStr })
+  const { revenue, cost, profit, materialsOut } = monthSummary
+  const avg = monthSummary.avgTicket
 
   const todaySummary = getTodaySummary(appointments, today)
   const nextAppt = getNextAppointmentToday(appointments, today, now)
@@ -232,8 +233,8 @@ const Dashboard = ({
       {/* Stats do mês */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
         <StatCard label="Faturamento do mês" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" />
-        <StatCard label="Lucro do mês" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} sub={`Custo: R$ ${cost.toFixed(2).replace('.', ',')}`} icon="chart" />
-        <StatCard label={appointmentsLabel} value={monthAppts.length} sub="este mês" icon="check" />
+        <StatCard label="Lucro do mês" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} sub={`Custo + materiais: R$ ${(cost + materialsOut).toFixed(2).replace('.', ',')}`} icon="chart" />
+        <StatCard label={appointmentsLabel} value={monthSummary.count} sub="concluídos este mês" icon="check" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" />
       </div>
 

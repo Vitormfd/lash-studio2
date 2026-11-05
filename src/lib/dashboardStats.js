@@ -25,9 +25,10 @@ export const getTodaySummary = (appointments, todayStr = getTodayStr()) => {
   const revenueScheduled = today
     .filter((a) => a.status === 'pending' || a.status === 'confirmed')
     .reduce((s, a) => s + Number(a.value || 0), 0)
+  // Concluídos pelo valor cobrado (mesma regra de paidAmount em lib/finance.js)
   const revenueDone = today
     .filter((a) => a.status === 'done')
-    .reduce((s, a) => s + Number(a.value || 0), 0)
+    .reduce((s, a) => s + Number(a.paymentValue != null && a.paymentValue !== '' ? a.paymentValue : a.value || 0), 0)
   const uniqueClients = new Set(today.map((a) => a.clientId).filter(Boolean)).size
   const totalMinutes = today.reduce((s, a) => s + apptDurationMin(a), 0)
   return {

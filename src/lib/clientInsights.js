@@ -151,7 +151,7 @@ export const getClientRanking = (clients, appointments, period = 'all', now = ne
     if (start && a.date < start) continue
     const s = stats.get(a.clientId) || { count: 0, total: 0, lastDate: '' }
     s.count += 1
-    s.total += Number(a.value || 0)
+    s.total += Number(a.paymentValue != null && a.paymentValue !== '' ? a.paymentValue : a.value || 0)
     if (a.date > s.lastDate) s.lastDate = a.date
     stats.set(a.clientId, s)
   }

@@ -3,6 +3,7 @@ import Modal from '../components/Modal'
 import { Btn, Field, Inp, Sel, Textarea, inputStyle } from '../components/UI'
 import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
+import { paidAmount } from '../lib/finance'
 import { statusMeta } from '../lib/appointmentStatus'
 import {
   RECURRING_FREQUENCY_OPTIONS,
@@ -127,7 +128,7 @@ const getClientSpendMetrics = (client, appointments) => {
   const appts = validRevenueAppts(appointments, client.id)
   const sumBy = (predicate) => appts
     .filter((a) => predicate(new Date(`${a.date}T12:00`)))
-    .reduce((sum, a) => sum + Number(a.value || 0), 0)
+    .reduce((sum, a) => sum + paidAmount(a), 0)
 
   return {
     sinceCreated: sumBy((d) => !createdAt || Number.isNaN(createdAt.getTime()) || d >= createdAt),

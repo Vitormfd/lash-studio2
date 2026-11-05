@@ -1248,6 +1248,7 @@ const AppMain = ({ session, onLogout }) => {
           {page === 'dashboard' && (
             <Dashboard
               appointments={appointments}
+              cashExpenses={cashExpenses}
               clients={clients}
               services={services}
               config={config}

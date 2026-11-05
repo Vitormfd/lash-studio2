@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { StatCard } from '../components/UI'
+import { isDoneAppointment, paidAmount, reportRange, revenueByService } from '../lib/finance'
 
 const formatMoney = (value) => `R$ ${Number(value).toFixed(2).replace('.', ',')}`
 
@@ -8,40 +9,22 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
   const [period, setPeriod] = useState('month')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-  const now = new Date()
-  const real = appointments.filter((a) => !a.blocked && a.status !== 'cancelled')
-
-  const getFiltered = () => {
-    if (period === 'custom') {
-      if (!customStartDate || !customEndDate) return []
-      const start = new Date(customStartDate + 'T00:00')
-      const end = new Date(customEndDate + 'T23:59')
-      return real.filter((a) => {
-        const appointmentDate = new Date(a.date + 'T12:00')
-        return appointmentDate >= start && appointmentDate <= end
-      })
-    }
-
-    const cutoff = new Date(now)
-    if (period === 'week') cutoff.setDate(now.getDate() - 7)
-    else if (period === 'month') cutoff.setMonth(now.getMonth() - 1)
-    else cutoff.setFullYear(now.getFullYear() - 1)
-    return real.filter((a) => new Date(a.date + 'T12:00') >= cutoff)
-  }
-
-  const filtered = getFiltered()
-  const revenue = filtered.reduce((s, a) => s + Number(a.value), 0)
+  // Faturamento: só concluídos, pelo valor cobrado, dentro do período (que termina hoje).
+  const range = reportRange(period, new Date(), customStartDate, customEndDate)
+  const filtered = range
+    ? appointments.filter((a) => isDoneAppointment(a) && a.date >= range[0] && a.date <= range[1])
+    : []
+  const revenue = filtered.reduce((s, a) => s + paidAmount(a), 0)
 
   // Daily chart data
   const dailyMap = {}
-  filtered.forEach((a) => { dailyMap[a.date] = (dailyMap[a.date] || 0) + Number(a.value) })
+  filtered.forEach((a) => { dailyMap[a.date] = (dailyMap[a.date] || 0) + paidAmount(a) })
   const daily = Object.entries(dailyMap).sort(([a], [b]) => a.localeCompare(b)).slice(-14)
   const maxDaily = Math.max(...daily.map(([, v]) => v), 1)
   const peakDaily = daily.reduce((maxEntry, entry) => (!maxEntry || entry[1] > maxEntry[1] ? entry : maxEntry), null)
 
-  // By service
-  const svcMap = {}
-  filtered.forEach((a) => { svcMap[a.serviceId] = (svcMap[a.serviceId] || 0) + Number(a.value) })
+  // By service (inclui "Serviço removido" para a soma fechar com o total)
+  const byService = revenueByService(filtered, services)
 
   return (
     <div style={{ padding: 16 }}>
@@ -99,7 +82,7 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
       {/* Stats */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" />
-        <StatCard label={appointmentsLabel} value={filtered.length} icon="check" />
+        <StatCard label={`${appointmentsLabel} concluídos`} value={filtered.length} icon="check" />
         <StatCard label="Ticket médio" value={`R$ ${filtered.length ? (revenue / filtered.length).toFixed(2).replace('.', ',') : '0,00'}`} icon="star" />
       </div>
 
@@ -168,9 +151,9 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
       {/* By service */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Por serviço</h3>
-        {services.filter((s) => svcMap[s.id]).sort((a, b) => (svcMap[b.id] || 0) - (svcMap[a.id] || 0)).map((s) => {
-          const val = svcMap[s.id] || 0
-          const cnt = filtered.filter((a) => a.serviceId === s.id).length
+        {byService.map((s) => {
+          const val = s.total
+          const cnt = s.count
           const pct = revenue ? val / revenue * 100 : 0
           return (
             <div key={s.id} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -189,7 +172,7 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
             </div>
           )
         })}
-        {Object.keys(svcMap).length === 0 && (
+        {byService.length === 0 && (
           <p style={{ textAlign: 'center', padding: 20, color: 'var(--text-light)', fontSize: 13 }}>Sem dados no período</p>
         )}
       </div>

@@ -324,6 +324,12 @@ const fetchAllRows = async (buildQuery) => {
   return { data: rows, error: null }
 }
 
+// Data de hoje (YYYY-MM-DD) no fuso local; toISOString usaria UTC e viraria o dia às 21h.
+const localTodayYmd = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // Contatos importados vão ao banco em lotes, em vez de um envio por contato.
 const IMPORT_BATCH_SIZE = 200
 
@@ -1112,7 +1118,7 @@ export const DB = {
         amount: Number(expense.amount || 0),
         payment_method: expense.paymentMethod || 'cash',
         notes: expense.notes || '',
-        expense_date: expense.expenseDate || new Date().toISOString().slice(0, 10),
+        expense_date: expense.expenseDate || localTodayYmd(),
         created_at: expense.createdAt || new Date().toISOString(),
         updated_at: expense.updatedAt || new Date().toISOString(),
       }
@@ -1153,7 +1159,7 @@ export const DB = {
       amount: Number(expense.amount || 0),
       paymentMethod: expense.paymentMethod || 'cash',
       notes: expense.notes || '',
-      expenseDate: expense.expenseDate || new Date().toISOString().slice(0, 10),
+      expenseDate: expense.expenseDate || localTodayYmd(),
       createdAt: expense.createdAt || new Date().toISOString(),
       updatedAt: expense.updatedAt || new Date().toISOString(),
     }
