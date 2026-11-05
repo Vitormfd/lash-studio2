@@ -308,13 +308,33 @@ const logAudit = async (userId, { action, entityType, entityId, summary, payload
   return normalized
 }
 
+// A API do Supabase devolve no máximo 1.000 linhas por consulta, então listas grandes
+// são buscadas em páginas até vir uma página vazia. A ordenação precisa terminar no id
+// para que nenhuma linha se repita ou fique de fora entre uma página e outra.
+const PAGE_SIZE = 1000
+const MAX_PAGES = 200
+const fetchAllRows = async (buildQuery) => {
+  const rows = []
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await buildQuery().range(rows.length, rows.length + PAGE_SIZE - 1)
+    if (error) return { data: null, error }
+    if (!data || data.length === 0) break
+    rows.push(...data)
+  }
+  return { data: rows, error: null }
+}
+
+// Contatos importados vão ao banco em lotes, em vez de um envio por contato.
+const IMPORT_BATCH_SIZE = 200
+
 // ─── DB LAYER (Supabase com cache write-through no localStorage) ──────────────
 export const DB = {
   // ── Clientes ──
   async getClients(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('clients').select('*').eq('user_id', userId).order('name')
+      const { data, error } = await fetchAllRows(() =>
+        sb.from('clients').select('*').eq('user_id', userId).order('name').order('id'))
       if (!error && data) {
         const normalized = data.map(normalizeClient)
         uset(userId, 'clients', normalized)
@@ -324,7 +344,7 @@ export const DB = {
     return uget(userId, 'clients') || []
   },
 
-  async saveClient(userId, client) {
+  async saveClient(userId, client, { skipAudit = false } = {}) {
     const sb = getClient()
     if (sb) {
       const phoneRaw = String(client.phone || '').trim()
@@ -408,12 +428,14 @@ export const DB = {
         const all = uget(userId, 'clients') || []
         const exists = all.find((c) => c.id === normalized.id)
         uset(userId, 'clients', exists ? all.map((c) => (c.id === normalized.id ? normalized : c)) : [...all, normalized])
-        await logAudit(userId, {
-          action: client._new ? 'create' : 'update',
-          entityType: 'client',
-          entityId: normalized.id,
-          entityName: normalized.name,
-        })
+        if (!skipAudit) {
+          await logAudit(userId, {
+            action: client._new ? 'create' : 'update',
+            entityType: 'client',
+            entityId: normalized.id,
+            entityName: normalized.name,
+          })
+        }
         return normalized
       }
 
@@ -430,6 +452,63 @@ export const DB = {
       entityName: normalized.name,
     })
     return normalized
+  },
+
+  /**
+   * Importa vários contatos de uma vez. Cada lote vai num único envio; se o banco recusar
+   * um lote (por exemplo, um telefone fora do formato), os contatos desse lote são salvos
+   * um a um, com as mesmas correções de telefone do cadastro manual.
+   * Retorna { saved, failed } para a tela avisar quantos entraram.
+   */
+  async importClients(userId, clients) {
+    const sb = getClient()
+    const saved = []
+    const failed = []
+
+    if (!sb) {
+      saved.push(...clients.map((c) => normalizeClient({ ...c, created_at: c.createdAt })))
+    } else {
+      for (let i = 0; i < clients.length; i += IMPORT_BATCH_SIZE) {
+        const batch = clients.slice(i, i + IMPORT_BATCH_SIZE)
+        const rows = batch.map((c) => {
+          const phoneRaw = String(c.phone || '').trim()
+          const phoneDigits = phoneRaw.replace(/\D/g, '')
+          return {
+            id: c.id,
+            user_id: userId,
+            name: c.name,
+            phone: toE164Phone(phoneRaw) || (phoneDigits ? toE164Phone(phoneDigits) : null),
+            notes: c.notes || '',
+            created_at: c.createdAt || new Date().toISOString(),
+          }
+        })
+        const { data, error } = await sb.from('clients').insert(rows).select()
+        if (!error && data) {
+          saved.push(...data.map(normalizeClient))
+          continue
+        }
+        for (const c of batch) {
+          try {
+            saved.push(await DB.saveClient(userId, { ...c, _new: true }, { skipAudit: true }))
+          } catch {
+            failed.push(c)
+          }
+        }
+      }
+    }
+
+    if (saved.length > 0) {
+      const savedIds = new Set(saved.map((c) => c.id))
+      const all = (uget(userId, 'clients') || []).filter((c) => !savedIds.has(c.id))
+      uset(userId, 'clients', [...all, ...saved])
+      await logAudit(userId, {
+        action: 'create',
+        entityType: 'client',
+        entityName: `${saved.length} contato(s) importado(s)`,
+        summary: `Importou ${saved.length} contato(s)`,
+      })
+    }
+    return { saved, failed }
   },
 
   async deleteClient(userId, id) {
@@ -553,7 +632,8 @@ export const DB = {
   async getAppointments(userId) {
     const sb = getClient()
     if (sb) {
-      const { data, error } = await sb.from('appointments').select('*').eq('user_id', userId).order('date').order('time')
+      const { data, error } = await fetchAllRows(() =>
+        sb.from('appointments').select('*').eq('user_id', userId).order('date').order('time').order('id'))
       if (!error && data) {
         const normalized = data.map((a) => ({
           id: a.id,

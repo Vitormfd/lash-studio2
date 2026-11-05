@@ -729,6 +729,21 @@ const AppMain = ({ session, onLogout }) => {
       addToast('Não foi possível salvar o celular do cliente no banco.', 'error')
     }
   }
+  const handleImportClients = async (items) => {
+    if (guardRestrictedWrite('Desbloqueie para salvar clientes.')) return null
+    const ids = new Set(items.map((i) => i.id))
+    setClients((c) => [...c, ...items])
+    try {
+      const { saved, failed } = await DB.importClients(userId, items)
+      const savedById = new Map(saved.map((s) => [s.id, s]))
+      const failedIds = new Set(failed.map((f) => f.id))
+      setClients((c) => c.filter((x) => !failedIds.has(x.id)).map((x) => savedById.get(x.id) || x))
+      return { saved: saved.length, failed: failed.length }
+    } catch {
+      setClients((c) => c.filter((x) => !ids.has(x.id)))
+      return { saved: 0, failed: items.length }
+    }
+  }
   const handleUpdateClient = async (client) => {
     if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
     try {
@@ -1288,6 +1303,7 @@ const AppMain = ({ session, onLogout }) => {
               autoOpenNew={clientsAutoNew}
               clients={clients}
               setClients={setClientsCompat}
+              onImportClients={handleImportClients}
               appointments={appointments}
               services={services}
               isBarber={isBarber}

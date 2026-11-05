@@ -390,6 +390,7 @@ const Clients = ({
   autoOpenNew = false,
   clients,
   setClients,
+  onImportClients,
   appointments,
   services = [],
   isBarber,
@@ -418,9 +419,19 @@ const Clients = ({
   const [importSearch, setImportSearch] = useState('')
   const [importSelected, setImportSelected] = useState(() => new Set())
   const [tutorialOpen, setTutorialOpen] = useState(false)
-  const addClientsSequentially = (items) => {
-    for (const item of items) {
-      setClients((prev) => [...prev, item])
+  const [importing, setImporting] = useState(false)
+  /** Salva os contatos importados em lotes e avisa quantos entraram de verdade. */
+  const runImport = async (items) => {
+    setImporting(true)
+    if (items.length > 50) addToast(`Importando ${items.length} contatos...`, 'info')
+    try {
+      const result = await onImportClients(items)
+      if (!result) return
+      if (result.failed === 0) addToast(`${result.saved} contato(s) importado(s)!`, 'success')
+      else if (result.saved === 0) addToast('Não foi possível importar os contatos. Tente de novo.', 'error')
+      else addToast(`${result.saved} contato(s) importado(s). ${result.failed} não entraram: importe de novo para tentar esses.`, 'warning')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -555,8 +566,7 @@ const Clients = ({
       }
 
       if (toAdd.length === 0) { addToast('Nenhum contato novo para importar.', 'info'); return }
-      addClientsSequentially(toAdd)
-      addToast(`${toAdd.length} contato(s) importado(s)!`, 'success')
+      await runImport(toAdd)
     } catch (e) {
       const msg = (e && typeof e === 'object' && 'name' in e) ? e.name : ''
       if (msg === 'AbortError') { addToast('Importação cancelada.', 'info'); return }
@@ -614,9 +624,8 @@ const Clients = ({
     }
 
     if (toAdd.length === 0) { addToast('Nenhum contato novo para importar.', 'info'); setImportModal(false); return }
-    addClientsSequentially(toAdd)
-    addToast(`${toAdd.length} contato(s) importado(s)!`, 'success')
     setImportModal(false)
+    runImport(toAdd)
   }
 
   const visibleImportList = importList.filter((c) => {
@@ -639,13 +648,13 @@ const Clients = ({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <Inp placeholder="Buscar por nome, telefone ou observações..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, flex: '1 1 220px', maxWidth: 360 }} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn variant="ghost" onClick={importContacts} disabled={!canPickContacts}>
+          <Btn variant="ghost" onClick={importContacts} disabled={!canPickContacts || importing}>
             <Icon name="upload" size={14} />
-            Importar contato
+            {importing ? 'Importando...' : 'Importar contato'}
           </Btn>
           {!canPickContacts && (
             <>
-              <Btn variant="ghost" onClick={openVcfPicker}>
+              <Btn variant="ghost" onClick={openVcfPicker} disabled={importing}>
                 <Icon name="upload" size={14} />
                 Importar .vcf (iPhone)
               </Btn>
