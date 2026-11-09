@@ -204,6 +204,9 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
   const [useCode, setUseCode] = useState(isTouchDevice)
   const [pairPhone, setPairPhone] = useState('')
   const pollRef = useRef(null)
+  // Config mais recente para o polling da conexão (o intervalo guarda a versão antiga).
+  const configRef = useRef(config)
+  configRef.current = config
 
   const enabled = !!config.whatsappAutoEnabled
   const hoursBefore = Number(config.whatsappAutoHoursBefore) > 0 ? Number(config.whatsappAutoHoursBefore) : 24
@@ -236,6 +239,17 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
     return stopPolling
   }, [isDemo])
 
+  // Conectou: liga os lembretes na hora. Antes ficava um segundo botão que quase ninguém tocava.
+  const onConnected = () => {
+    const latest = configRef.current
+    if (latest.whatsappAutoEnabled) {
+      addToast('WhatsApp conectado!', 'success')
+      return
+    }
+    setConfig({ ...latest, whatsappAutoEnabled: true })
+    addToast('WhatsApp conectado! Lembretes automáticos ligados.', 'success')
+  }
+
   const connect = async () => {
     if (isDemo) return
     const phoneDigits = pairPhone.replace(/\D/g, '')
@@ -252,6 +266,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
     }
     if (res.state === 'open') {
       await refreshStatus()
+      onConnected()
       return
     }
     if (useCode && !res.pairingCode) {
@@ -266,7 +281,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
       ticks += 1
       const status = await refreshStatus()
       if (status?.state === 'open') {
-        addToast('WhatsApp conectado!', 'success')
+        onConnected()
       } else if (ticks >= 40) {
         // ~2 min: QR Code expira, pede um novo.
         stopPolling()
