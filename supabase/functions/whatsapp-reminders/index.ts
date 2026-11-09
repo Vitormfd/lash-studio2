@@ -254,6 +254,39 @@ const brtYmd = (ms: number) => new Date(ms - BRT_OFFSET_MS).toISOString().slice(
 
 type RunResult = { accounts: number; sent: number; failed: number; skippedAccounts: Record<string, string>; error?: string }
 
+/**
+ * Só envia para contas com acesso completo: assinatura ativa, liberação manual ou teste em dia
+ * (mesma regra de public.is_full_access). Teste vencido e assinatura cancelada não recebem lembretes.
+ * Se a consulta falhar, segue sem filtrar para não cortar os lembretes de quem paga.
+ */
+const keepFullAccessAccounts = async <T extends { user_id: string }>(
+  sb: Sb,
+  configs: T[],
+  skippedAccounts: Record<string, string>,
+): Promise<T[]> => {
+  const userIds = [...new Set(configs.map((c) => c.user_id))]
+  if (!userIds.length) return configs
+  const { data, error } = await sb
+    .from('profiles')
+    .select('id,access_level,subscription_expires_at')
+    .in('id', userIds)
+  if (error) {
+    console.error('[whatsapp] access check failed, sending without filter', error.message)
+    return configs
+  }
+  const nowMs = Date.now()
+  const allowed = new Set(
+    ((data || []) as { id: string; access_level: string | null; subscription_expires_at: string | null }[])
+      .filter((p) => p.access_level === 'full' && (!p.subscription_expires_at || Date.parse(p.subscription_expires_at) > nowMs))
+      .map((p) => p.id),
+  )
+  return configs.filter((c) => {
+    if (allowed.has(c.user_id)) return true
+    skippedAccounts[c.user_id] = 'sem_acesso_completo'
+    return false
+  })
+}
+
 const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
   const { data: configs, error: cfgError } = await sb
     .from('config')
@@ -268,7 +301,9 @@ const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
   if (cfgError) return { accounts: 0, sent, failed, skippedAccounts, error: `config query failed: ${cfgError.message}` }
   if (!configs?.length) return { accounts: 0, sent, failed, skippedAccounts }
 
-  for (const cfg of configs as ConfigRow[]) {
+  const eligible = await keepFullAccessAccounts(sb, configs as ConfigRow[], skippedAccounts)
+
+  for (const cfg of eligible) {
     if (sent + failed >= MAX_SENDS_PER_RUN) break
 
     const hoursBefore = Number(cfg.whatsapp_auto_hours_before) > 0 ? Number(cfg.whatsapp_auto_hours_before) : 24
@@ -454,7 +489,9 @@ const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResu
   const today = brtYmd(nowMs)
   const historyStart = brtYmd(nowMs - MAINTENANCE_HISTORY_DAYS * 86400000)
 
-  for (const cfg of configs as MaintenanceConfigRow[]) {
+  const eligible = await keepFullAccessAccounts(sb, configs as MaintenanceConfigRow[], skippedAccounts)
+
+  for (const cfg of eligible) {
     if (sent + failed >= budget) break
 
     const { data: profile } = await sb.from('profiles').select('professional_type').eq('id', cfg.user_id).maybeSingle()

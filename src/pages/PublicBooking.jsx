@@ -194,6 +194,8 @@ const PublicBooking = ({ professionalId }) => {
   const [success, setSuccess] = useState(null)
   const [professionalName, setProfessionalName] = useState('Profissional Easy Studio')
   const [contact, setContact] = useState({ whatsapp: '', confirmTemplate: '' })
+  // false = conta sem assinatura ativa (teste vencido ou cancelada): a agenda online fica fechada.
+  const [bookingActive, setBookingActive] = useState(true)
 
   const selectedService = services.find((s) => s.id === selectedServiceId) || null
   const todayYmd = localTodayYmd()
@@ -203,6 +205,16 @@ const PublicBooking = ({ professionalId }) => {
     let alive = true
     sb.rpc('get_public_theme_id', { p_professional_id: professionalId })
       .then(({ data }) => { if (alive) applyTheme(data || 'rose') })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [sb, professionalId])
+
+  useEffect(() => {
+    if (!sb || !professionalId) return
+    let alive = true
+    // Se a checagem falhar, a página segue aberta: o próprio agendamento ainda é recusado no banco.
+    sb.rpc('get_public_booking_active', { p_professional_id: professionalId })
+      .then(({ data, error }) => { if (alive && !error && data === false) setBookingActive(false) })
       .catch(() => {})
     return () => { alive = false }
   }, [sb, professionalId])
@@ -447,7 +459,7 @@ const PublicBooking = ({ professionalId }) => {
         return
       }
       if (!ok && result?.reason === 'plan_required') {
-        setErrorMsg('A agenda publica nao esta ativa no momento.')
+        setBookingActive(false)
         return
       }
       if (!ok && result?.detail) {
@@ -506,6 +518,47 @@ const PublicBooking = ({ professionalId }) => {
           <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6 }}>
             Este link está incompleto. Peça a quem te atende o link de agendamento completo.
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!bookingActive && !success) {
+    const contactUrl = contact.whatsapp
+      ? `https://wa.me/${contact.whatsapp}?text=${encodeURIComponent('Oi! Queria marcar um horário.')}`
+      : ''
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--off-white)', padding: '20px 14px' }}>
+        <div style={{ maxWidth: 720, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 16 }}>
+          <h1 className="serif" style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+            Agenda online indisponível
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: contactUrl ? 14 : 0 }}>
+            No momento não é possível marcar horário por este link. Fale direto com quem te atende para agendar.
+          </p>
+          {contactUrl && (
+            <a
+              href={contactUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                background: '#25D366',
+                color: '#fff',
+                fontSize: 15,
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 12,
+                padding: '14px 18px',
+                minHeight: 48,
+              }}
+            >
+              <Icon name="whatsapp" size={18} color="#fff" /> Chamar no WhatsApp
+            </a>
+          )}
         </div>
       </div>
     )
