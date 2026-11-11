@@ -2,6 +2,7 @@ import { getClient, getSupabaseConfig, local, uid } from './supabase'
 import { toLocalYmd } from './dashboardStats'
 import { DEFAULT_PROFESSIONAL_TYPE, normalizeProfessionalType } from './domain'
 import { trackCompleteRegistration, trackPixelEvent } from './facebookPixel'
+import { readSignupSource } from './signupSource'
 
 // Toda conta nova começa com 7 dias grátis sem cartão (profiles.plan = 'trial')
 const trackSignup = () => {
@@ -226,10 +227,18 @@ export const AUTH = {
     const normalizedType = normalizeProfessionalType(professionalType)
     const sb = getClient()
     if (sb) {
+      const signupSource = readSignupSource()
       const { data, error } = await sb.auth.signUp({
         email,
         password,
-        options: { data: { name, professional_type: normalizedType, whatsapp } },
+        options: {
+          data: {
+            name,
+            professional_type: normalizedType,
+            whatsapp,
+            ...(signupSource ? { signup_source: signupSource } : {}),
+          },
+        },
       })
       if (error) throw new Error(error.message)
       if (!data.session) {
