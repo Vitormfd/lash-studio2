@@ -232,11 +232,26 @@ const AppMain = ({ session, onLogout }) => {
   const canUserEdit = canUserEditByLevel(effectiveAccessLevel(accessProfile))
   const trialDays = canUserEdit ? trialDaysLeft(accessProfile) : null
   const trialExpired = isTrialExpired(accessProfile)
+  // Conta real (não a demonstração) cujo teste ou assinatura acabou: mostra o caminho para assinar.
+  const accessEnded = !isDemo && accessProfileLoaded && !canUserEdit
 
   const openPaywall = useCallback((hint = '') => {
     setPaywallHint(hint)
     setPaywallOpen(true)
   }, [])
+
+  // Teste acabou: abre a tela de assinatura uma vez por sessão, sem esperar a pessoa tentar editar.
+  useEffect(() => {
+    if (!trialExpired || !accessEnded) return
+    const key = `paywall_trial_end_${userId}`
+    try {
+      if (window.sessionStorage.getItem(key)) return
+      window.sessionStorage.setItem(key, '1')
+    } catch {
+      // Sem sessionStorage: abre mesmo assim.
+    }
+    openPaywall('')
+  }, [trialExpired, accessEnded, userId, openPaywall])
 
   const handleUpgrade = useCallback(async () => {
     try {
@@ -1239,7 +1254,9 @@ const AppMain = ({ session, onLogout }) => {
           isDemo={!canUserEdit}
           canUserEdit={canUserEdit}
           trialDays={trialDays}
-          onUpgrade={() => openPaywall('Organize seu negócio sem limitações')}
+          accessEnded={accessEnded}
+          trialExpired={trialExpired}
+          onUpgrade={() => openPaywall(accessEnded ? '' : 'Organize seu negócio sem limitações')}
           operator={activeOperator}
           onSwitchOperator={requestOperatorSwitch}
         />

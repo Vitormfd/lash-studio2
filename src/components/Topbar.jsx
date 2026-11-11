@@ -13,6 +13,8 @@ const Topbar = ({
   isDemo,
   canUserEdit,
   trialDays,
+  accessEnded = false,
+  trialExpired = false,
   onUpgrade,
   operator,
   onSwitchOperator,
@@ -33,7 +35,16 @@ const Topbar = ({
         <Icon name="menu" size={18} />
       </button>
       <h1 className="serif" style={{ fontSize: 20, fontWeight: 500, color: 'var(--text)' }}>{title}</h1>
-      {isDemo && (
+      {accessEnded ? (
+        <button
+          type="button"
+          onClick={() => onUpgrade?.()}
+          title="Assinar o Easy Studio"
+          style={{ fontSize: 11, fontWeight: 700, color: '#FFFFFF', background: 'var(--rose-deep)', padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          {trialExpired ? 'Teste encerrado · Assinar' : 'Assinar'}
+        </button>
+      ) : isDemo && (
         <span style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74' }}>
           Teste gratis
         </span>

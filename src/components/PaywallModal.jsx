@@ -50,7 +50,7 @@ const PaywallModal = ({ open, onClose, subtitle, onUpgrade, trialDays = null, tr
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
           <Btn onClick={handleUpgrade} full loading={loading}>
-            <Icon name={inTrial ? 'check' : 'lock'} size={14} color="#fff" /> {inTrial ? 'Assinar agora' : 'Desbloquear agora'}
+            <Icon name={inTrial ? 'check' : 'lock'} size={14} color="#fff" /> {inTrial ? 'Assinar agora' : trialExpired ? 'Assinar e continuar' : 'Desbloquear agora'}
           </Btn>
           <Btn variant="ghost" onClick={onClose} full disabled={loading}>
             {inTrial ? 'Continuar no teste' : 'Agora não'}
