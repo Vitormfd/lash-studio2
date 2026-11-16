@@ -212,6 +212,118 @@ const pruneStaleSubscriptions = async (
   }
 }
 
+// ─── Resumo do dia ───────────────────────────────────────────────────────────
+// 1h antes do primeiro atendimento: "Hoje você tem 3 atendimentos: 09:00, 10:30 e 14:00."
+// Vai só para contas com acesso completo (mesma regra de public.is_full_access) e
+// uma vez por dia (tabela daily_summary_pushes).
+
+const SUMMARY_MINUTES_BEFORE = 60
+const SUMMARY_MAX_TIMES = 8
+
+type DayAppointment = { id: string; user_id: string; date: string; time: string }
+
+const formatTimesList = (times: string[]) => {
+  const shown = times.slice(0, SUMMARY_MAX_TIMES)
+  const rest = times.length - shown.length
+  if (rest > 0) return `${shown.join(', ')} e mais ${rest}`
+  if (shown.length === 1) return shown[0]
+  return `${shown.slice(0, -1).join(', ')} e ${shown[shown.length - 1]}`
+}
+
+const buildDailySummaryBody = (times: string[], professionalType?: string | null) => {
+  const barber = professionalType === 'barbeiro'
+  const one = barber ? 'corte' : 'atendimento'
+  const many = barber ? 'cortes' : 'atendimentos'
+  if (times.length === 1) return `Hoje você tem 1 ${one}, às ${times[0]}. Falta 1h ⏰`
+  return `Hoje você tem ${times.length} ${many}: ${formatTimesList(times)}. O primeiro é daqui a 1h ⏰`
+}
+
+const sendDailySummaries = async (
+  sb: ReturnType<typeof createClient>,
+  userIds: string[],
+  professionalTypeByUserId: Map<string, string>,
+  todayBrt: string,
+  nowMs: number,
+) => {
+  const result = { sent: 0, failed: 0, accounts: 0, coveredAppointmentIds: new Set<string>(), staleSubscriptionIds: new Set<string>() }
+  if (!userIds.length) return result
+
+  const { data, error } = await sb
+    .from('appointments')
+    .select('id,user_id,date,time,status,blocked')
+    .in('user_id', userIds)
+    .eq('date', todayBrt)
+    .in('status', ['pending', 'confirmed'])
+  if (error) {
+    console.error('[push] daily summary query failed', error.message)
+    return result
+  }
+
+  const byUser = new Map<string, DayAppointment[]>()
+  for (const appt of (data || []) as Array<DayAppointment & { blocked?: boolean | null }>) {
+    if (appt.blocked) continue
+    const list = byUser.get(appt.user_id) || []
+    list.push(appt)
+    byUser.set(appt.user_id, list)
+  }
+
+  // Quem está na hora: agora entre 60 e 50 min antes do primeiro atendimento.
+  const dueUsers: Array<{ userId: string; appts: DayAppointment[] }> = []
+  for (const [userId, appts] of byUser) {
+    appts.sort((a, b) => String(a.time).localeCompare(String(b.time)))
+    const first = parseAppointmentDate(appts[0].date, appts[0].time)
+    if (!first) continue
+    const delta = nowMs - (first.getTime() - SUMMARY_MINUTES_BEFORE * 60 * 1000)
+    if (delta >= 0 && delta <= WINDOW_MS) dueUsers.push({ userId, appts })
+  }
+  if (!dueUsers.length) return result
+
+  const { data: profiles } = await sb
+    .from('profiles')
+    .select('id,access_level,subscription_expires_at')
+    .in('id', dueUsers.map((u) => u.userId))
+  const fullAccess = new Set(
+    ((profiles || []) as Array<{ id: string; access_level: string | null; subscription_expires_at: string | null }>)
+      .filter((p) => p.access_level === 'full' && (!p.subscription_expires_at || Date.parse(p.subscription_expires_at) > nowMs))
+      .map((p) => p.id),
+  )
+
+  for (const { userId, appts } of dueUsers) {
+    if (!fullAccess.has(userId)) continue
+
+    // Reserva o dia antes de enviar: se outra execução já reservou, não manda de novo.
+    const claim = await sb.from('daily_summary_pushes').insert({ user_id: userId, day: todayBrt, appointments: appts.length })
+    if (claim.error) {
+      if (claim.error.code !== '23505') console.error('[push] daily summary claim failed', { userId, error: claim.error.message })
+      continue
+    }
+
+    const { subscriptions, error: subsError } = await loadSubscriptions(sb, userId)
+    if (subsError || !subscriptions.length) continue
+    // Equipe: o resumo da agenda inteira vai para a dona da conta (ou aparelhos sem operadora).
+    const ownerId = subscriptions.some((s) => s.operator_id) ? await loadAccountOwnerId(sb, userId) : null
+    const targets = subscriptions.filter((s) => !s.operator_id || !ownerId || s.operator_id === ownerId)
+    if (!targets.length) continue
+
+    const times = appts.map((a) => String(a.time).slice(0, 5))
+    const payload = JSON.stringify({
+      title: 'Agenda de hoje',
+      body: buildDailySummaryBody(times, professionalTypeByUserId.get(userId)),
+      tag: `daily-${todayBrt}`,
+      data: { url: '/agenda' },
+    })
+    const sentNow = await sendToSubscriptions(targets, payload)
+    result.sent += sentNow.sent
+    result.failed += sentNow.failed
+    result.accounts += 1
+    for (const id of sentNow.staleSubscriptionIds) result.staleSubscriptionIds.add(id)
+    // O aviso "Falta 1h" do primeiro atendimento sairia no mesmo minuto: o resumo já cobre.
+    if (sentNow.sent > 0) result.coveredAppointmentIds.add(appts[0].id)
+  }
+
+  return result
+}
+
 const handleNewBooking = async (
   sb: ReturnType<typeof createClient>,
   appointmentId: string,
@@ -563,6 +675,12 @@ Deno.serve(async (req) => {
     professionalTypeByUserId.set(profile.id, profile.professional_type || 'lash')
   }
 
+  const summary = await sendDailySummaries(sb, userIds, professionalTypeByUserId, todayBrt, Date.now())
+  const summaryStats = { accounts: summary.accounts, sent: summary.sent, failed: summary.failed }
+  if (summary.staleSubscriptionIds.size > 0) {
+    await pruneStaleSubscriptions(sb, summary.staleSubscriptionIds)
+  }
+
   const { data: appointments, error: apptError } = await sb
     .from('appointments')
     .select('id,user_id,date,time,status,reminder_enabled,reminder_minutes_before')
@@ -573,7 +691,7 @@ Deno.serve(async (req) => {
     .is('reminder_sent_at', null)
 
   if (apptError) return json(500, { ok: false, error: `appointments query failed: ${apptError.message}` })
-  if (!appointments?.length) return json(200, { ok: true, sent: 0, reason: 'no_due_appointments_today' })
+  if (!appointments?.length) return json(200, { ok: true, sent: 0, reason: 'no_due_appointments_today', dailySummary: summaryStats })
 
   const appointmentsByUser = new Map<string, AppointmentRow[]>()
   for (const appt of appointments as AppointmentRow[]) {
@@ -606,6 +724,12 @@ Deno.serve(async (req) => {
     })
 
     if (!due) continue
+
+    // O resumo do dia acabou de sair para este primeiro atendimento: não manda o "Falta 1h" junto.
+    if (summary.coveredAppointmentIds.has(due.id)) {
+      sentAppointmentIds.add(due.id)
+      continue
+    }
 
     const effectiveMinutes =
       due.reminder_minutes_before != null && Number(due.reminder_minutes_before) > 0
@@ -675,5 +799,6 @@ Deno.serve(async (req) => {
     failed,
     staleSubscriptionsRemoved: staleSubscriptionIds.size,
     remindersMarkedSent: sentAppointmentIds.size,
+    dailySummary: summaryStats,
   })
 })
