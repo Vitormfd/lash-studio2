@@ -329,10 +329,42 @@ const handleStripeWebhook = async (
   const object = event.data.object as Record<string, unknown>
   const userId = await resolveUserIdFromStripe(sb, stripe, object)
   if (!userId) {
-    return json(404, { ok: false, error: 'User not found for Stripe event', event: event.type })
+    // A mesma conta da Stripe também cobra o Easy Food Hub: eventos de quem não é usuária do
+    // Easy Studio chegam aqui. Responder erro fazia a Stripe reenviar sem parar e marcar o
+    // endpoint com taxa de erro alta (risco de desativação). Ignora com 200.
+    console.log('[stripe] evento sem usuária do Easy Studio, ignorado', event.type, event.id)
+    return json(200, { ok: true, ignored: true, reason: 'user_not_found', event: event.type })
   }
 
   await attachUserIdToStripe(stripe, object, userId)
+
+  // Pix (pagamento avulso, mode=payment): só libera quando o dinheiro cai, e por 30 dias.
+  // A Stripe manda checkout.session.completed quando o QR é gerado (payment_status=unpaid)
+  // e checkout.session.async_payment_succeeded quando o Pix é pago.
+  const isCheckoutEvent = event.type.startsWith('checkout.session.')
+  if (isCheckoutEvent && getFromRecord(object, 'mode') === 'payment') {
+    const paid = getFromRecord(object, 'payment_status') === 'paid'
+    const settles = event.type === 'checkout.session.async_payment_succeeded'
+      || (event.type === 'checkout.session.completed' && paid)
+    if (!settles) {
+      return json(200, { ok: true, provider: 'stripe', event: event.type, userId, pending: true })
+    }
+    const sessionId = getFromRecord(object, 'id')
+    const metadata = asRecord(object.metadata)
+    const days = Number(getFromRecord(metadata, 'days') || 30)
+    const amount = Number(object.amount_total || 0)
+    const { data, error } = await sb.rpc('grant_pix_access', {
+      p_session_id: sessionId,
+      p_user_id: userId,
+      p_amount_cents: Number.isFinite(amount) ? amount : 0,
+      p_days: Number.isFinite(days) && days > 0 ? days : 30,
+    })
+    if (error) return json(500, { ok: false, error: error.message })
+    return json(200, { ok: true, provider: 'stripe', event: event.type, userId, pix: data })
+  }
+  if (event.type === 'checkout.session.async_payment_failed' || event.type === 'checkout.session.expired') {
+    return json(200, { ok: true, ignored: true, provider: 'stripe', event: event.type })
+  }
 
   if (
     event.type === 'checkout.session.completed'

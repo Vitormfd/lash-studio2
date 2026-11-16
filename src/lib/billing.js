@@ -40,12 +40,17 @@ const redirectTo = (url) => {
   window.location.assign(url)
 }
 
-export const openCheckout = async ({ userId, email } = {}) => {
+export const PIX_ACCESS_DAYS = 30
+
+/** Pix: pagamento avulso que libera 30 dias. Sempre pela função (o link de pagamento é só cartão). */
+export const openPixCheckout = ({ userId, email } = {}) => openCheckout({ userId, email, method: 'pix' })
+
+export const openCheckout = async ({ userId, email, method = 'card' } = {}) => {
   if (typeof window === 'undefined') return { ok: false }
 
   trackPixelEvent('InitiateCheckout', { currency: 'BRL', value: PLAN_PRICE_BRL })
 
-  const hostedUrl = getHostedCheckoutUrl()
+  const hostedUrl = method === 'pix' ? '' : getHostedCheckoutUrl()
   if (hostedUrl) {
     try {
       const url = new URL(hostedUrl)
@@ -92,6 +97,7 @@ export const openCheckout = async ({ userId, email } = {}) => {
       email,
       successUrl,
       cancelUrl,
+      method,
     }),
   })
 

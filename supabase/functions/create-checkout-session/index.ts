@@ -7,7 +7,15 @@ type RequestBody = {
   cancelUrl?: string
   userId?: string
   email?: string
+  method?: 'card' | 'pix'
 }
+
+// Pix: pagamento avulso que libera 30 dias (o webhook chama grant_pix_access).
+// Mesmo valor da assinatura no cartão (R$ 59,90); não é um preço novo.
+const PIX_AMOUNT_CENTS = 5990
+const PIX_DAYS = 30
+// Tempo para pagar o QR code antes de ele expirar na Stripe.
+const PIX_EXPIRES_AFTER_SECONDS = 60 * 60
 
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -106,14 +114,60 @@ Deno.serve(async (req) => {
     'canceled',
   )
 
+  const stripe = new Stripe(STRIPE_SECRET_KEY, {
+    apiVersion: '2024-06-20',
+  })
+
+  if (payload.method === 'pix') {
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['pix'],
+        payment_method_options: { pix: { expires_after_seconds: PIX_EXPIRES_AFTER_SECONDS } },
+        line_items: [{
+          quantity: 1,
+          price_data: {
+            currency: 'brl',
+            unit_amount: PIX_AMOUNT_CENTS,
+            product_data: { name: `Easy Studio · ${PIX_DAYS} dias de acesso (Pix)` },
+          },
+        }],
+        client_reference_id: user.id,
+        customer_email: user.email || payload.email || undefined,
+        success_url: (() => {
+          const url = new URL(safeUrl(payload.successUrl, `${appBaseUrl}/`))
+          url.searchParams.set('checkout', 'pix_success')
+          return url.toString()
+        })(),
+        cancel_url: cancelUrl,
+        metadata: {
+          user_id: user.id,
+          kind: 'pix_access',
+          days: String(PIX_DAYS),
+        },
+        payment_intent_data: {
+          metadata: { user_id: user.id, kind: 'pix_access' },
+        },
+      })
+      if (!session.url) {
+        return json(500, { ok: false, error: 'Stripe checkout session without URL' })
+      }
+      return json(200, { ok: true, sessionId: session.id, url: session.url })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Checkout creation failed'
+      // Pix ainda não ativado no painel da Stripe.
+      const notEnabled = /payment method type.*pix|pix.*(not|isn't).*(enabled|activated|available)/i.test(message)
+      return json(notEnabled ? 409 : 500, {
+        ok: false,
+        error: notEnabled ? 'Pagamento por Pix ainda não está disponível. Use o cartão ou fale com o suporte.' : message,
+      })
+    }
+  }
+
   const priceId = (payload.priceId || DEFAULT_PRICE_ID || '').trim()
   if (!priceId) {
     return json(500, { ok: false, error: 'Missing Stripe price id (STRIPE_PRICE_ID)' })
   }
-
-  const stripe = new Stripe(STRIPE_SECRET_KEY, {
-    apiVersion: '2024-06-20',
-  })
 
   try {
     const session = await stripe.checkout.sessions.create({

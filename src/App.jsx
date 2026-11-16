@@ -7,7 +7,7 @@ import { progressPushBody } from './lib/dayMessages'
 import { useLocalReminders } from './hooks/useLocalReminders'
 import { applyTheme, getDefaultThemeId, getSavedThemeId, hasSavedTheme, saveAndApplyTheme } from './lib/theme'
 import { useToast } from './hooks/useToast'
-import { CHECKOUT_URL, PLAN_PRICE_BRL, openCheckout } from './lib/billing'
+import { CHECKOUT_URL, PLAN_PRICE_BRL, openCheckout, openPixCheckout } from './lib/billing'
 import { trackPixelEvent } from './lib/facebookPixel'
 import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile, effectiveAccessLevel, fetchUserAccessProfile, isTrialExpired, trialDaysLeft } from './lib/access'
 import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE } from './lib/domain'
@@ -214,6 +214,8 @@ const AppMain = ({ session, onLogout }) => {
   const [accessProfileLoaded, setAccessProfileLoaded] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [paywallHint, setPaywallHint] = useState('')
+  // Último Pix pago (access_until), para saber se o acesso atual veio de Pix.
+  const [lastPixUntil, setLastPixUntil] = useState(null)
   const [teamMembers, setTeamMembers] = useState([])
   const [activeOperator, setActiveOperator] = useState(null)
   const [operatorGateOpen, setOperatorGateOpen] = useState(false)
@@ -234,15 +236,38 @@ const AppMain = ({ session, onLogout }) => {
   const trialExpired = isTrialExpired(accessProfile)
   // Conta real (não a demonstração) cujo teste ou assinatura acabou: mostra o caminho para assinar.
   const accessEnded = !isDemo && accessProfileLoaded && !canUserEdit
+  // O acesso atual (ou o último) veio de Pix: o vencimento do perfil é o do último Pix.
+  const accessFromPix = !!lastPixUntil && !!accessProfile.subscriptionExpiresAt
+    && Math.abs(new Date(lastPixUntil).getTime() - new Date(accessProfile.subscriptionExpiresAt).getTime()) < 60000
+  const pixDaysLeft = accessFromPix && canUserEdit
+    ? Math.max(0, Math.ceil((new Date(accessProfile.subscriptionExpiresAt).getTime() - Date.now()) / 86400000))
+    : null
+  const pixExpired = accessFromPix && accessEnded
 
   const openPaywall = useCallback((hint = '') => {
     setPaywallHint(hint)
     setPaywallOpen(true)
   }, [])
 
-  // Teste acabou: abre a tela de assinatura uma vez por sessão, sem esperar a pessoa tentar editar.
   useEffect(() => {
-    if (!trialExpired || !accessEnded) return
+    if (isDemo || !accessProfileLoaded) return undefined
+    const sb = getClient()
+    if (!sb) return undefined
+    let alive = true
+    sb.from('pix_payments')
+      .select('access_until')
+      .eq('user_id', userId)
+      .order('paid_at', { ascending: false })
+      .limit(1)
+      .then(({ data, error }) => {
+        if (alive && !error) setLastPixUntil(data?.[0]?.access_until || null)
+      })
+    return () => { alive = false }
+  }, [userId, isDemo, accessProfileLoaded, accessProfile.subscriptionExpiresAt])
+
+  // Teste ou acesso via Pix acabou: abre a tela de assinatura uma vez por sessão, sem esperar a pessoa tentar editar.
+  useEffect(() => {
+    if (!(trialExpired || pixExpired) || !accessEnded) return
     const key = `paywall_trial_end_${userId}`
     try {
       if (window.sessionStorage.getItem(key)) return
@@ -251,7 +276,7 @@ const AppMain = ({ session, onLogout }) => {
       // Sem sessionStorage: abre mesmo assim.
     }
     openPaywall('')
-  }, [trialExpired, accessEnded, userId, openPaywall])
+  }, [trialExpired, pixExpired, accessEnded, userId, openPaywall])
 
   const handleUpgrade = useCallback(async () => {
     try {
@@ -261,6 +286,14 @@ const AppMain = ({ session, onLogout }) => {
         ? error.message
         : 'Nao foi possivel abrir o checkout agora.'
       addToast(message, 'error')
+    }
+  }, [userId, session?.email, addToast])
+
+  const handlePixCheckout = useCallback(async () => {
+    try {
+      await openPixCheckout({ userId, email: session?.email })
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Nao foi possivel abrir o Pix agora.', 'error')
     }
   }, [userId, session?.email, addToast])
 
@@ -721,6 +754,23 @@ const AppMain = ({ session, onLogout }) => {
           setAccessProfile(profile)
           if (canUserEditByLevel(effectiveAccessLevel(profile))) break
         }
+      })().catch(() => {})
+    } else if (checkoutStatus === 'pix_success') {
+      // Pix: a Stripe confirma o pagamento pelo webhook, que pode levar alguns segundos.
+      trackPixelEvent('Purchase', { currency: 'BRL', value: PLAN_PRICE_BRL })
+      addToast('Pix recebido! Liberando seu acesso...', 'success')
+      ;(async () => {
+        for (const delay of [0, 2000, 4000, 8000, 15000]) {
+          if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+          const profile = await fetchUserAccessProfile(userId, isDemo)
+          setAccessProfile(profile)
+          if (canUserEditByLevel(effectiveAccessLevel(profile))) {
+            setPaywallOpen(false)
+            addToast('Acesso liberado por 30 dias.', 'success')
+            return
+          }
+        }
+        addToast('O Pix ainda está sendo confirmado. Seu acesso libera sozinho em instantes.', 'info')
       })().catch(() => {})
     } else if (checkoutStatus === 'canceled') {
       addToast('Checkout cancelado. Voce pode tentar novamente quando quiser.', 'warning')
@@ -1256,6 +1306,7 @@ const AppMain = ({ session, onLogout }) => {
           trialDays={trialDays}
           accessEnded={accessEnded}
           trialExpired={trialExpired}
+          pixDaysLeft={pixDaysLeft}
           onUpgrade={() => openPaywall(accessEnded ? '' : 'Organize seu negócio sem limitações')}
           operator={activeOperator}
           onSwitchOperator={requestOperatorSwitch}
@@ -1544,8 +1595,11 @@ const AppMain = ({ session, onLogout }) => {
         onClose={() => setPaywallOpen(false)}
         subtitle={paywallHint}
         onUpgrade={handleUpgrade}
+        onPix={handlePixCheckout}
         trialDays={trialDays}
         trialExpired={trialExpired}
+        accessExpired={accessEnded && !trialExpired && accessProfile.plan !== 'free'}
+        pixDaysLeft={pixDaysLeft}
       />
 
       {/* PWA update banner */}

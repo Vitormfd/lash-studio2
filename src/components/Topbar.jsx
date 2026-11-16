@@ -15,6 +15,7 @@ const Topbar = ({
   trialDays,
   accessEnded = false,
   trialExpired = false,
+  pixDaysLeft = null,
   onUpgrade,
   operator,
   onSwitchOperator,
@@ -48,6 +49,16 @@ const Topbar = ({
         <span style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74' }}>
           Teste gratis
         </span>
+      )}
+      {!isDemo && pixDaysLeft != null && pixDaysLeft <= 7 && (
+        <button
+          type="button"
+          onClick={() => onUpgrade?.()}
+          title="Renovar acesso"
+          style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          Pix · {pixDaysLeft <= 1 ? 'vence hoje' : `${pixDaysLeft} dias`} · Renovar
+        </button>
       )}
       {!isDemo && trialDays != null && (
         <button
