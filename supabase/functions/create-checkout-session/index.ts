@@ -34,6 +34,20 @@ const headers = {
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers })
 
+// O app abre em www.easystudio.com.br e o CORS_ORIGIN tinha só o endereço sem www:
+// o navegador bloqueava o pedido ("Load failed"). Aceita a lista do CORS_ORIGIN
+// (separada por vírgula) mais as duas versões do domínio.
+const ALLOWED_ORIGINS = new Set(
+  [...CORS_ORIGIN.split(','), 'https://easystudio.com.br', 'https://www.easystudio.com.br']
+    .map((value) => value.trim().replace(/\/$/, ''))
+    .filter((value) => value && value !== '*'),
+)
+
+const allowOrigin = (origin: string) => {
+  if (CORS_ORIGIN.trim() === '*') return '*'
+  return ALLOWED_ORIGINS.has(origin) ? origin : [...ALLOWED_ORIGINS][0] || '*'
+}
+
 const parseBearerToken = (value: string | null) =>
   value?.replace(/^Bearer\s+/i, '').trim() || ''
 
@@ -61,6 +75,13 @@ const withCheckoutState = (rawUrl: string, state: 'success' | 'canceled') => {
 }
 
 Deno.serve(async (req) => {
+  const res = await handle(req)
+  res.headers.set('Access-Control-Allow-Origin', allowOrigin(req.headers.get('Origin') || ''))
+  res.headers.set('Vary', 'Origin')
+  return res
+})
+
+const handle = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers })
   }
@@ -203,4 +224,4 @@ Deno.serve(async (req) => {
       error: error instanceof Error ? error.message : 'Checkout creation failed',
     })
   }
-})
+}
