@@ -50,7 +50,6 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
   const [resolving, setResolving] = useState(true)
   const [professionalId, setProfessionalId] = useState(null)
   const [phone, setPhone] = useState('')
-  const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [candidates, setCandidates] = useState(null)
@@ -90,11 +89,11 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
     setCard(data)
   }
 
+  // A busca é só pelo telefone completo: buscar por nome expunha a lista de clientes.
   const submitLookup = async () => {
     const digits = normalizePhoneDigits(phone)
-    const cleanName = name.trim()
-    if (digits.length < 8 && cleanName.length < 2) {
-      setErrorMsg('Informe seu telefone ou seu nome.')
+    if (digits.length < 10) {
+      setErrorMsg('Informe seu telefone com DDD.')
       return
     }
     setLoading(true)
@@ -105,11 +104,17 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
       const { data, error } = await sb.rpc('get_public_loyalty_lookup', {
         p_professional_id: professionalId,
         p_phone: phone,
-        p_name: cleanName,
+        p_name: '',
       })
       if (error) throw error
       if (!data?.ok) {
-        setErrorMsg('Não encontramos seu cadastro. Confira o telefone ou nome informado.')
+        setErrorMsg(
+          data?.reason === 'unavailable'
+            ? 'O cartão fidelidade não está disponível no momento. Fale com quem te atende.'
+            : data?.reason === 'invalid_phone'
+              ? 'Informe seu telefone com DDD.'
+              : 'Não encontramos seu cadastro com esse telefone. Use o mesmo número que você deu no atendimento.',
+        )
         return
       }
       if (data.mode === 'choice') {
@@ -185,7 +190,7 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
 
         {!card && (
           <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 16, textAlign: 'center' }}>
-            Digite seu telefone e/ou nome para ver seu progresso.
+            Digite seu telefone com DDD para ver seu progresso.
           </p>
         )}
 
@@ -203,13 +208,6 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
                 onChange={(e) => setPhone(maskPhoneBr(e.target.value))}
                 placeholder="(00) 00000-0000"
                 inputMode="numeric"
-              />
-            </Field>
-            <Field label="Nome (opcional se informar o telefone)">
-              <Inp
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Seu nome"
                 onKeyDown={(e) => e.key === 'Enter' && submitLookup()}
               />
             </Field>
@@ -228,8 +226,7 @@ const PublicLoyalty = ({ professionalId: identifier }) => {
                   onClick={() => pickCandidate(c.client_id)}
                   style={{ textAlign: 'left', border: '1px solid var(--rose-light)', background: 'var(--nude-light)', borderRadius: 10, padding: '10px 12px', fontFamily: 'inherit', cursor: 'pointer' }}
                 >
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{c.phone || 'Sem telefone cadastrado'}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.name || 'Cliente'}</div>
                 </button>
               ))}
             </div>

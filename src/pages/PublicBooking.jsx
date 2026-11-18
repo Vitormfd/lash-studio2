@@ -409,7 +409,7 @@ const PublicBooking = ({ professionalId }) => {
 
     const cleanName = String(clientName || '').trim()
     const digits = normalizePhoneDigits(clientPhone)
-    if (!cleanName) {
+    if (cleanName.length < 2) {
       setErrorMsg('Informe seu nome completo.')
       return
     }
@@ -462,8 +462,20 @@ const PublicBooking = ({ professionalId }) => {
         setBookingActive(false)
         return
       }
-      if (!ok && result?.detail) {
-        setErrorMsg(`Nao foi possivel confirmar: ${result.detail}`)
+      const reasonMessages = {
+        invalid_phone: 'Informe um telefone válido com DDD.',
+        invalid_name: 'Informe seu nome completo.',
+        past_date: 'Essa data já passou. Escolha outro dia.',
+        too_far: 'Essa data está muito distante. Escolha um dia mais próximo.',
+        too_many_bookings: 'Você já tem horários marcados por este link. Para marcar outro, fale com a profissional pelo WhatsApp.',
+        rate_limited: 'Muitos agendamentos em pouco tempo. Tente de novo daqui a pouco ou fale com a profissional pelo WhatsApp.',
+      }
+      if (!ok && reasonMessages[result?.reason]) {
+        setErrorMsg(reasonMessages[result.reason])
+        if (result.reason === 'past_date' || result.reason === 'too_far') {
+          setSelectedTime('')
+          setStep(2)
+        }
         return
       }
       if (!ok) throw new Error(String(result?.reason || 'booking_error'))
@@ -478,7 +490,7 @@ const PublicBooking = ({ professionalId }) => {
         clientName: cleanName,
       })
     } catch {
-      setErrorMsg('Nao foi possivel confirmar o agendamento agora. Tente novamente em instantes.')
+      setErrorMsg('Não foi possível confirmar o agendamento agora. Tente novamente em instantes.')
     } finally {
       setSubmitting(false)
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import { initSupabase, DB, uid, getClient } from './lib/supabase'
+import { initSupabase, DB, uid, getClient, writeErrorMessage } from './lib/supabase'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
 import { toLocalYmd } from './lib/dashboardStats'
@@ -782,16 +782,24 @@ const AppMain = ({ session, onLogout }) => {
     window.history.replaceState({}, document.title, nextUrl)
   }, [addToast, userId, isDemo])
 
+  // Gravações: devolvem o item salvo (ou true) quando o banco confirmou e false quando não.
+  // No erro a mensagem já aparece aqui; a tela só mostra "salvo" quando não recebe false.
+  const reportWriteError = useCallback((error) => {
+    addToast(writeErrorMessage(error), 'error')
+    return false
+  }, [addToast])
+
   // ── CLIENTS ──
   const handleAddClient = async (client) => {
-    if (guardRestrictedWrite('Desbloqueie para salvar clientes.')) return
+    if (guardRestrictedWrite('Desbloqueie para salvar clientes.')) return false
     setClients((c) => [...c, client])
     try {
       const saved = await DB.saveClient(userId, { ...client, _new: true })
       setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
-    } catch {
+      return saved
+    } catch (error) {
       setClients((c) => c.filter((x) => x.id !== client.id))
-      addToast('Não foi possível salvar o celular do cliente no banco.', 'error')
+      return reportWriteError(error)
     }
   }
   const handleImportClients = async (items) => {
@@ -810,35 +818,56 @@ const AppMain = ({ session, onLogout }) => {
     }
   }
   const handleUpdateClient = async (client) => {
-    if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
+    if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return false
     try {
       const saved = await DB.saveClient(userId, client)
       setClients((c) => c.map((x) => (x.id === saved.id ? saved : x)))
-    } catch {
-      addToast('Não foi possível atualizar o celular do cliente no banco.', 'error')
+      return saved
+    } catch (error) {
+      return reportWriteError(error)
     }
   }
   const handleDeleteClient = async (id) => {
-    if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return
-    await DB.deleteClient(userId, id)
+    if (guardRestrictedWrite('Desbloqueie para editar clientes.')) return false
+    try {
+      await DB.deleteClient(userId, id)
+    } catch (error) {
+      return reportWriteError(error)
+    }
     setClients((c) => c.filter((x) => x.id !== id))
+    return true
   }
 
   // ── SERVICES ──
   const handleAddService = async (svc) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    const saved = await DB.saveService(userId, { ...svc, _new: true })
-    setServices((s) => [...s, saved])
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      const saved = await DB.saveService(userId, { ...svc, _new: true })
+      setServices((s) => [...s, saved])
+      return saved
+    } catch (error) {
+      return reportWriteError(error)
+    }
   }
   const handleUpdateService = async (svc) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    const saved = await DB.saveService(userId, svc)
-    setServices((s) => s.map((x) => (x.id === saved.id ? saved : x)))
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      const saved = await DB.saveService(userId, svc)
+      setServices((s) => s.map((x) => (x.id === saved.id ? saved : x)))
+      return saved
+    } catch (error) {
+      return reportWriteError(error)
+    }
   }
   const handleDeleteService = async (id) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    await DB.deleteService(userId, id)
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      await DB.deleteService(userId, id)
+    } catch (error) {
+      return reportWriteError(error)
+    }
     setServices((s) => s.filter((x) => x.id !== id))
+    return true
   }
 
   // ── APPOINTMENTS ──
@@ -853,7 +882,13 @@ const AppMain = ({ session, onLogout }) => {
 
     if (editAppt) {
       if (overlapsOther(editAppt.id)) { addToast('Conflito com outro horário ou bloqueio.', 'error'); return }
-      const saved = await DB.saveAppointment(userId, { ...form, id: editAppt.id })
+      let saved
+      try {
+        saved = await DB.saveAppointment(userId, { ...form, id: editAppt.id })
+      } catch (error) {
+        reportWriteError(error)
+        return
+      }
       setAppointments((a) => a.map((x) => (x.id === editAppt.id ? saved : x)))
       setEditAppt(null); addToast('Agendamento salvo com sucesso!', 'success')
     } else {
@@ -868,7 +903,13 @@ const AppMain = ({ session, onLogout }) => {
         recurrenceId,
         recurrenceFrequency: isFixedSeries ? form.fixedFrequency : null,
       }
-      const saved = await DB.saveAppointment(userId, newAppt)
+      let saved
+      try {
+        saved = await DB.saveAppointment(userId, newAppt)
+      } catch (error) {
+        reportWriteError(error)
+        return
+      }
       let allAppts = [...appointments, saved]
       setAppointments(allAppts)
       setNewApptModal(false)
@@ -944,10 +985,15 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const deleteAppt = async (id) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    await DB.deleteAppointment(userId, id)
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      await DB.deleteAppointment(userId, id)
+    } catch (error) {
+      return reportWriteError(error)
+    }
     setAppointments((a) => a.filter((x) => x.id !== id))
     addToast('Removido.', 'success')
+    return true
   }
 
   const markAppointmentStatus = async (appt, status, paymentData) => {
@@ -1000,38 +1046,59 @@ const AppMain = ({ session, onLogout }) => {
       } else {
         addToast('Status atualizado.', 'success')
       }
-    } catch {
-      addToast('Não foi possível atualizar o status.', 'error')
+    } catch (error) {
+      if (error?.isWriteError) reportWriteError(error)
+      else addToast('Não foi possível atualizar o status.', 'error')
     }
   }
 
   // ── CONFIG ──
   const saveConfig = async (cfg) => {
-    if (guardRestrictedWrite('Organize seu negócio sem limitações.')) return
-    await DB.saveConfig(userId, cfg)
+    if (guardRestrictedWrite('Organize seu negócio sem limitações.')) return false
+    try {
+      await DB.saveConfig(userId, cfg)
+    } catch (error) {
+      return reportWriteError(error)
+    }
     setConfigState(cfg)
+    return true
   }
 
   // ── INVENTORY ──
   const handleSaveInventoryItem = async (item) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    const saved = await DB.saveInventoryItem(userId, item)
-    setInventoryItems((list) => {
-      const exists = list.some((x) => x.id === saved.id)
-      return exists ? list.map((x) => (x.id === saved.id ? saved : x)) : [...list, saved]
-    })
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      const saved = await DB.saveInventoryItem(userId, item)
+      setInventoryItems((list) => {
+        const exists = list.some((x) => x.id === saved.id)
+        return exists ? list.map((x) => (x.id === saved.id ? saved : x)) : [...list, saved]
+      })
+      return saved
+    } catch (error) {
+      return reportWriteError(error)
+    }
   }
 
   const handleDeleteInventoryItem = async (id) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    await DB.deleteInventoryItem(userId, id)
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      await DB.deleteInventoryItem(userId, id)
+    } catch (error) {
+      return reportWriteError(error)
+    }
     setInventoryItems((list) => list.filter((x) => x.id !== id))
+    return true
   }
 
   const handleSaveInventoryMovement = async (movement) => {
-    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return
-    const saved = await DB.saveInventoryMovement(userId, movement)
-    setInventoryMovements((list) => [saved, ...list])
+    if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
+    try {
+      const saved = await DB.saveInventoryMovement(userId, movement)
+      setInventoryMovements((list) => [saved, ...list])
+      return saved
+    } catch (error) {
+      return reportWriteError(error)
+    }
   }
 
   // ── CASH EXPENSES ──
@@ -1052,28 +1119,31 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   // ── COMPAT SETTERS (para páginas que usam setClients/setServices como array-setter) ──
+  // Devolvem a promessa da gravação (false quando o banco não confirmou), para a tela esperar.
   const setClientsCompat = (valOrFn) => {
-    if (!canUserEdit) { guardRestrictedWrite('Desbloqueie para salvar clientes.'); return }
+    if (!canUserEdit) { guardRestrictedWrite('Desbloqueie para salvar clientes.'); return Promise.resolve(false) }
     const next = typeof valOrFn === 'function' ? valOrFn(clients) : valOrFn
     const added = next.find((c) => !clients.find((x) => x.id === c.id))
     const removed = clients.find((c) => !next.find((x) => x.id === c.id))
     const changed = next.find((c) => { const old = clients.find((x) => x.id === c.id); return old && JSON.stringify(old) !== JSON.stringify(c) })
-    if (added) { handleAddClient(added); return }
-    if (removed) { handleDeleteClient(removed.id); return }
-    if (changed) { handleUpdateClient(changed); return }
+    if (added) return handleAddClient(added)
+    if (removed) return handleDeleteClient(removed.id)
+    if (changed) return handleUpdateClient(changed)
     setClients(next)
+    return Promise.resolve(true)
   }
 
   const setServicesCompat = (valOrFn) => {
-    if (!canUserEdit) { guardRestrictedWrite('Tenha acesso completo ao sistema.'); return }
+    if (!canUserEdit) { guardRestrictedWrite('Tenha acesso completo ao sistema.'); return Promise.resolve(false) }
     const next = typeof valOrFn === 'function' ? valOrFn(services) : valOrFn
     const added = next.find((s) => !services.find((x) => x.id === s.id))
     const removed = services.find((s) => !next.find((x) => x.id === s.id))
     const changed = next.find((s) => { const old = services.find((x) => x.id === s.id); return old && JSON.stringify(old) !== JSON.stringify(s) })
-    if (added) { handleAddService(added); return }
-    if (removed) { handleDeleteService(removed.id); return }
-    if (changed) { handleUpdateService(changed); return }
+    if (added) return handleAddService(added)
+    if (removed) return handleDeleteService(removed.id)
+    if (changed) return handleUpdateService(changed)
     setServices(next)
+    return Promise.resolve(true)
   }
 
   const countSoonAppointments = () =>

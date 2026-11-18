@@ -295,8 +295,7 @@ const Settings = ({
     if (blockDemoAction()) return
     const next = saveAndApplyTheme(session?.userId, id)
     setThemeId(next)
-    setConfig({ ...config, themeId: next })
-    addToast('Tema aplicado!', 'success')
+    setConfig({ ...config, themeId: next }).then((ok) => { if (ok !== false) addToast('Tema aplicado!', 'success') })
   }
 
   const addTeamMember = async () => {
@@ -372,8 +371,7 @@ const Settings = ({
         <Btn
           onClick={() => {
             if (blockDemoAction()) return
-            setConfig({ ...config, avgCost: Number(cost) })
-            addToast('Configurações salvas!', 'success')
+            setConfig({ ...config, avgCost: Number(cost) }).then((ok) => { if (ok !== false) addToast('Configurações salvas!', 'success') })
           }}
           disabled={isDemo}
         >
@@ -509,8 +507,7 @@ const Settings = ({
               setConfig({
                 ...config,
                 workHours: normalized,
-              })
-              addToast('Horário de trabalho salvo! O agendamento público já usa essa janela.', 'success')
+              }).then((ok) => { if (ok !== false) addToast('Horário de trabalho salvo! O agendamento público já usa essa janela.', 'success') })
             }}
             disabled={isDemo}
           >
@@ -557,8 +554,7 @@ const Settings = ({
               ...config,
               stateUf: stateUf || '',
               city: city.trim(),
-            })
-            addToast('Localização salva! A agenda já usa os feriados.', 'success')
+            }).then((ok) => { if (ok !== false) addToast('Localização salva! A agenda já usa os feriados.', 'success') })
           }}
           disabled={isDemo}
         >
@@ -652,8 +648,7 @@ const Settings = ({
               setConfig({
                 ...config,
                 whatsappReminderTemplate: next,
-              })
-              addToast('Mensagem do WhatsApp salva!', 'success')
+              }).then((ok) => { if (ok !== false) addToast('Mensagem do WhatsApp salva!', 'success') })
             }}
             disabled={isDemo}
           >

@@ -68,8 +68,7 @@ const BookingWhatsappConfirm = ({ config, setConfig, addToast, isDemo = false })
       businessWhatsapp: digits,
       // Guardar vazio quando igual ao padrão: se o texto padrão melhorar, a conta acompanha.
       bookingConfirmTemplate: trimmed === DEFAULT_BOOKING_CONFIRM_TEMPLATE ? '' : trimmed,
-    })
-    addToast(digits ? 'Confirmação pelo WhatsApp salva!' : 'Botão de confirmação desativado.', 'success')
+    }).then((ok) => { if (ok !== false) addToast(digits ? 'Confirmação pelo WhatsApp salva!' : 'Botão de confirmação desativado.', 'success') })
   }
 
   return (

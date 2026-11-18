@@ -30,24 +30,28 @@ const Services = ({ services, setServices, appointments, addToast, isBarber = fa
     return name.includes(q) || priceStr.includes(search.trim()) || costStr.includes(search.trim())
   })
 
-  const save = () => {
+  // setServices grava no banco e devolve false quando não deu (o aviso de erro já aparece).
+  const save = async () => {
     if (!form.name || !form.price) return
     const colorClean = normalizeServiceColor(form.color) || ''
     const costPerClient = parseOptionalNumber(form.costPerClient)
     const durationMinutes = Number(form.durationMinutes) > 0 ? Number(form.durationMinutes) : defaultDuration
     if (modal === 'new') {
-      setServices([...services, { ...form, price: Number(form.price), costPerClient, color: colorClean, durationMinutes, id: uid() }])
+      const ok = await setServices([...services, { ...form, price: Number(form.price), costPerClient, color: colorClean, durationMinutes, id: uid() }])
+      if (ok === false) return
       addToast('Serviço criado!', 'success')
     } else {
-      setServices(services.map((s) => s.id === modal.id ? { ...s, ...form, price: Number(form.price), costPerClient, color: colorClean, durationMinutes } : s))
+      const ok = await setServices(services.map((s) => s.id === modal.id ? { ...s, ...form, price: Number(form.price), costPerClient, color: colorClean, durationMinutes } : s))
+      if (ok === false) return
       addToast('Serviço atualizado!', 'success')
     }
     setModal(null)
   }
 
-  const del = (id) => {
+  const del = async (id) => {
     if (appointments.some((a) => a.serviceId === id)) { addToast('Serviço em uso!', 'warning'); return }
-    setServices(services.filter((s) => s.id !== id))
+    const ok = await setServices(services.filter((s) => s.id !== id))
+    if (ok === false) return
     addToast('Serviço removido.', 'success')
   }
 

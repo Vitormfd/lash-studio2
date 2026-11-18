@@ -467,29 +467,39 @@ const Clients = ({
   }
   const filtered = clients.filter(matchesSearch)
 
-  const save = (andSchedule) => {
+  // setClients grava no banco e devolve false quando não deu (o aviso de erro já aparece).
+  const [savingClient, setSavingClient] = useState(false)
+  const save = async (andSchedule) => {
     if (!canUserEdit) {
       onBlockedAction?.('Desbloqueie para salvar clientes.')
       return
     }
-    if (!form.name) return
+    if (!form.name || savingClient) return
     const data = { ...form, maintenanceIntervalDays: parseIntervalInput(form.maintenanceIntervalDays) }
-    if (modal === 'new') {
-      const newId = uid()
-      setClients([...clients, { ...data, id: newId, createdAt: new Date().toISOString() }])
-      addToast('Cliente salvo com sucesso!', 'success')
-      setModal(null)
-      if (andSchedule && onScheduleAfterCreate) onScheduleAfterCreate(newId)
-    } else {
-      setClients(clients.map((c) => (c.id === modal.id ? { ...c, ...data } : c)))
-      addToast('Cliente salvo com sucesso!', 'success')
-      setModal(null)
+    setSavingClient(true)
+    try {
+      if (modal === 'new') {
+        const newId = uid()
+        const ok = await setClients([...clients, { ...data, id: newId, createdAt: new Date().toISOString() }])
+        if (ok === false) return
+        addToast('Cliente salvo com sucesso!', 'success')
+        setModal(null)
+        if (andSchedule && onScheduleAfterCreate) onScheduleAfterCreate(newId)
+      } else {
+        const ok = await setClients(clients.map((c) => (c.id === modal.id ? { ...c, ...data } : c)))
+        if (ok === false) return
+        addToast('Cliente salvo com sucesso!', 'success')
+        setModal(null)
+      }
+    } finally {
+      setSavingClient(false)
     }
   }
 
-  const del = (id) => {
+  const del = async (id) => {
     if (appointments.some((a) => a.clientId === id)) { addToast('Cliente possui agendamentos!', 'warning'); return }
-    setClients(clients.filter((c) => c.id !== id))
+    const ok = await setClients(clients.filter((c) => c.id !== id))
+    if (ok === false) return
     addToast('Cliente removido.', 'success')
   }
 
@@ -527,11 +537,12 @@ const Clients = ({
     setIntervalDraft(row.isCustomInterval ? String(row.interval) : '')
     setIntervalEdit(row)
   }
-  const saveInterval = (value) => {
+  const saveInterval = async (value) => {
     if (!intervalEdit) return
     const days = parseIntervalInput(value)
     const id = intervalEdit.client.id
-    setClients(clients.map((c) => (c.id === id ? { ...c, maintenanceIntervalDays: days } : c)))
+    const ok = await setClients(clients.map((c) => (c.id === id ? { ...c, maintenanceIntervalDays: days } : c)))
+    if (ok === false) return
     addToast(days ? `Manutenção a cada ${days} dias.` : `Voltou para o padrão de ${defaultMaintenanceDays} dias.`, 'success')
     setIntervalEdit(null)
   }
@@ -940,13 +951,13 @@ const Clients = ({
           <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
           {modal === 'new' ? (
             <>
-              <Btn variant="outline" onClick={() => save(false)} disabled={!form.name}>Salvar</Btn>
-              <Btn onClick={() => save(true)} disabled={!form.name}>
+              <Btn variant="outline" onClick={() => save(false)} disabled={!form.name || savingClient}>Salvar</Btn>
+              <Btn onClick={() => save(true)} disabled={!form.name || savingClient}>
                 <Icon name="calendar" size={14} color="#fff" /> Salvar e agendar
               </Btn>
             </>
           ) : (
-            <Btn onClick={() => save(false)} disabled={!form.name}><Icon name="check" size={14} color="#fff" /> Salvar</Btn>
+            <Btn onClick={() => save(false)} disabled={!form.name || savingClient}><Icon name="check" size={14} color="#fff" /> Salvar</Btn>
           )}
         </div>
       </Modal>

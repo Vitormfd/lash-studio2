@@ -36,6 +36,31 @@ export const getClient = () => {
 
 export const getSupabaseConfig = () => ({ url: SUPABASE_URL, anonKey: SUPABASE_KEY })
 
+// Conta real (id do Supabase, um UUID) grava só no banco: se o banco recusar, a tela avisa
+// em vez de dizer que salvou. A demonstração usa um id local e grava só neste navegador.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const remoteFor = (userId) => (UUID_RE.test(String(userId || '')) ? getClient() : null)
+
+/** Erro de gravação com a mensagem pronta para mostrar na tela. */
+const writeFailed = (error) => {
+  const raw = String(error?.message || error || '')
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+  let message = 'Não foi possível salvar no servidor. Nada foi alterado; tente de novo.'
+  if (offline || /failed to fetch|networkerror|load failed|network request failed/i.test(raw)) {
+    message = 'Sem conexão com a internet: nada foi salvo. Tente de novo quando a conexão voltar.'
+  } else if (/full plan required|access denied/i.test(raw)) {
+    message = 'Seu acesso terminou, então a alteração não foi salva. Assine para continuar editando.'
+  }
+  const err = new Error(message)
+  err.cause = error
+  err.isWriteError = true
+  return err
+}
+
+/** Mensagem para a tela a partir de qualquer erro de gravação. */
+export const writeErrorMessage = (error) =>
+  error?.isWriteError ? error.message : 'Não foi possível salvar. Verifique a internet e tente de novo.'
+
 const getFunctionsBaseUrl = () => {
   const explicit = (import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || '').trim().replace(/\/$/, '')
   if (explicit) return explicit
@@ -351,7 +376,7 @@ export const DB = {
   },
 
   async saveClient(userId, client, { skipAudit = false } = {}) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     if (sb) {
       const phoneRaw = String(client.phone || '').trim()
       const phoneDigits = phoneRaw.replace(/\D/g, '')
@@ -445,7 +470,7 @@ export const DB = {
         return normalized
       }
 
-      if (error) throw error
+      throw writeFailed(error)
     }
     const normalized = normalizeClient({ ...client, created_at: client.createdAt })
     const all = uget(userId, 'clients') || []
@@ -467,7 +492,7 @@ export const DB = {
    * Retorna { saved, failed } para a tela avisar quantos entraram.
    */
   async importClients(userId, clients) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     const saved = []
     const failed = []
 
@@ -519,8 +544,11 @@ export const DB = {
 
   async deleteClient(userId, id) {
     const existing = (uget(userId, 'clients') || []).find((c) => c.id === id)
-    const sb = getClient()
-    if (sb) { await sb.from('clients').delete().eq('id', id).eq('user_id', userId) }
+    const sb = remoteFor(userId)
+    if (sb) {
+      const { error } = await sb.from('clients').delete().eq('id', id).eq('user_id', userId)
+      if (error) throw writeFailed(error)
+    }
     uset(userId, 'clients', (uget(userId, 'clients') || []).filter((c) => c.id !== id))
     await logAudit(userId, {
       action: 'delete',
@@ -558,7 +586,7 @@ export const DB = {
   },
 
   async saveService(userId, service) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     if (sb) {
       const rowBase = {
         id: service.id,
@@ -607,6 +635,7 @@ export const DB = {
         })
         return normalized
       }
+      throw writeFailed(error)
     }
     const normalized = normalizeService(service)
     const all = uget(userId, 'services') || []
@@ -623,8 +652,11 @@ export const DB = {
 
   async deleteService(userId, id) {
     const existing = (uget(userId, 'services') || []).find((s) => s.id === id)
-    const sb = getClient()
-    if (sb) { await sb.from('services').delete().eq('id', id).eq('user_id', userId) }
+    const sb = remoteFor(userId)
+    if (sb) {
+      const { error } = await sb.from('services').delete().eq('id', id).eq('user_id', userId)
+      if (error) throw writeFailed(error)
+    }
     uset(userId, 'services', (uget(userId, 'services') || []).filter((s) => s.id !== id))
     await logAudit(userId, {
       action: 'delete',
@@ -680,7 +712,7 @@ export const DB = {
   },
 
   async saveAppointment(userId, appt) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     const mapRow = (a) => ({
       id: a.id,
       clientId: a.client_id,
@@ -783,6 +815,7 @@ export const DB = {
         })
         return normalized
       }
+      throw writeFailed(error)
     }
     const { _new: __n, ...apptClean } = appt
     const fallback = {
@@ -804,8 +837,11 @@ export const DB = {
 
   async deleteAppointment(userId, id) {
     const existing = (uget(userId, 'appointments') || []).find((a) => a.id === id)
-    const sb = getClient()
-    if (sb) { await sb.from('appointments').delete().eq('id', id).eq('user_id', userId) }
+    const sb = remoteFor(userId)
+    if (sb) {
+      const { error } = await sb.from('appointments').delete().eq('id', id).eq('user_id', userId)
+      if (error) throw writeFailed(error)
+    }
     uset(userId, 'appointments', (uget(userId, 'appointments') || []).filter((a) => a.id !== id))
     await logAudit(userId, {
       action: 'delete',
@@ -857,7 +893,7 @@ export const DB = {
   },
 
   async saveConfig(userId, config) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     const workHours = normalizeWorkHours(config.workHours)
     const whatsappReminderTemplate = normalizeWhatsappReminderTemplate(config.whatsappReminderTemplate)
     const nextConfig = { ...config, workHours, whatsappReminderTemplate }
@@ -900,8 +936,9 @@ export const DB = {
       }
       if (error) {
         delete row.whatsapp_reminder_template
-        await sb.from('config').upsert(row, { onConflict: 'user_id' })
+        ;({ error } = await sb.from('config').upsert(row, { onConflict: 'user_id' }))
       }
+      if (error) throw writeFailed(error)
     }
     uset(userId, 'config', nextConfig)
     await logAudit(userId, {
@@ -940,7 +977,7 @@ export const DB = {
   },
 
   async saveInventoryItem(userId, item) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     if (sb) {
       const row = {
         id: item.id,
@@ -986,6 +1023,7 @@ export const DB = {
         })
         return normalized
       }
+      throw writeFailed(error)
     }
     const all = uget(userId, 'inventory_items') || []
     const exists = all.find((i) => i.id === item.id)
@@ -1001,8 +1039,11 @@ export const DB = {
 
   async deleteInventoryItem(userId, id) {
     const existing = (uget(userId, 'inventory_items') || []).find((i) => i.id === id)
-    const sb = getClient()
-    if (sb) { await sb.from('inventory_items').delete().eq('id', id).eq('user_id', userId) }
+    const sb = remoteFor(userId)
+    if (sb) {
+      const { error } = await sb.from('inventory_items').delete().eq('id', id).eq('user_id', userId)
+      if (error) throw writeFailed(error)
+    }
     uset(userId, 'inventory_items', (uget(userId, 'inventory_items') || []).filter((i) => i.id !== id))
     await logAudit(userId, {
       action: 'delete',
@@ -1033,7 +1074,7 @@ export const DB = {
   },
 
   async saveInventoryMovement(userId, movement) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     if (sb) {
       const row = {
         id: movement.id,
@@ -1067,6 +1108,7 @@ export const DB = {
         })
         return normalized
       }
+      throw writeFailed(error)
     }
     const all = uget(userId, 'inventory_movements') || []
     uset(userId, 'inventory_movements', [movement, ...all])
@@ -1109,7 +1151,7 @@ export const DB = {
   },
 
   async saveCashExpense(userId, expense) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     if (sb) {
       const row = {
         id: expense.id,
@@ -1150,6 +1192,7 @@ export const DB = {
         })
         return normalized
       }
+      throw writeFailed(error)
     }
     const all = uget(userId, 'cash_expenses') || []
     const exists = all.find((e) => e.id === expense.id)
@@ -1178,8 +1221,11 @@ export const DB = {
 
   async deleteCashExpense(userId, id) {
     const existing = (uget(userId, 'cash_expenses') || []).find((e) => e.id === id)
-    const sb = getClient()
-    if (sb) { await sb.from('cash_expenses').delete().eq('id', id).eq('user_id', userId) }
+    const sb = remoteFor(userId)
+    if (sb) {
+      const { error } = await sb.from('cash_expenses').delete().eq('id', id).eq('user_id', userId)
+      if (error) throw writeFailed(error)
+    }
     uset(userId, 'cash_expenses', (uget(userId, 'cash_expenses') || []).filter((e) => e.id !== id))
     await logAudit(userId, {
       action: 'delete',
@@ -1260,7 +1306,7 @@ export const DB = {
   },
 
   async saveTeamMember(userId, member) {
-    const sb = getClient()
+    const sb = remoteFor(userId)
     const row = {
       id: member.id,
       user_id: userId,
@@ -1296,6 +1342,7 @@ export const DB = {
         })
         return normalized
       }
+      throw writeFailed(error)
     }
 
     const normalized = normalizeTeamMember({ ...member, pin_hash: member.pinHash })
@@ -1313,9 +1360,10 @@ export const DB = {
 
   async deleteTeamMember(userId, id) {
     const existing = (uget(userId, 'team_members') || []).find((m) => m.id === id)
-    const sb = getClient()
+    const sb = remoteFor(userId)
     if (sb) {
-      await sb.from('team_members').delete().eq('id', id).eq('user_id', userId)
+      const { error } = await sb.from('team_members').delete().eq('id', id).eq('user_id', userId)
+      if (error) throw writeFailed(error)
     }
     uset(userId, 'team_members', (uget(userId, 'team_members') || []).filter((m) => m.id !== id))
     await logAudit(userId, {

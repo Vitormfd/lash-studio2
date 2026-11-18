@@ -69,7 +69,8 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
       createdAt: itemModal === 'new' ? new Date().toISOString() : itemModal.createdAt,
       _new: itemModal === 'new',
     }
-    await onSaveItem(payload)
+    // false = o banco não confirmou (o aviso de erro já apareceu)
+    if ((await onSaveItem(payload)) === false) return
     addToast(itemModal === 'new' ? 'Item criado!' : 'Item atualizado!', 'success')
     setItemModal(null)
   }
@@ -77,7 +78,7 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
   const removeItem = async (item) => {
     const hasMov = movements.some((m) => m.itemId === item.id)
     if (hasMov) { addToast('Este item já possui movimentações.', 'warning'); return }
-    await onDeleteItem(item.id)
+    if ((await onDeleteItem(item.id)) === false) return
     addToast('Item removido.', 'success')
   }
 
@@ -99,8 +100,8 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
         : qty
     if (nextStock < 0) { addToast('Estoque não pode ficar negativo.', 'warning'); return }
 
-    await onSaveItem({ ...moveModal, stock: nextStock, updatedAt: new Date().toISOString() })
-    await onSaveMovement({
+    if ((await onSaveItem({ ...moveModal, stock: nextStock, updatedAt: new Date().toISOString() })) === false) return
+    const movementSaved = await onSaveMovement({
       id: uid(),
       itemId: moveModal.id,
       type: moveForm.type,
@@ -109,6 +110,7 @@ const Inventory = ({ items, movements, onSaveItem, onDeleteItem, onSaveMovement,
       createdAt: new Date().toISOString(),
       _new: true,
     })
+    if (movementSaved === false) return
     addToast('Movimentação registrada!', 'success')
     setMoveModal(null)
   }

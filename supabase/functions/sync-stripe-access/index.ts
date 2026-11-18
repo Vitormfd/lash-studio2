@@ -7,6 +7,17 @@ type ProfileAccess = 'full' | 'demo'
 const PROJECT_URL = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') || ''
+// Produtos (prod_...) do Easy Studio na Stripe, separados por vírgula. Opcional.
+const EASY_STUDIO_PRODUCT_IDS = new Set(
+  (Deno.env.get('STRIPE_EASY_STUDIO_PRODUCT_IDS') || '').split(',').map((v) => v.trim()).filter(Boolean),
+)
+
+const isEasyStudioSubscription = (subscription: Stripe.Subscription) =>
+  (subscription.items?.data || []).some((item) => {
+    const product = item.price?.product
+    const productId = typeof product === 'string' ? product : product?.id
+    return !!productId && EASY_STUDIO_PRODUCT_IDS.has(productId)
+  })
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,11 +82,31 @@ const pickBestSubscription = async (stripe: Stripe, userId: string, email: strin
     // Checkout search is best-effort; email lookup below still runs.
   }
 
-  const customers = await stripe.customers.list({ email, limit: 100 })
-  for (const customer of customers.data) {
-    const subscriptions = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 100 })
-    for (const subscription of subscriptions.data) {
+  // Assinaturas que o webhook já marcou com o id da usuária.
+  try {
+    const marked = await stripe.subscriptions.search({
+      query: `metadata['user_id']:'${userId}'`,
+      limit: 10,
+    })
+    for (const subscription of marked.data) {
       activeCandidate = considerSubscription(subscription, activeCandidate)
+    }
+  } catch {
+    // Busca é best-effort.
+  }
+
+  // A conta da Stripe é compartilhada com o Easy Food Hub: buscar só pelo e-mail achava
+  // assinaturas do outro produto e liberava o Easy Studio de graça. Pelo e-mail, só
+  // assinaturas dos produtos do Easy Studio (STRIPE_EASY_STUDIO_PRODUCT_IDS); sem essa
+  // lista, a busca por e-mail fica desligada.
+  if (EASY_STUDIO_PRODUCT_IDS.size > 0) {
+    const customers = await stripe.customers.list({ email, limit: 100 })
+    for (const customer of customers.data) {
+      const subscriptions = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 100 })
+      for (const subscription of subscriptions.data) {
+        if (!isEasyStudioSubscription(subscription)) continue
+        activeCandidate = considerSubscription(subscription, activeCandidate)
+      }
     }
   }
 

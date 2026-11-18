@@ -105,16 +105,14 @@ const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected, p
       addToast('Conecte o WhatsApp primeiro.', 'warning')
       return
     }
-    setConfig({ ...config, whatsappMaintenanceEnabled: !enabled })
-    addToast(!enabled ? 'Lembrete de manutenção ligado!' : 'Lembrete de manutenção desligado.', 'success')
+    setConfig({ ...config, whatsappMaintenanceEnabled: !enabled }).then((ok) => { if (ok !== false) addToast(!enabled ? 'Lembrete de manutenção ligado!' : 'Lembrete de manutenção desligado.', 'success') })
   }
 
   const save = () => {
     if (isDemo) return
     const next = String(template || '').trim() || DEFAULT_MAINTENANCE_TEMPLATE
     setTemplate(next)
-    setConfig({ ...config, whatsappMaintenanceTemplate: next })
-    addToast('Mensagem de manutenção salva!', 'success')
+    setConfig({ ...config, whatsappMaintenanceTemplate: next }).then((ok) => { if (ok !== false) addToast('Mensagem de manutenção salva!', 'success') })
   }
 
   return (
@@ -246,8 +244,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
       addToast('WhatsApp conectado!', 'success')
       return
     }
-    setConfig({ ...latest, whatsappAutoEnabled: true })
-    addToast('WhatsApp conectado! Lembretes automáticos ligados.', 'success')
+    setConfig({ ...latest, whatsappAutoEnabled: true }).then((ok) => { if (ok !== false) addToast('WhatsApp conectado! Lembretes automáticos ligados.', 'success') })
   }
 
   const connect = async () => {
@@ -306,8 +303,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
     setQr(null)
     setState('not_created')
     setNumber('')
-    setConfig({ ...config, whatsappAutoEnabled: false })
-    addToast('WhatsApp desconectado.', 'info')
+    setConfig({ ...config, whatsappAutoEnabled: false }).then((ok) => { if (ok !== false) addToast('WhatsApp desconectado.', 'info') })
   }
 
   const toggleEnabled = () => {
@@ -316,16 +312,14 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
       addToast('Conecte o WhatsApp primeiro.', 'warning')
       return
     }
-    setConfig({ ...config, whatsappAutoEnabled: !enabled })
-    addToast(!enabled ? 'Lembretes automáticos ligados!' : 'Lembretes automáticos desligados.', 'success')
+    setConfig({ ...config, whatsappAutoEnabled: !enabled }).then((ok) => { if (ok !== false) addToast(!enabled ? 'Lembretes automáticos ligados!' : 'Lembretes automáticos desligados.', 'success') })
   }
 
   const saveTemplate = () => {
     if (isDemo) return
     const next = String(autoTemplate || '').trim() || DEFAULT_WHATSAPP_AUTO_TEMPLATE
     setAutoTemplate(next)
-    setConfig({ ...config, whatsappAutoTemplate: next })
-    addToast('Mensagem do lembrete salva!', 'success')
+    setConfig({ ...config, whatsappAutoTemplate: next }).then((ok) => { if (ok !== false) addToast('Mensagem do lembrete salva!', 'success') })
   }
 
   const insertToken = (token) => insertAtCursor('whatsapp-auto-template', autoTemplate, setAutoTemplate, token)

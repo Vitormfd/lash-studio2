@@ -31,6 +31,57 @@ const WEBHOOK_SECRET = Deno.env.get('PAYMENT_WEBHOOK_SECRET') || ''
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') || ''
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET') || WEBHOOK_SECRET
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Produtos (prod_...) do Easy Studio na Stripe, separados por vírgula. Opcional: sem a lista,
+// só valem eventos que trazem o id da usuária (client_reference_id ou metadata.user_id).
+const EASY_STUDIO_PRODUCT_IDS = new Set(
+  (Deno.env.get('STRIPE_EASY_STUDIO_PRODUCT_IDS') || '').split(',').map((v) => v.trim()).filter(Boolean),
+)
+
+const productIdOf = (value: unknown) => {
+  if (typeof value === 'string') return value
+  const record = value && typeof value === 'object' ? value as Record<string, unknown> : null
+  return typeof record?.id === 'string' ? record.id : null
+}
+
+/** Produtos cobrados neste objeto da Stripe (assinatura, fatura ou checkout). */
+const collectProductIds = async (stripe: Stripe, object: Record<string, unknown>) => {
+  const ids = new Set<string>()
+  const addFromLines = (lines: unknown) => {
+    const data = (lines && typeof lines === 'object' ? (lines as { data?: unknown[] }).data : null) || []
+    for (const line of data) {
+      const row = line as Record<string, unknown>
+      const price = row.price as Record<string, unknown> | undefined
+      const pricing = row.pricing as Record<string, unknown> | undefined
+      const details = pricing?.price_details as Record<string, unknown> | undefined
+      const id = productIdOf(price?.product) || productIdOf(details?.product)
+      if (id) ids.add(id)
+    }
+  }
+
+  const kind = typeof object.object === 'string' ? object.object : ''
+  if (kind === 'subscription') addFromLines(object.items)
+  if (kind === 'invoice') addFromLines(object.lines)
+  if (kind === 'checkout.session' && typeof object.id === 'string') {
+    try {
+      const items = await stripe.checkout.sessions.listLineItems(object.id, { limit: 20 })
+      addFromLines(items)
+    } catch {}
+  }
+
+  const subscriptionId = typeof object.subscription === 'string' ? object.subscription : productIdOf(object.subscription)
+  if (ids.size === 0 && subscriptionId) {
+    try {
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+      addFromLines(subscription.items)
+    } catch {}
+  }
+  return ids
+}
+
+const objectHasEasyStudioProduct = async (stripe: Stripe, object: Record<string, unknown>) => {
+  const ids = await collectProductIds(stripe, object)
+  return [...ids].some((id) => EASY_STUDIO_PRODUCT_IDS.has(id))
+}
 
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders })
@@ -217,6 +268,13 @@ const resolveUserIdFromStripe = async (
     || (relatedSession ? getStripeUserIdFromObject(relatedSession) : null)
 
   if (directId && await userIdExists(sb, directId)) return directId
+
+  // A conta da Stripe é compartilhada com o Easy Food Hub. Casar pelo e-mail fazia uma
+  // cobrança (ou cancelamento) do Food Hub liberar (ou cortar) o Easy Studio de quem usa o
+  // mesmo e-mail nos dois. Pelo e-mail, só eventos de produtos do Easy Studio
+  // (STRIPE_EASY_STUDIO_PRODUCT_IDS); sem essa lista, o evento precisa trazer o id da usuária.
+  if (EASY_STUDIO_PRODUCT_IDS.size === 0) return null
+  if (!(await objectHasEasyStudioProduct(stripe, object))) return null
 
   const emails = collectEmails(object, relatedSession)
   const customerEmail = await retrieveCustomerEmail(stripe, object)
