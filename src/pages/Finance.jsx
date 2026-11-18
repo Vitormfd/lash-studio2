@@ -7,6 +7,7 @@ import { statusMeta } from '../lib/appointmentStatus'
 import { toLocalYmd } from '../lib/dashboardStats'
 import { uid } from '../lib/supabase'
 import { summarizeMonth, revenueByService, shiftMonth, monthKey, paidAmount, scheduledAmount, isDoneAppointment } from '../lib/finance'
+import { getExtras } from '../lib/extras'
 
 const formatMoney = (n) => `R$ ${Number(n || 0).toFixed(2).replace('.', ',')}`
 
@@ -56,7 +57,8 @@ const Finance = ({
   const monthLabel = `${MONTHS_PT[target.getMonth()]} ${target.getFullYear()}`
   const todayStr = toLocalYmd(new Date())
 
-  const summary = summarizeMonth({ appointments, services, avgCost: config.avgCost, cashExpenses, month: monthStr })
+  const financeExtras = getExtras(config).financeExtras
+  const summary = summarizeMonth({ appointments, services, avgCost: config.avgCost, cashExpenses, month: monthStr, financeExtras })
   const { revenue, expected, cost, materialsOut, profit, count } = summary
   const monthExpenses = summary.expenses
   const avg = summary.avgTicket
@@ -173,6 +175,9 @@ const Finance = ({
         <StatCard label="Previsto" value={formatMoney(expected)} sub="pendentes e confirmados" icon="calendar" color="#6B8FD4" />
         <StatCard label="Custo estimado" value={`R$ ${cost.toFixed(2).replace('.', ',')}`} icon="settings" color="#D4915A" />
         <StatCard label="Gastos materiais" value={formatMoney(materialsOut)} icon="box" color="#C45A5A" />
+        {financeExtras.enabled && (
+          <StatCard label="Custos fixos e taxas" value={formatMoney(summary.fixedTotal + summary.fees)} sub={`fixos ${formatMoney(summary.fixedTotal)} · taxas ${formatMoney(summary.fees)}`} icon="settings" color="#A07880" />
+        )}
         <StatCard label="Lucro real" value={formatMoney(profit)} icon="chart" color="#7BAF7B" />
         <StatCard label={`${appointmentsLabel} concluídos`} value={count} icon="check" color="var(--rose)" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" color="var(--rose-dark)" />
@@ -188,7 +193,13 @@ const Finance = ({
         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Salário e dinheiro da empresa</h3>
         <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 16 }}>
           Com base no lucro de {monthLabel.toLowerCase()} ({formatMoney(profit)})
-          {materialsOut > 0 ? ` — já descontando ${formatMoney(materialsOut)} em materiais` : ''}
+          {(() => {
+            const parts = []
+            if (materialsOut > 0) parts.push(`${formatMoney(materialsOut)} em materiais`)
+            const extrasOut = financeExtras.enabled ? summary.fixedTotal + summary.fees : 0
+            if (extrasOut > 0) parts.push(`${formatMoney(extrasOut)} em custos fixos e taxas`)
+            return parts.length ? ` — já descontando ${parts.join(' e ')}` : ''
+          })()}
         </p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>

@@ -21,6 +21,7 @@ const Topbar = ({
   onSwitchOperator,
 }) => (
   <header
+    className="es-topbar"
     style={{
       position: 'sticky', top: 0,
       background: 'color-mix(in srgb, var(--off-white) 92%, transparent)', backdropFilter: 'blur(10px)',
@@ -28,14 +29,15 @@ const Topbar = ({
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 90,
     }}
   >
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="es-topbar__left" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <button
         onClick={() => setOpen(true)}
+        aria-label="Abrir menu"
         style={{ background: 'var(--rose-light)', border: 'none', borderRadius: 8, padding: 8, display: 'flex', color: 'var(--text-mid)', cursor: 'pointer' }}
       >
         <Icon name="menu" size={18} />
       </button>
-      <h1 className="serif" style={{ fontSize: 20, fontWeight: 500, color: 'var(--text)' }}>{title}</h1>
+      <h1 className="serif es-topbar__title" style={{ fontSize: 20, fontWeight: 500, color: 'var(--text)' }}>{title}</h1>
       {accessEnded ? (
         <button
           type="button"
@@ -77,7 +79,7 @@ const Topbar = ({
       )}
     </div>
 
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="es-topbar__right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {operator?.name && (
         <button
           type="button"
@@ -113,7 +115,7 @@ const Topbar = ({
           }}>
             {operator.name[0]?.toUpperCase() || '?'}
           </span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{operator.name}</span>
+          <span className="es-topbar__opname" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{operator.name}</span>
         </button>
       )}
       {inbox ? (
@@ -133,6 +135,8 @@ const Topbar = ({
           )}
         </button>
       )}
+      {/* No celular o "+" da barra inferior faz o mesmo. */}
+      <span className="es-topbar__new" style={{ display: 'inline-flex' }}>
       {canUserEdit ? (
         <Btn onClick={onNewAppt} sm>
           <Icon name="plus" size={14} color="#fff" /> Novo
@@ -161,6 +165,7 @@ const Topbar = ({
           <Icon name="lock" size={13} color="#fff" /> Novo
         </button>
       )}
+      </span>
     </div>
   </header>
 )

@@ -9,6 +9,7 @@
 
 import { getAppointmentCost } from './utils'
 import { toLocalYmd } from './dashboardStats'
+import { fixedCostsTotal, paymentFeeFor } from './extras'
 
 export const isDoneAppointment = (a) => !a.blocked && a.status === 'done'
 export const isScheduledAppointment = (a) => !a.blocked && (a.status === 'pending' || a.status === 'confirmed')
@@ -33,8 +34,10 @@ export const monthKey = (d = new Date()) => toLocalYmd(d).slice(0, 7)
 /**
  * Resumo financeiro de um mês ("YYYY-MM").
  * O custo estimado vale só para atendimentos concluídos (o material é gasto quando atende).
+ * `financeExtras` (opcional, Recursos extras): desconta custos fixos do mês e a taxa
+ * de cada forma de pagamento. Desligado, o resultado é o mesmo de antes.
  */
-export const summarizeMonth = ({ appointments = [], services = [], avgCost = 0, cashExpenses = [], month }) => {
+export const summarizeMonth = ({ appointments = [], services = [], avgCost = 0, cashExpenses = [], month, financeExtras = null }) => {
   const inMonth = (a) => String(a.date || '').startsWith(month)
   const done = appointments.filter((a) => isDoneAppointment(a) && inMonth(a))
   const scheduled = appointments.filter((a) => isScheduledAppointment(a) && inMonth(a))
@@ -44,7 +47,9 @@ export const summarizeMonth = ({ appointments = [], services = [], avgCost = 0, 
   const cost = done.reduce((s, a) => s + getAppointmentCost(a, services, avgCost), 0)
   const expenses = cashExpenses.filter((e) => String(e.expenseDate || '').startsWith(month))
   const materialsOut = expenses.reduce((s, e) => s + Number(e.amount || 0), 0)
-  const profit = revenue - cost - materialsOut
+  const fees = done.reduce((s, a) => s + paymentFeeFor(financeExtras, a.paymentMethod, paidAmount(a)), 0)
+  const fixedTotal = fixedCostsTotal(financeExtras)
+  const profit = revenue - cost - materialsOut - fees - fixedTotal
 
   return {
     done,
@@ -54,6 +59,8 @@ export const summarizeMonth = ({ appointments = [], services = [], avgCost = 0, 
     cost,
     expenses,
     materialsOut,
+    fees,
+    fixedTotal,
     profit,
     count: done.length,
     avgTicket: done.length ? revenue / done.length : 0,

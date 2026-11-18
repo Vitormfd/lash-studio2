@@ -9,6 +9,8 @@ import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList,
 import { freesSlot } from '../lib/appointmentStatus'
 import { getPersonalityMessage } from '../lib/dayMessages'
 import { summarizeMonth } from '../lib/finance'
+import { buildBirthdayText, getExtras, upcomingBirthdays } from '../lib/extras'
+import { toWhatsappDigits } from '../lib/whatsappReminder'
 
 const cardInteractive = {
   transition: 'transform 0.15s ease, box-shadow 0.15s ease',
@@ -39,7 +41,9 @@ const Dashboard = ({
 
   const real = appointments.filter((a) => !a.blocked)
   // Mesma regra do Financeiro: concluídos pelo valor cobrado, descontando custo e saídas de materiais.
-  const monthSummary = summarizeMonth({ appointments, services, avgCost: config.avgCost, cashExpenses, month: monthStr })
+  const extras = getExtras(config)
+  const monthSummary = summarizeMonth({ appointments, services, avgCost: config.avgCost, cashExpenses, month: monthStr, financeExtras: extras.financeExtras })
+  const birthdays = extras.birthdays.enabled ? upcomingBirthdays(clients, now, 7) : []
   const { revenue, cost, profit, materialsOut } = monthSummary
   const avg = monthSummary.avgTicket
 
@@ -230,10 +234,43 @@ const Dashboard = ({
         <Btn variant="outline" onClick={onCopyBookingLink} touch full><Icon name="calendar" size={14} /> Copiar link de agendamento</Btn>
       </div>
 
+      {/* Aniversariantes (Recursos extras) */}
+      {birthdays.length > 0 && (
+        <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)', marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="gift" size={15} /> Aniversariantes da semana
+          </h3>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {birthdays.map(({ client, daysAway, date }) => {
+              const phone = toWhatsappDigits(client.phone)
+              const when = daysAway === 0 ? 'Hoje' : daysAway === 1 ? 'Amanhã' : date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+              return (
+                <div key={client.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', borderRadius: 10, background: daysAway === 0 ? 'var(--rose-light)' : 'var(--off-white)' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{when}</div>
+                  </div>
+                  {phone && (
+                    <a
+                      href={`https://wa.me/${phone}?text=${encodeURIComponent(buildBirthdayText(extras.birthdays.template, client.name))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#25D366', color: '#fff', borderRadius: 999, padding: '7px 12px', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                    >
+                      <Icon name="whatsapp" size={13} color="#fff" /> Parabéns
+                    </a>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Stats do mês */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
         <StatCard label="Faturamento do mês" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" />
-        <StatCard label="Lucro do mês" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} sub={`Custo + materiais: R$ ${(cost + materialsOut).toFixed(2).replace('.', ',')}`} icon="chart" />
+        <StatCard label="Lucro do mês" value={`R$ ${profit.toFixed(2).replace('.', ',')}`} sub={`${extras.financeExtras.enabled ? 'Custos, materiais, fixos e taxas' : 'Custo + materiais'}: R$ ${(cost + materialsOut + monthSummary.fees + monthSummary.fixedTotal).toFixed(2).replace('.', ',')}`} icon="chart" />
         <StatCard label={appointmentsLabel} value={monthSummary.count} sub="concluídos este mês" icon="check" />
         <StatCard label="Ticket médio" value={`R$ ${avg.toFixed(2).replace('.', ',')}`} icon="star" />
       </div>

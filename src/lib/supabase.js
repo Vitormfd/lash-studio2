@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getActiveOperatorGlobal } from './operator'
 import { normalizeWorkHours } from './workHours'
 import { normalizeWhatsappReminderTemplate } from './whatsappReminder'
+import { normalizeExtras } from './extras'
 
 // ─── LOCAL STORAGE HELPERS 1───────────────────────────────────────────────────
 export const local = {
@@ -52,6 +53,10 @@ const writeFailed = (error) => {
     message = 'Esse horário acabou de ser ocupado (pode ter sido um agendamento online). A agenda foi atualizada: escolha outro horário.'
   } else if (/full plan required|access denied/i.test(raw)) {
     message = 'Seu acesso terminou, então a alteração não foi salva. Assine para continuar editando.'
+  } else if (/config_booking_slug_unique/i.test(raw)) {
+    message = 'Esse endereço de link já está em uso por outra profissional. Escolha outro.'
+  } else if (/config_booking_slug_format/i.test(raw)) {
+    message = 'O endereço do link só pode ter letras sem acento, números e hífen (3 a 40 caracteres).'
   }
   const err = new Error(message)
   err.cause = error
@@ -147,6 +152,25 @@ export const callWhatsappReminders = async (action, payload = {}) => {
 
 // ─── USER-SCOPED LOCAL STORAGE ───────────────────────────────────────────────
 const userKey = (userId, key) => `u_${userId}_${key}`
+
+/**
+ * Ao sair da conta: apaga do navegador a cópia dos dados (clientes, telefones, observações,
+ * agenda, financeiro). Em aparelho compartilhado do salão, nada fica para a próxima pessoa.
+ * A demonstração não é apagada aqui (ela só existe neste navegador).
+ */
+export const clearUserCache = (userId) => {
+  if (!UUID_RE.test(String(userId || ''))) return
+  try {
+    const prefix = `u_${userId}_`
+    const keep = new Set([`${prefix}push_subscription`])
+    const keys = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(prefix) && !keep.has(k)) keys.push(k)
+    }
+    keys.forEach((k) => localStorage.removeItem(k))
+  } catch {}
+}
 const uget = (userId, key) => local.get(userKey(userId, key))
 const uset = (userId, key, val) => local.set(userKey(userId, key), val)
 
@@ -166,6 +190,7 @@ const normalizeClient = (c) => ({
   maintenanceIntervalDays: (c.maintenance_interval_days ?? c.maintenanceIntervalDays) != null
     ? Number(c.maintenance_interval_days ?? c.maintenanceIntervalDays)
     : null,
+  birthday: c.birthday || null,
 })
 
 const toAppPhone = (value) => {
@@ -410,7 +435,17 @@ export const DB = {
         ...rowWithFixed,
         maintenance_interval_days: Number.isFinite(intervalDays) && intervalDays > 0 ? Math.round(intervalDays) : null,
       }
+      if (client.birthday !== undefined) row.birthday = client.birthday || null
       let { data, error } = await runClient(row)
+
+      // Coluna do aniversário ainda não criada (p2_extras.sql)
+      if (row.birthday !== undefined && String(error?.message || '').includes('birthday')) {
+        const { birthday: _b, ...rest } = row
+        row = rest
+        const retry = await runClient(row)
+        data = retry.data
+        error = retry.error
+      }
 
       // Fallback for accounts whose DB migration for the per-client maintenance interval hasn't run yet.
       if (String(error?.message || '').includes('maintenance_interval_days')) {
@@ -696,6 +731,8 @@ export const DB = {
           paidAt: a.paid_at || null,
           recurrenceId: a.recurrence_id || null,
           recurrenceFrequency: a.recurrence_frequency || null,
+          depositAmount: a.deposit_amount != null ? Number(a.deposit_amount) : null,
+          depositStatus: a.deposit_status || null,
         }))
         uset(userId, 'appointments', normalized)
         return normalized
@@ -736,6 +773,8 @@ export const DB = {
       paidAt: a.paid_at || null,
       recurrenceId: a.recurrence_id || null,
       recurrenceFrequency: a.recurrence_frequency || null,
+      depositAmount: a.deposit_amount != null ? Number(a.deposit_amount) : null,
+      depositStatus: a.deposit_status || null,
     })
     if (sb) {
       const defaultStatus = appt.blocked ? 'blocked' : 'pending'
@@ -763,6 +802,8 @@ export const DB = {
         paid_at: appt.paidAt || null,
         recurrence_id: appt.recurrenceId || null,
         recurrence_frequency: appt.recurrenceFrequency || null,
+        deposit_amount: appt.depositAmount != null && Number(appt.depositAmount) > 0 ? Number(appt.depositAmount) : null,
+        deposit_status: appt.depositAmount != null && Number(appt.depositAmount) > 0 ? (appt.depositStatus || 'pending') : null,
       }
       const run = async (r) =>
         appt._new
@@ -792,6 +833,8 @@ export const DB = {
           paid_at: _pa,
           recurrence_id: _rid,
           recurrence_frequency: _rfr,
+          deposit_amount: _da,
+          deposit_status: _ds,
           ...rest
         } = row
         const second = await run(rest)
@@ -874,6 +917,8 @@ export const DB = {
         themeId: data.theme_id || '',
         businessWhatsapp: String(data.business_whatsapp || '').trim(),
         bookingConfirmTemplate: String(data.booking_confirm_template || '').trim(),
+        bookingSlug: data.booking_slug || '',
+        extras: normalizeExtras(data.extras),
       }
     }
     const stored = uget(userId, 'config')
@@ -893,6 +938,8 @@ export const DB = {
       themeId: stored?.themeId || '',
       businessWhatsapp: String(stored?.businessWhatsapp || '').trim(),
       bookingConfirmTemplate: String(stored?.bookingConfirmTemplate || '').trim(),
+      bookingSlug: stored?.bookingSlug || '',
+      extras: normalizeExtras(stored?.extras),
     }
   },
 
@@ -900,7 +947,7 @@ export const DB = {
     const sb = remoteFor(userId)
     const workHours = normalizeWorkHours(config.workHours)
     const whatsappReminderTemplate = normalizeWhatsappReminderTemplate(config.whatsappReminderTemplate)
-    const nextConfig = { ...config, workHours, whatsappReminderTemplate }
+    const nextConfig = { ...config, workHours, whatsappReminderTemplate, extras: normalizeExtras(config.extras) }
     if (sb) {
       const row = {
         user_id: userId,
@@ -919,8 +966,17 @@ export const DB = {
         theme_id: nextConfig.themeId || null,
         business_whatsapp: String(nextConfig.businessWhatsapp || '').replace(/\D/g, '') || null,
         booking_confirm_template: String(nextConfig.bookingConfirmTemplate || '').trim() || null,
+        extras: nextConfig.extras,
+        booking_slug: String(nextConfig.bookingSlug || '').trim().toLowerCase() || null,
       }
       let { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error && /config_booking_slug/.test(error.message || '')) throw writeFailed(error)
+      if (error && /extras|booking_slug/.test(error.message || '')) {
+        // Colunas dos recursos extras ainda não criadas (p2_extras.sql)
+        delete row.extras
+        delete row.booking_slug
+        ;({ error } = await sb.from('config').upsert(row, { onConflict: 'user_id' }))
+      }
       if (error && /whatsapp_confirm_by_reply/.test(error.message || '')) {
         // Coluna da confirmação por resposta ainda não criada (p1_agenda.sql)
         delete row.whatsapp_confirm_by_reply

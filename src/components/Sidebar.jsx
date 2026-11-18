@@ -88,7 +88,7 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
             </div>
             {session?.isDemo && (
               <div style={{ marginTop: 4, fontSize: 10, fontWeight: 600, color: 'var(--rose-dark)', background: 'var(--rose-light)', borderRadius: 999, padding: '2px 8px', display: 'inline-flex' }}>
-                Modo demonstracao
+                Modo demonstração
               </div>
             )}
           </div>

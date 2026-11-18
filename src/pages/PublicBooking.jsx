@@ -8,6 +8,9 @@ import BookingCalendar from '../components/BookingCalendar'
 import Icon from '../components/Icon'
 import { buildBookingConfirmText, toWhatsappDigits } from '../lib/whatsappReminder'
 import { maskPhoneBr, normalizePhoneDigits } from '../lib/phone'
+import { depositAmountFor } from '../lib/extras'
+import { buildPixPayload } from '../lib/pix'
+import QRCode from 'qrcode'
 
 const DEFAULT_START = '08:00'
 const DEFAULT_END = '18:00'
@@ -170,7 +173,7 @@ const BookingSkeleton = () => (
   </div>
 )
 
-const PublicBooking = ({ professionalId }) => {
+const PublicBookingFlow = ({ professionalId, profile = null, deposit = null }) => {
   const sb = useMemo(() => getClient(), [])
   const hasProfessionalId = !!String(professionalId || '').trim()
 
@@ -192,7 +195,9 @@ const PublicBooking = ({ professionalId }) => {
   const [clientPhone, setClientPhone] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [success, setSuccess] = useState(null)
-  const [professionalName, setProfessionalName] = useState('Profissional Easy Studio')
+  const professionalName = profile?.business_name || 'Profissional Easy Studio'
+  const depositCfg = deposit ? { enabled: true, type: deposit.type, value: Number(deposit.value) || 0 } : null
+  const depositFor = (price) => (depositCfg ? depositAmountFor(depositCfg, price) : 0)
   const [contact, setContact] = useState({ whatsapp: '', confirmTemplate: '' })
   // false = conta sem assinatura ativa (teste vencido ou cancelada): a agenda online fica fechada.
   const [bookingActive, setBookingActive] = useState(true)
@@ -482,12 +487,25 @@ const PublicBooking = ({ professionalId }) => {
 
       notifyProfessionalNewBooking(result.appointment_id)
 
+      const depositAmount = depositFor(selectedService.price)
       setSuccess({
         serviceName: selectedService.name,
         dateLabel: toIsoDateLabel(selectedDate),
         time: selectedTime,
         professionalName,
         clientName: cleanName,
+        appointmentId: result.appointment_id,
+        depositAmount,
+        pixPayload: depositAmount > 0
+          ? buildPixPayload({
+              keyType: deposit.pix_key_type,
+              key: deposit.pix_key,
+              amount: depositAmount,
+              name: deposit.holder_name,
+              city: deposit.city,
+              txid: `SINAL${String(result.appointment_id || '').replace(/-/g, '').slice(0, 20)}`,
+            })
+          : '',
       })
     } catch {
       setErrorMsg('Não foi possível confirmar o agendamento agora. Tente novamente em instantes.')
@@ -517,7 +535,7 @@ const PublicBooking = ({ professionalId }) => {
         date: success.dateLabel,
         time: success.time,
         service: success.serviceName,
-      }))}`
+      }) + (success.depositAmount > 0 ? `\n\nVou enviar o comprovante do sinal de ${formatCurrencyBr(success.depositAmount)}.` : ''))}`
     : ''
 
   if (!hasProfessionalId) {
@@ -579,6 +597,7 @@ const PublicBooking = ({ professionalId }) => {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--off-white)', padding: '20px 14px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 16 }}>
+        {profile?.business_name && <ProfileHeader profile={profile} />}
         <h1 className="serif" style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>{pageTitle}</h1>
         {!success && (
           <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 14 }}>
@@ -606,6 +625,10 @@ const PublicBooking = ({ professionalId }) => {
                 <strong>Profissional:</strong> {success.professionalName}
               </p>
             </div>
+
+            {success.depositAmount > 0 && success.pixPayload && (
+              <DepositPix amount={success.depositAmount} payload={success.pixPayload} holderName={deposit?.holder_name} />
+            )}
 
             {whatsappConfirmUrl && (
               <div style={{ display: 'grid', gap: 8 }}>
@@ -855,8 +878,27 @@ const PublicBooking = ({ professionalId }) => {
                     <strong>Duração:</strong> {formatDurationLabel(selectedService.durationMinutes)}
                     <br />
                     <strong>Preço:</strong> {formatCurrencyBr(selectedService.price)}
+                    {depositFor(selectedService.price) > 0 && (
+                      <>
+                        <br />
+                        <strong>Sinal para garantir o horário:</strong> {formatCurrencyBr(depositFor(selectedService.price))} via Pix
+                      </>
+                    )}
                   </p>
                 </div>
+
+                {depositFor(selectedService.price) > 0 && (
+                  <p style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.55, margin: '0 0 12px' }}>
+                    Depois de confirmar, aparece o Pix copia e cola para pagar o sinal.
+                  </p>
+                )}
+
+                {profile?.policy && (
+                  <div style={{ border: '1px dashed var(--rose-light)', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-mid)', margin: '0 0 4px' }}>Regras do agendamento</p>
+                    <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-line' }}>{profile.policy}</p>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
                   <Btn variant="ghost" onClick={() => setStep(2)}>Voltar</Btn>
@@ -871,6 +913,103 @@ const PublicBooking = ({ professionalId }) => {
       </div>
     </div>
   )
+}
+
+const ProfileHeader = ({ profile }) => {
+  const mapsUrl = profile.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(profile.address)}` : ''
+  const instaUrl = profile.instagram ? `https://instagram.com/${encodeURIComponent(profile.instagram)}` : ''
+  return (
+    <div style={{ borderBottom: '1px solid var(--rose-light)', paddingBottom: 12, marginBottom: 14 }}>
+      <p className="serif" style={{ fontSize: 22, fontWeight: 600, color: 'var(--rose-dark)', margin: '0 0 4px' }}>{profile.business_name}</p>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 13 }}>
+        {mapsUrl && (
+          <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-mid)' }}>📍 {profile.address}</a>
+        )}
+        {instaUrl && (
+          <a href={instaUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-mid)' }}>@{profile.instagram}</a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const DepositPix = ({ amount, payload, holderName }) => {
+  const [qr, setQr] = useState('')
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    let alive = true
+    QRCode.toDataURL(payload, { margin: 1, width: 220 }).then((url) => { if (alive) setQr(url) }).catch(() => {})
+    return () => { alive = false }
+  }, [payload])
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(payload)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      window.prompt('Copie o código Pix:', payload)
+    }
+  }
+  return (
+    <div style={{ border: '1px solid var(--rose)', borderRadius: 12, padding: 14, display: 'grid', gap: 10, justifyItems: 'center', textAlign: 'center' }}>
+      <p style={{ fontSize: 14, color: 'var(--text)', margin: 0, lineHeight: 1.5 }}>
+        Para garantir seu horário, pague o sinal de <strong>{formatCurrencyBr(amount)}</strong> via Pix
+        {holderName ? <> para <strong>{holderName}</strong></> : null}.
+      </p>
+      {qr && <img src={qr} alt="QR Code do Pix do sinal" width={200} height={200} style={{ borderRadius: 8 }} />}
+      <button
+        type="button"
+        onClick={copy}
+        style={{ border: 'none', borderRadius: 12, padding: '12px 18px', minHeight: 46, width: '100%', background: 'var(--rose-deep)', color: '#fff', fontWeight: 700, fontSize: 15, fontFamily: 'inherit', cursor: 'pointer' }}
+      >
+        {copied ? 'Código copiado ✓' : 'Copiar código Pix (copia e cola)'}
+      </button>
+      <p style={{ fontSize: 12, color: 'var(--text-light)', margin: 0 }}>
+        No app do banco, escolha Pix › Copia e cola. Depois envie o comprovante pelo WhatsApp.
+      </p>
+    </div>
+  )
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Resolve o link: /booking/<id> ou /agendar/<apelido>. Também traz o perfil e o sinal,
+ * quando a profissional ligou esses recursos extras. Link com id abre na hora
+ * (o perfil chega logo depois); link com apelido espera achar a profissional.
+ */
+const PublicBooking = ({ professionalId: identifier }) => {
+  const raw = String(identifier || '').trim()
+  const isUuid = UUID_RE.test(raw)
+  const [state, setState] = useState({ loading: !!raw, id: isUuid ? raw : '', profile: null, deposit: null })
+
+  useEffect(() => {
+    if (!raw) return
+    let alive = true
+    const sb = getClient()
+    sb.rpc('get_public_booking_profile', { p_identifier: raw })
+      .then(({ data, error }) => {
+        if (!alive) return
+        if (error || !data) {
+          setState({ loading: false, id: isUuid ? raw : '', profile: null, deposit: null })
+          return
+        }
+        setState({ loading: false, id: data.professional_id || (isUuid ? raw : ''), profile: data.profile || null, deposit: data.deposit || null })
+      })
+      .catch(() => { if (alive) setState({ loading: false, id: isUuid ? raw : '', profile: null, deposit: null }) })
+    return () => { alive = false }
+  }, [raw, isUuid])
+
+  if (!isUuid && state.loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--off-white)', padding: '20px 14px' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--rose-light)', borderRadius: 16, padding: 16 }}>
+          <BookingSkeleton />
+        </div>
+      </div>
+    )
+  }
+  return <PublicBookingFlow professionalId={state.id} profile={state.profile} deposit={state.deposit} />
 }
 
 export default PublicBooking

@@ -1,7 +1,7 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/global.css'
-import App from './App.jsx'
+import { Spinner } from './components/UI'
 import { initFacebookPixel } from './lib/facebookPixel'
 import { captureSignupSource } from './lib/signupSource'
 
@@ -11,8 +11,14 @@ captureSignupSource()
 // Initialize Facebook Pixel
 initFacebookPixel()
 
+// Link de agendamento e cartão fidelidade abrem só a página pública, sem o app inteiro.
+const isPublicPage = /^\/(booking|agendar|fidelidade)(\/|$)/.test(window.location.pathname || '')
+const Root = lazy(() => (isPublicPage ? import('./PublicRoot.jsx') : import('./App.jsx')))
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <Suspense fallback={<Spinner text="Carregando..." />}>
+      <Root />
+    </Suspense>
   </StrictMode>,
 )

@@ -5,6 +5,9 @@ import Icon from '../components/Icon'
 import { uid } from '../lib/supabase'
 import { paidAmount } from '../lib/finance'
 import { statusMeta } from '../lib/appointmentStatus'
+import { formatBirthday, getExtras, parseBirthdayInput } from '../lib/extras'
+import { deleteClientFiles } from '../lib/clientRecords'
+import ClientRecordModal from '../components/ClientRecordModal'
 import {
   RECURRING_FREQUENCY_OPTIONS,
   RECURRING_FREQUENCY_LABELS,
@@ -397,6 +400,7 @@ const Clients = ({
   isBarber,
   professionalType,
   config,
+  userId,
   onOpenSettings,
   addToast,
   onScheduleAfterCreate,
@@ -409,8 +413,12 @@ const Clients = ({
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [historyClient, setHistoryClient] = useState(null)
+  const extras = getExtras(config)
+  const birthdaysOn = extras.birthdays.enabled
+  const recordsOn = extras.clientRecords.enabled
+  const [recordClient, setRecordClient] = useState(null)
   const emptyClientForm = {
-    name: '', phone: '', notes: '', maintenanceIntervalDays: '',
+    name: '', phone: '', notes: '', maintenanceIntervalDays: '', birthdayText: '',
     isFixed: false, fixedFrequency: DEFAULT_RECURRING_FREQUENCY, fixedWeekday: 1, fixedTime: '09:00',
   }
   const [form, setForm] = useState(emptyClientForm)
@@ -475,7 +483,16 @@ const Clients = ({
       return
     }
     if (!form.name || savingClient) return
-    const data = { ...form, maintenanceIntervalDays: parseIntervalInput(form.maintenanceIntervalDays) }
+    const { birthdayText, ...formData } = form
+    const data = { ...formData, maintenanceIntervalDays: parseIntervalInput(form.maintenanceIntervalDays) }
+    if (birthdaysOn) {
+      const birthday = parseBirthdayInput(birthdayText)
+      if (birthday === undefined) {
+        addToast('Aniversário: use dia/mês, por exemplo 05/03.', 'warning')
+        return
+      }
+      data.birthday = birthday
+    }
     setSavingClient(true)
     try {
       if (modal === 'new') {
@@ -500,6 +517,8 @@ const Clients = ({
     if (appointments.some((a) => a.clientId === id)) { addToast('Cliente possui agendamentos!', 'warning'); return }
     const ok = await setClients(clients.filter((c) => c.id !== id))
     if (ok === false) return
+    // Fotos e assinatura da ficha (se houver) saem junto.
+    deleteClientFiles(userId, id).catch(() => {})
     addToast('Cliente removido.', 'success')
   }
 
@@ -513,6 +532,7 @@ const Clients = ({
       fixedFrequency: c.fixedFrequency || DEFAULT_RECURRING_FREQUENCY,
       fixedWeekday: c.fixedWeekday != null ? c.fixedWeekday : 1,
       fixedTime: c.fixedTime || '09:00',
+      birthdayText: formatBirthday(c.birthday),
     })
     setModal(c)
   }
@@ -868,6 +888,11 @@ const Clients = ({
                   <Btn variant="ghost" sm onClick={() => setHistoryClient(c)} title={`Histórico de ${appointmentsLabel}`}>
                     <Icon name="calendar" size={12} /> Histórico
                   </Btn>
+                  {recordsOn && (
+                    <Btn variant="ghost" sm onClick={() => setRecordClient(c)}>
+                      <Icon name="shield" size={12} /> Ficha
+                    </Btn>
+                  )}
                   <Btn
                     variant="ghost"
                     sm
@@ -906,6 +931,16 @@ const Clients = ({
         <Field label="Observações">
           <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Alergias, preferências, etc." rows={3} />
         </Field>
+        {birthdaysOn && (
+          <Field label="Aniversário (dia/mês)">
+            <Inp
+              value={form.birthdayText}
+              onChange={(e) => setForm((f) => ({ ...f, birthdayText: e.target.value.replace(/[^\d/]/g, '').slice(0, 5) }))}
+              placeholder="Ex.: 05/03"
+              inputMode="numeric"
+            />
+          </Field>
+        )}
         <Field label="Manutenção a cada (dias)">
           <Inp
             type="number"
@@ -1113,6 +1148,18 @@ const Clients = ({
           </Btn>
         </div>
       </Modal>
+
+      {recordClient && (
+        <ClientRecordModal
+          client={recordClient}
+          userId={userId}
+          consentText={extras.clientRecords.consentText}
+          canUserEdit={canUserEdit}
+          onBlockedAction={onBlockedAction}
+          addToast={addToast}
+          onClose={() => setRecordClient(null)}
+        />
+      )}
 
       <Modal open={tutorialOpen} onClose={() => setTutorialOpen(false)} title="Como importar contatos no iPhone">
         <p style={{ fontSize: 13, color: 'var(--text-mid)', marginBottom: 12 }}>

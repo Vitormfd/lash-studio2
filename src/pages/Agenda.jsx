@@ -25,6 +25,7 @@ const Agenda = ({
   onEdit,
   onDelete,
   onMarkStatus,
+  onMarkDeposit,
   addToast,
   canUserEdit,
   onBlockedAction,
@@ -160,7 +161,54 @@ const Agenda = ({
     </button>
   )
 
-  const QuickStatusRow = ({ appt }) => {
+  // Sinal via Pix (Recursos extras): chip com o valor; um toque marca como recebido.
+  const DepositChip = ({ appt }) => {
+    if (!onMarkDeposit || appt.blocked || !(Number(appt.depositAmount) > 0)) return null
+    if (appt.status === 'cancelled' || appt.status === 'no_show') return null
+    const paid = appt.depositStatus === 'paid'
+    const value = `R$ ${Number(appt.depositAmount).toFixed(2).replace('.', ',')}`
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (!canUserEdit) {
+            onBlockedAction?.('Desbloqueie para editar agendamentos.')
+            return
+          }
+          if (paid && !window.confirm('Voltar o sinal para pendente?')) return
+          onMarkDeposit(appt, !paid)
+        }}
+        aria-label={paid ? `Sinal de ${value} recebido. Tocar para voltar a pendente` : `Sinal de ${value} pendente. Tocar para marcar como recebido`}
+        style={{
+          marginTop: 6,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          border: `1px solid ${paid ? '#6EE7B7' : '#FCD34D'}`,
+          background: paid ? '#ECFDF5' : '#FFFBEB',
+          color: paid ? '#065F46' : '#92400E',
+          borderRadius: 6,
+          padding: '4px 8px',
+          fontSize: 10,
+          fontWeight: 700,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        {paid ? `Sinal ${value} recebido ✓` : `Sinal ${value} pendente · marcar recebido`}
+      </button>
+    )
+  }
+
+  const QuickStatusRow = ({ appt }) => (
+    <>
+      <DepositChip appt={appt} />
+      <QuickStatusButtons appt={appt} />
+    </>
+  )
+
+  const QuickStatusButtons = ({ appt }) => {
     if (appt.blocked || !onMarkStatus) return null
     if (appt.status === 'cancelled') return null
     // "Faltou" só aparece a partir do dia do atendimento.
@@ -605,7 +653,7 @@ const Agenda = ({
             <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
               {daySummary.count}
             </span>
-            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{appointmentsLabel}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{daySummary.count === 1 ? (isBarber ? 'corte' : 'atendimento') : appointmentsLabel}</span>
           </div>
           <div style={{ width: 1, height: 18, background: 'var(--rose-light)' }} />
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>

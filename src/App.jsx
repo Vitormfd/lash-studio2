@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import { initSupabase, DB, uid, getClient, writeErrorMessage } from './lib/supabase'
+import { initSupabase, DB, uid, getClient, writeErrorMessage, clearUserCache } from './lib/supabase'
+import { bookingLinkFor } from './lib/extras'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
 import { toLocalYmd } from './lib/dashboardStats'
@@ -31,16 +32,7 @@ import Dashboard from './pages/Dashboard'
 import Agenda from './pages/Agenda'
 import Clients from './pages/Clients'
 import { getDefaultMaintenanceDays } from './lib/clientInsights'
-import Services from './pages/Services'
-import Inventory from './pages/Inventory'
-import Finance from './pages/Finance'
-import Reports from './pages/Reports'
-import Settings from './pages/Settings'
-import PublicBooking from './pages/PublicBooking'
-import PublicLoyalty from './pages/PublicLoyalty'
-import LoyaltyScanner from './pages/LoyaltyScanner'
 import OperatorSelect from './pages/OperatorSelect'
-import ActivityLog from './pages/ActivityLog'
 import {
   OperatorContext,
   saveOperatorSession,
@@ -57,6 +49,16 @@ import { LASH_SIMULATOR_PAGE, LASH_SIMULATOR_TITLE, canUseLashSimulator } from '
 
 // Carregado sob demanda: o motor de visão computacional só baixa quando a página abre.
 const LashSimulatorPage = lazy(() => import('./features/lashSimulator/LashSimulatorPage'))
+// Telas menos usadas e as páginas públicas carregam sob demanda: o app abre mais rápido.
+const Services = lazy(() => import('./pages/Services'))
+const Inventory = lazy(() => import('./pages/Inventory'))
+const Finance = lazy(() => import('./pages/Finance'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Settings = lazy(() => import('./pages/Settings'))
+const LoyaltyScanner = lazy(() => import('./pages/LoyaltyScanner'))
+const ActivityLog = lazy(() => import('./pages/ActivityLog'))
+const PublicBooking = lazy(() => import('./pages/PublicBooking'))
+const PublicLoyalty = lazy(() => import('./pages/PublicLoyalty'))
 
 const SUPABASE_URL = 'https://mbxfswxjrdikdyzpukmw.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_X8Pu3A3o_MfOKR0octLAyw_p_SzMKO3'
@@ -118,19 +120,21 @@ const WHATS_NEW_ID = 'aba-manutencao-periodo-cliente'
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
 const BOOKING_PATH_PREFIX = '/booking/'
+const SHORT_BOOKING_PATH_PREFIX = '/agendar/'
 const LOYALTY_PATH_PREFIX = '/fidelidade/'
 
 const isBookingPath = () => {
   if (typeof window === 'undefined') return false
   const path = window.location.pathname || ''
-  return path === '/booking' || path.startsWith(BOOKING_PATH_PREFIX)
+  return path === '/booking' || path.startsWith(BOOKING_PATH_PREFIX) || path.startsWith(SHORT_BOOKING_PATH_PREFIX)
 }
 
 const getBookingProfessionalIdFromPath = () => {
   if (typeof window === 'undefined') return ''
   const path = window.location.pathname || ''
-  if (!path.startsWith(BOOKING_PATH_PREFIX)) return ''
-  const id = decodeURIComponent(path.slice(BOOKING_PATH_PREFIX.length)).split('/')[0]
+  const prefix = [BOOKING_PATH_PREFIX, SHORT_BOOKING_PATH_PREFIX].find((p) => path.startsWith(p))
+  if (!prefix) return ''
+  const id = decodeURIComponent(path.slice(prefix.length)).split('/')[0]
   return id || ''
 }
 
@@ -1025,6 +1029,19 @@ const AppMain = ({ session, onLogout }) => {
     }
   }
 
+  // Sinal via Pix (Recursos extras): a profissional confirma que o Pix caiu.
+  const markDepositPaid = async (appt, paid = true) => {
+    if (guardRestrictedWrite('Desbloqueie para editar agendamentos.')) return false
+    try {
+      const saved = await DB.saveAppointment(userId, { ...appt, depositStatus: paid ? 'paid' : 'pending' })
+      setAppointments((list) => list.map((x) => (x.id === appt.id ? saved : x)))
+      addToast(paid ? 'Sinal marcado como recebido.' : 'Sinal voltou para pendente.', 'success')
+      return true
+    } catch (error) {
+      return reportWriteError(error)
+    }
+  }
+
   const deleteAppt = async (id) => {
     if (guardRestrictedWrite('Tenha acesso completo ao sistema.')) return false
     try {
@@ -1287,7 +1304,7 @@ const AppMain = ({ session, onLogout }) => {
       return
     }
 
-    const link = `${window.location.origin}/booking/${professionalId}`
+    const link = bookingLinkFor(window.location.origin, professionalId, config?.bookingSlug)
 
     try {
       if (navigator.clipboard?.writeText) {
@@ -1455,6 +1472,7 @@ const AppMain = ({ session, onLogout }) => {
         )}
 
         <div className="es-has-bottom-nav" style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <Suspense fallback={<Spinner text="Carregando..." />}>
           {page === 'dashboard' && (
             <Dashboard
               appointments={appointments}
@@ -1500,6 +1518,7 @@ const AppMain = ({ session, onLogout }) => {
               }}
               onDelete={deleteAppt}
               onMarkStatus={markAppointmentStatus}
+              onMarkDeposit={markDepositPaid}
               addToast={addToast}
               canUserEdit={canUserEdit}
               onBlockedAction={guardRestrictedWrite}
@@ -1520,6 +1539,7 @@ const AppMain = ({ session, onLogout }) => {
               isBarber={isBarber}
               professionalType={professionalType}
               config={config}
+              userId={userId}
               onOpenSettings={() => {
                 setSettingsTab('whatsapp'); setPage('settings')
                 setTimeout(() => {
@@ -1598,8 +1618,10 @@ const AppMain = ({ session, onLogout }) => {
               teamMembers={teamMembers}
               onTeamMembersChange={setTeamMembers}
               refreshTeamMembers={refreshTeamMembers}
+              exportData={{ clients, appointments, services, cashExpenses }}
             />
           )}
+          </Suspense>
         </div>
       </main>
 
@@ -1914,8 +1936,8 @@ const App = () => {
     }
   }, [])
 
-  if (isBookingPublicPath) return <PublicBooking professionalId={bookingProfessionalId} />
-  if (isLoyaltyPublicPath) return <PublicLoyalty professionalId={loyaltyProfessionalId} />
+  if (isBookingPublicPath) return <Suspense fallback={<Spinner text="Carregando..." />}><PublicBooking professionalId={bookingProfessionalId} /></Suspense>
+  if (isLoyaltyPublicPath) return <Suspense fallback={<Spinner text="Carregando..." />}><PublicLoyalty professionalId={loyaltyProfessionalId} /></Suspense>
 
   if (checking) return <Spinner text="Carregando..." />
 
@@ -1942,7 +1964,10 @@ const App = () => {
     <AppMain
       session={session}
       onLogout={() => {
-        if (session?.userId) clearOperatorSession(session.userId)
+        if (session?.userId) {
+          clearOperatorSession(session.userId)
+          clearUserCache(session.userId)
+        }
         AUTH.signOut()
         AUTH.clearLocalSession()
         setSession(null)

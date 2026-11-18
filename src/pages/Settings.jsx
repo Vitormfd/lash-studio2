@@ -3,6 +3,7 @@ import { Btn, Field, Inp, Sel, Textarea } from '../components/UI'
 import Icon from '../components/Icon'
 import WhatsappAutoReminder from '../components/WhatsappAutoReminder'
 import BookingWhatsappConfirm from '../components/BookingWhatsappConfirm'
+import ExtrasSettings from '../components/ExtrasSettings'
 import { AUTH } from '../lib/auth'
 import { DB, uid } from '../lib/supabase'
 import { hashPin, verifyMemberPin, pickMemberColor, getAccountOwner, useOperator } from '../lib/operator'
@@ -37,6 +38,7 @@ export const SETTINGS_TABS = [
   { id: 'whatsapp', label: 'WhatsApp' },
   { id: 'negocio', label: 'Negócio e equipe' },
   { id: 'conta', label: 'Conta e app' },
+  { id: 'extras', label: 'Recursos extras' },
 ]
 
 const Settings = ({
@@ -52,6 +54,7 @@ const Settings = ({
   teamMembers = [],
   onTeamMembersChange,
   refreshTeamMembers,
+  exportData,
 }) => {
   const [cost, setCost] = useState(config.avgCost)
   const [stateUf, setStateUf] = useState(config.stateUf || '')
@@ -1035,6 +1038,17 @@ const Settings = ({
         </p>
       </div>
       </>)}
+
+      {tab === 'extras' && (
+        <ExtrasSettings
+          config={config}
+          setConfig={setConfig}
+          addToast={addToast}
+          userId={userId}
+          isDemo={isDemo}
+          exportData={exportData}
+        />
+      )}
     </div>
   )
 }

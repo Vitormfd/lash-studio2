@@ -176,3 +176,16 @@ textarea {
   /* Espaço para a barra não cobrir o fim das telas */
   .es-has-bottom-nav { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 }
+
+/* ── Topo no celular: cabe em 360px sem a página correr para o lado ─────────── */
+@media (max-width: 768px) {
+  .es-topbar { padding: 10px 12px !important; gap: 8px; }
+  .es-topbar__left { min-width: 0; gap: 8px !important; }
+  .es-topbar__right { flex-shrink: 0; gap: 6px !important; }
+  .es-topbar__title { font-size: 18px !important; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .es-topbar__left > span, .es-topbar__left > button:not(:first-child) { white-space: nowrap; font-size: 10px !important; padding: 3px 8px !important; flex-shrink: 0; }
+  .es-topbar__new { display: none !important; }
+}
+@media (max-width: 480px) {
+  .es-topbar__opname { display: none; }
+}
