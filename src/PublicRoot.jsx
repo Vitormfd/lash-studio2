@@ -1,10 +1,11 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { Spinner } from './components/UI'
+import { lazyPage } from './lib/lazyPage'
 
 // Páginas públicas (link de agendamento e cartão fidelidade) sem carregar o app inteiro:
 // a cliente abre o link mais rápido, principalmente no 4G.
-const PublicBooking = lazy(() => import('./pages/PublicBooking'))
-const PublicLoyalty = lazy(() => import('./pages/PublicLoyalty'))
+const PublicBooking = lazyPage(() => import('./pages/PublicBooking'))
+const PublicLoyalty = lazyPage(() => import('./pages/PublicLoyalty'))
 
 const segmentAfter = (prefixes) => {
   const path = window.location.pathname || ''

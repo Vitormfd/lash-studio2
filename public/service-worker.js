@@ -1,4 +1,4 @@
-const CACHE_NAME = 'easy-studio-pwa-v4';
+const CACHE_NAME = 'easy-studio-pwa-v5';
 const PRECACHE_URLS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -85,6 +85,9 @@ self.addEventListener('fetch', (event) => {
       const networkFetch = fetch(request)
         .then((res) => {
           if (!res || res.status !== 200 || res.type === 'error') return res;
+          // Arquivo do app que virou página HTML (versão antiga que não existe mais): não guarda.
+          const type = res.headers.get('content-type') || '';
+          if (/\.(js|css)$/.test(url.pathname) && type.includes('text/html')) return res;
           const copy = res.clone();
           caches.open(CACHE_NAME).then((c) => c.put(request, copy));
           return res;

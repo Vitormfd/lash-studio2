@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { initSupabase, DB, uid, getClient, writeErrorMessage, clearUserCache } from './lib/supabase'
 import { bookingLinkFor } from './lib/extras'
+import { lazyPage } from './lib/lazyPage'
 import { AUTH } from './lib/auth'
 import { apptDurationMin, apptIntervalsOverlap } from './lib/utils'
 import { toLocalYmd } from './lib/dashboardStats'
@@ -31,7 +32,6 @@ import AuthScreen from './pages/AuthScreen'
 import Dashboard from './pages/Dashboard'
 import Agenda from './pages/Agenda'
 import Clients from './pages/Clients'
-import { getDefaultMaintenanceDays } from './lib/clientInsights'
 import OperatorSelect from './pages/OperatorSelect'
 import {
   OperatorContext,
@@ -48,17 +48,17 @@ import { getExistingPushSubscription } from './lib/pushClient'
 import { LASH_SIMULATOR_PAGE, LASH_SIMULATOR_TITLE, canUseLashSimulator } from './features/lashSimulator/access'
 
 // Carregado sob demanda: o motor de visão computacional só baixa quando a página abre.
-const LashSimulatorPage = lazy(() => import('./features/lashSimulator/LashSimulatorPage'))
+const LashSimulatorPage = lazyPage(() => import('./features/lashSimulator/LashSimulatorPage'))
 // Telas menos usadas e as páginas públicas carregam sob demanda: o app abre mais rápido.
-const Services = lazy(() => import('./pages/Services'))
-const Inventory = lazy(() => import('./pages/Inventory'))
-const Finance = lazy(() => import('./pages/Finance'))
-const Reports = lazy(() => import('./pages/Reports'))
-const Settings = lazy(() => import('./pages/Settings'))
-const LoyaltyScanner = lazy(() => import('./pages/LoyaltyScanner'))
-const ActivityLog = lazy(() => import('./pages/ActivityLog'))
-const PublicBooking = lazy(() => import('./pages/PublicBooking'))
-const PublicLoyalty = lazy(() => import('./pages/PublicLoyalty'))
+const Services = lazyPage(() => import('./pages/Services'))
+const Inventory = lazyPage(() => import('./pages/Inventory'))
+const Finance = lazyPage(() => import('./pages/Finance'))
+const Reports = lazyPage(() => import('./pages/Reports'))
+const Settings = lazyPage(() => import('./pages/Settings'))
+const LoyaltyScanner = lazyPage(() => import('./pages/LoyaltyScanner'))
+const ActivityLog = lazyPage(() => import('./pages/ActivityLog'))
+const PublicBooking = lazyPage(() => import('./pages/PublicBooking'))
+const PublicLoyalty = lazyPage(() => import('./pages/PublicLoyalty'))
 
 const SUPABASE_URL = 'https://mbxfswxjrdikdyzpukmw.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_X8Pu3A3o_MfOKR0octLAyw_p_SzMKO3'
@@ -115,7 +115,7 @@ const STARTER_SERVICES_BY_TYPE = {
   ],
 }
 
-const WHATS_NEW_ID = 'aba-manutencao-periodo-cliente'
+const WHATS_NEW_ID = 'novidades-confirmacao-faltas-extras'
 
 const RECOVERY_SESSION_KEY = 'lash-password-recovery'
 const PASSWORD_RESET_PATH = '/reset-password'
@@ -1687,38 +1687,47 @@ const AppMain = ({ session, onLogout }) => {
         </div>
       </Modal>
 
-      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidade: aba Manutenção">
+      <Modal open={whatsNewOpen} onClose={dismissWhatsNew} title="Novidades no Easy Studio">
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'var(--rose-light)', borderRadius: 14, padding: 14, marginBottom: 18 }}>
-          <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: 'var(--rose-deep)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="repeat" size={18} color="#fff" />
+          <div style={{ width: 38, height: 38, minWidth: 38, borderRadius: 10, background: '#25D366', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="whatsapp" size={18} color="#fff" />
           </div>
           <div>
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>Saiba quem está na hora de voltar</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>
+              {isBarber ? 'O cliente confirma respondendo SIM' : 'A cliente confirma respondendo SIM'}
+            </p>
             <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
-              Em <b>Clientes → Manutenção</b> você vê quando cada cliente deve voltar e chama pelo WhatsApp com um toque.
+              O lembrete automático agora pede confirmação. Quando {isBarber ? 'ele' : 'ela'} responde SIM, o horário vira <b>Confirmado</b> sozinho na agenda.
+              Se pedir para remarcar, você recebe um aviso no sininho.
+              {config.whatsappAutoEnabled ? ' Já está funcionando na sua conta.' : <> Para usar, ligue o lembrete em <b>Configurações › WhatsApp</b>.</>}
             </p>
           </div>
         </div>
 
         <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          O que tem de novo
+          Também chegou
         </p>
-        <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {[
             {
-              icon: 'users',
-              title: `${isBarber ? 'Clientes ativos' : 'Clientes ativas'} (60 dias)`,
-              body: <>Filtre só quem fez {isBarber ? 'corte' : 'atendimento'} nos últimos 60 dias, sem misturar com quem sumiu.</>,
-            },
-            {
               icon: 'clock',
-              title: 'Mais próximas da manutenção',
-              body: <>A lista começa por quem está atrasada ou vencendo. Quem já tem horário marcado vai para o fim.</>,
+              title: 'Botão "Faltou" na agenda',
+              body: <>Marque quem não veio: o horário fica livre e os <b>Relatórios</b> passam a mostrar faltas, cancelamentos e {isBarber ? 'clientes novos' : 'clientes novas'}.</>,
             },
             {
-              icon: 'calendar',
-              title: 'Período de cada cliente',
-              body: <>O padrão é <b>{getDefaultMaintenanceDays(professionalType)} dias</b>. Tem cliente que volta com 15, 20 ou 25? Toque em <b>Alterar</b> no cartão dela e ajuste.</>,
+              icon: 'dollar',
+              title: 'Sinal via Pix no link de agendamento',
+              body: <>Quem marca pelo link vê o valor do sinal e um Pix copia e cola para a sua chave. O dinheiro cai direto na sua conta.</>,
+            },
+            {
+              icon: 'shield',
+              title: `Ficha ${isBarber ? 'do cliente' : 'da cliente'}`,
+              body: <>Anamnese, termo de consentimento assinado no celular e fotos de antes e depois, guardados com segurança.</>,
+            },
+            {
+              icon: 'gift',
+              title: 'E mais',
+              body: <>Link curto com o nome do seu espaço, aniversariantes da semana, custos fixos e taxas no lucro e planilha com todos os seus dados.</>,
             },
           ].map((item) => (
             <li key={item.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1732,18 +1741,21 @@ const AppMain = ({ session, onLogout }) => {
             </li>
           ))}
         </ol>
+        <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.5, margin: '0 0 18px' }}>
+          Sinal, ficha e os outros extras começam desligados: ligue só o que quiser em <b>Configurações › Recursos extras</b>.
+        </p>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => {
-              setClientsInitialView('maintenance')
-              setPage('clients')
+              setSettingsTab('extras')
+              setPage('settings')
               dismissWhatsNew()
             }}
             style={{ background: 'var(--rose-deep)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            Ver manutenções
+            Ver recursos extras
           </button>
           <button
             type="button"
