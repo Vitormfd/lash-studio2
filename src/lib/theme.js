@@ -3,7 +3,7 @@ const THEME_STORAGE_PREFIX = 'lash_theme_'
 export const THEMES = {
   rose: {
     id: 'rose',
-    label: 'Rose (padrao)',
+    label: 'Rose (padrão)',
     vars: {
       '--rose': '#E8B4B8',
       '--rose-light': '#F7E8EA',

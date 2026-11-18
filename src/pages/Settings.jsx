@@ -32,7 +32,16 @@ import {
 const SUPPORT_WHATSAPP = '5574999348744'
 const SUPPORT_WHATSAPP_TEXT = 'Olá! Preciso de ajuda com o app.'
 
+export const SETTINGS_TABS = [
+  { id: 'agenda', label: 'Agenda' },
+  { id: 'whatsapp', label: 'WhatsApp' },
+  { id: 'negocio', label: 'Negócio e equipe' },
+  { id: 'conta', label: 'Conta e app' },
+]
+
 const Settings = ({
+  tab: tabProp,
+  onTabChange,
   config,
   setConfig,
   addToast,
@@ -74,7 +83,7 @@ const Settings = ({
 
   const blockDemoAction = () => {
     if (!isDemo) return false
-    addToast('Modo demonstracao: configuracoes em somente leitura.', 'info')
+    addToast('Modo demonstração: configurações em somente leitura.', 'info')
     return true
   }
 
@@ -341,15 +350,37 @@ const Settings = ({
     }
   }
 
+  const [tabLocal, setTabLocal] = useState('agenda')
+  const tab = tabProp || tabLocal
+  const setTab = (next) => {
+    setTabLocal(next)
+    onTabChange?.(next)
+  }
+
   return (
     <div style={{ padding: 16 }}>
       {isDemo && (
         <div style={{ background: '#FEF3C7', borderRadius: 12, padding: '12px 16px', border: '1px solid #FCD34D', maxWidth: 480, marginBottom: 14 }}>
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#92400E' }}>Modo demonstracao: somente leitura</p>
-          <p style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>Nesta tela, alteracoes de configuracao ficam bloqueadas no teste gratis.</p>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#92400E' }}>Modo demonstração: somente leitura</p>
+          <p style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>Na demonstração, as configurações ficam só para ver.</p>
         </div>
       )}
 
+      <div role="tablist" aria-label="Seções das configurações" style={{ display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
+        {SETTINGS_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            style={{ padding: '8px 16px', borderRadius: 999, border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', background: tab === t.id ? 'var(--rose-deep)' : 'var(--rose-light)', color: tab === t.id ? '#fff' : 'var(--text-mid)' }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'conta' && (<>
       {/* Cloud status */}
       <div style={{ background: '#D1FAE5', borderRadius: 12, padding: '12px 16px', border: '1px solid #A7F3D0', maxWidth: 480, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#059669', flexShrink: 0 }} />
@@ -358,7 +389,9 @@ const Settings = ({
           <p style={{ fontSize: 11, color: '#047857', marginTop: 1 }}>Dados salvos com segurança na nuvem</p>
         </div>
       </div>
+      </>)}
 
+      {tab === 'negocio' && (<>
       {/* Financial settings */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Configurações Financeiras</h3>
@@ -378,7 +411,9 @@ const Settings = ({
           <Icon name="check" size={14} color="#fff" /> Salvar configurações
         </Btn>
       </div>
+      </>)}
 
+      {tab === 'agenda' && (<>
       {/* Work hours */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Horário de trabalho</h3>
@@ -561,7 +596,9 @@ const Settings = ({
           <Icon name="check" size={14} color="#fff" /> Salvar localização
         </Btn>
       </div>
+      </>)}
 
+      {tab === 'whatsapp' && (<>
       {/* WhatsApp reminder message */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Mensagem manual do WhatsApp</h3>
@@ -670,7 +707,9 @@ const Settings = ({
       <WhatsappAutoReminder config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} professionalType={professionalType} />
 
       <BookingWhatsappConfirm config={config} setConfig={setConfig} addToast={addToast} isDemo={isDemo} />
+      </>)}
 
+      {tab === 'negocio' && (<>
       {/* Theme settings */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>Tema do app</h3>
@@ -867,7 +906,9 @@ const Settings = ({
           </>
         )}
       </div>
+      </>)}
 
+      {tab === 'conta' && (<>
       {/* Account */}
       <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 20, border: '1px solid var(--rose-light)', maxWidth: 480, marginTop: 14 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Minha conta</h3>
@@ -993,6 +1034,7 @@ const Settings = ({
           Versão 2.1 · PWA · Nuvem
         </p>
       </div>
+      </>)}
     </div>
   )
 }

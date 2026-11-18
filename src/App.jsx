@@ -13,8 +13,10 @@ import { AccessProvider, canUserEdit as canUserEditByLevel, defaultAccessProfile
 import { APP_NAME, DEFAULT_PROFESSIONAL_TYPE } from './lib/domain'
 import { ensureServiceCompatibility } from './lib/serviceCompatibility'
 import { addRecurringInterval, FIXED_CLIENT_FUTURE_OCCURRENCES } from './lib/recurringClients'
+import { freesSlot } from './lib/appointmentStatus'
 
 import Sidebar from './components/Sidebar'
+import BottomNav from './components/BottomNav'
 import Topbar from './components/Topbar'
 import Modal from './components/Modal'
 import Icon from './components/Icon'
@@ -200,7 +202,7 @@ const AppMain = ({ session, onLogout }) => {
   const [inventoryItems, setInventoryItems] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
   const [cashExpenses, setCashExpenses] = useState([])
-  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', whatsappAutoTemplate: '', whatsappAutoEnabled: false, whatsappAutoHoursBefore: 24, whatsappMaintenanceEnabled: false, whatsappMaintenanceTemplate: '', themeId: '', businessWhatsapp: '', bookingConfirmTemplate: '' })
+  const [config, setConfigState] = useState({ avgCost: 12.35, salaryPercentage: 50, stateUf: '', city: '', workHours: null, whatsappReminderTemplate: '', whatsappAutoTemplate: '', whatsappAutoEnabled: false, whatsappAutoHoursBefore: 24, whatsappConfirmByReply: true, whatsappMaintenanceEnabled: false, whatsappMaintenanceTemplate: '', themeId: '', businessWhatsapp: '', bookingConfirmTemplate: '' })
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [swUpdateReady, setSwUpdateReady] = useState(false)
   const [pwaOnboardingOpen, setPwaOnboardingOpen] = useState(false)
@@ -222,6 +224,7 @@ const AppMain = ({ session, onLogout }) => {
   const [notifications, setNotifications] = useState([])
   const [inboxOpen, setInboxOpen] = useState(false)
   const [agendaFocus, setAgendaFocus] = useState(null)
+  const [settingsTab, setSettingsTab] = useState('agenda')
 
   const professionalType = (session.isDemo ? session.professionalType : accessProfile.professionalType) || session.professionalType || DEFAULT_PROFESSIONAL_TYPE
   const isBarber = professionalType === 'barbeiro'
@@ -231,8 +234,9 @@ const AppMain = ({ session, onLogout }) => {
   const { toasts, addToast, removeToast } = useToast()
   const [notifGate, setNotifGate] = useState(0)
 
-  const canUserEdit = canUserEditByLevel(effectiveAccessLevel(accessProfile))
-  const trialDays = canUserEdit ? trialDaysLeft(accessProfile) : null
+  // Na demonstração dá para testar tudo: as gravações ficam só neste navegador (DB usa o id local).
+  const canUserEdit = isDemo ? true : canUserEditByLevel(effectiveAccessLevel(accessProfile))
+  const trialDays = canUserEdit && !isDemo ? trialDaysLeft(accessProfile) : null
   const trialExpired = isTrialExpired(accessProfile)
   // Conta real (não a demonstração) cujo teste ou assinatura acabou: mostra o caminho para assinar.
   const accessEnded = !isDemo && accessProfileLoaded && !canUserEdit
@@ -284,7 +288,7 @@ const AppMain = ({ session, onLogout }) => {
     } catch (error) {
       const message = error instanceof Error
         ? error.message
-        : 'Nao foi possivel abrir o checkout agora.'
+        : 'Não foi possível abrir o checkout agora.'
       addToast(message, 'error')
     }
   }, [userId, session?.email, addToast])
@@ -293,7 +297,7 @@ const AppMain = ({ session, onLogout }) => {
     try {
       await openPixCheckout({ userId, email: session?.email })
     } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Nao foi possivel abrir o Pix agora.', 'error')
+      addToast(error instanceof Error ? error.message : 'Não foi possível abrir o Pix agora.', 'error')
     }
   }, [userId, session?.email, addToast])
 
@@ -415,10 +419,13 @@ const AppMain = ({ session, onLogout }) => {
 
   // Conta nova não recebe popups logo de cara: o convite para instalar espera o primeiro agendamento
   const hasRealAppointment = appointments.some((a) => !a.blocked)
+  const pwaShownThisSession = useRef(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
     if (loading || !hasRealAppointment) return undefined
+    // Na demonstração não tem convite para instalar: o foco é testar e criar a conta.
+    if (isDemo) { setPwaGateChecked(true); return undefined }
 
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
@@ -436,6 +443,7 @@ const AppMain = ({ session, onLogout }) => {
     const ios = /iPhone|iPad|iPod/i.test(ua)
     setIsIosDevice(ios)
     setPwaCanInstall(!!window.__lashPwa?.getInstallPrompt?.())
+    pwaShownThisSession.current = true
     setPwaOnboardingOpen(true)
     setPwaGateChecked(true)
 
@@ -445,7 +453,7 @@ const AppMain = ({ session, onLogout }) => {
     return () => {
       window.removeEventListener('lash-pwa-install-ready', handleInstallReady)
     }
-  }, [userId, loading, hasRealAppointment])
+  }, [userId, loading, hasRealAppointment, isDemo])
 
   useEffect(() => {
     if (loading) return
@@ -456,13 +464,15 @@ const AppMain = ({ session, onLogout }) => {
       return
     }
     if (!pwaGateChecked || pwaOnboardingOpen) return
+    // Um aviso por vez: se o convite para instalar apareceu agora, a novidade fica para a próxima abertura.
+    if (pwaShownThisSession.current || isDemo) return
     let seen = false
     try {
       seen = localStorage.getItem(storageKey) === '1'
     } catch {}
     if (seen) return
     setWhatsNewOpen(true)
-  }, [loading, hasRealAppointment, pwaGateChecked, pwaOnboardingOpen, userId])
+  }, [loading, hasRealAppointment, pwaGateChecked, pwaOnboardingOpen, userId, isDemo])
 
   // O atalho do popup abre Clientes na aba Manutenção só uma vez
   useEffect(() => {
@@ -487,8 +497,8 @@ const AppMain = ({ session, onLogout }) => {
   const installFromOnboarding = useCallback(async () => {
     const prompt = window.__lashPwa?.getInstallPrompt?.()
     if (!prompt) {
-      setPage('settings')
-      addToast('Abra Configuracoes para ver os passos de instalacao.', 'info')
+      setSettingsTab('conta'); setPage('settings')
+      addToast('Abra Configurações para ver os passos de instalação.', 'info')
       dismissPwaOnboarding()
       return
     }
@@ -504,7 +514,7 @@ const AppMain = ({ session, onLogout }) => {
       return
     }
 
-    addToast('Instalacao cancelada. Voce pode tentar novamente em Configuracoes.', 'warning')
+    addToast('Instalação cancelada. Você pode tentar novamente em Configurações.', 'warning')
   }, [addToast, dismissPwaOnboarding])
 
   const ownerCreationTried = useRef(false)
@@ -670,17 +680,42 @@ const AppMain = ({ session, onLogout }) => {
           .subscribe()
       : null
 
+    // Agenda em tempo real: qualquer mudança nos agendamentos desta conta (link público, outro
+    // aparelho da equipe) recarrega só os agendamentos, agrupando rajadas de eventos.
+    let apptTimer = null
+    const reloadAppointmentsSoon = () => {
+      window.clearTimeout(apptTimer)
+      apptTimer = window.setTimeout(() => {
+        DB.getAppointments(userId).then(setAppointments).catch(() => {})
+      }, 800)
+    }
+    const apptChannel = sb
+      ? sb
+          .channel(`appointments:${userId}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'appointments', filter: `user_id=eq.${userId}` },
+            reloadAppointmentsSoon,
+          )
+          .subscribe()
+      : null
+
     const poll = () => { refreshNotifications() }
     const intervalId = window.setInterval(poll, 30_000)
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') poll()
+      if (document.visibilityState !== 'visible') return
+      poll()
+      // Voltou para o app (celular desbloqueado): pega o que mudou enquanto estava fora.
+      reloadAppointmentsSoon()
     }
     document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
       window.clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.clearTimeout(apptTimer)
       if (sb && channel) sb.removeChannel(channel)
+      if (sb && apptChannel) sb.removeChannel(apptChannel)
     }
   }, [userId, isDemo, activeOperator?.id, refreshNotifications, silentReloadAgenda, addToast])
 
@@ -773,7 +808,7 @@ const AppMain = ({ session, onLogout }) => {
         addToast('O Pix ainda está sendo confirmado. Seu acesso libera sozinho em instantes.', 'info')
       })().catch(() => {})
     } else if (checkoutStatus === 'canceled') {
-      addToast('Checkout cancelado. Voce pode tentar novamente quando quiser.', 'warning')
+      addToast('Pagamento cancelado. Você pode tentar novamente quando quiser.', 'warning')
     }
 
     params.delete('checkout')
@@ -786,8 +821,12 @@ const AppMain = ({ session, onLogout }) => {
   // No erro a mensagem já aparece aqui; a tela só mostra "salvo" quando não recebe false.
   const reportWriteError = useCallback((error) => {
     addToast(writeErrorMessage(error), 'error')
+    // Horário ocupado por outra reserva: atualiza a agenda para mostrar quem pegou.
+    if (/horario_ocupado/i.test(String(error?.cause?.message || ''))) {
+      DB.getAppointments(userId).then(setAppointments).catch(() => {})
+    }
     return false
-  }, [addToast])
+  }, [addToast, userId])
 
   // ── CLIENTS ──
   const handleAddClient = async (client) => {
@@ -877,6 +916,8 @@ const AppMain = ({ session, onLogout }) => {
     const overlapsOther = (idToSkip) =>
       appointments.find((a) => {
         if (idToSkip && a.id === idToSkip) return false
+        // Cancelado ou falta não ocupa o horário.
+        if (freesSlot(a)) return false
         return apptIntervalsOverlap(form.date, form.time, dur, a.date, a.time, apptDurationMin(a))
       })
 
@@ -893,7 +934,7 @@ const AppMain = ({ session, onLogout }) => {
       setEditAppt(null); addToast('Agendamento salvo com sucesso!', 'success')
     } else {
       if (overlapsOther(null)) { addToast('Horário conflita com outro agendamento ou bloqueio.', 'error'); return }
-      const isFixedSeries = isBarber && !!form.fixedClient && !form.blocked
+      const isFixedSeries = !!form.fixedClient && !form.blocked
       const recurrenceId = isFixedSeries ? uid() : null
       const newAppt = {
         ...form,
@@ -935,7 +976,7 @@ const AppMain = ({ session, onLogout }) => {
         for (let i = 0; i < FIXED_CLIENT_FUTURE_OCCURRENCES; i += 1) {
           cursorDate = addRecurringInterval(cursorDate, form.fixedFrequency)
           const conflict = allAppts.find((a) =>
-            apptIntervalsOverlap(cursorDate, form.time, dur, a.date, a.time, apptDurationMin(a))
+            !freesSlot(a) && apptIntervalsOverlap(cursorDate, form.time, dur, a.date, a.time, apptDurationMin(a))
           )
           if (conflict) { skippedDates.push(cursorDate); continue }
           try {
@@ -970,7 +1011,7 @@ const AppMain = ({ session, onLogout }) => {
 
         if (createdCount.n > 0) {
           addToast(
-            `Cliente fixo! ${createdCount.n} próximo${createdCount.n > 1 ? 's' : ''} corte${createdCount.n > 1 ? 's' : ''} agendado${createdCount.n > 1 ? 's' : ''}.`,
+            `Horário fixo! ${createdCount.n} próximo${createdCount.n > 1 ? 's' : ''} ${isBarber ? 'corte' : 'atendimento'}${createdCount.n > 1 ? 's' : ''} agendado${createdCount.n > 1 ? 's' : ''}.`,
             'success'
           )
         }
@@ -997,7 +1038,7 @@ const AppMain = ({ session, onLogout }) => {
   }
 
   const markAppointmentStatus = async (appt, status, paymentData) => {
-    if (guardRestrictedWrite('Desbloqueie para marcar atendimento como concluido.')) return
+    if (guardRestrictedWrite('Desbloqueie para marcar atendimento como concluído.')) return
     try {
       const prevStatus = appt.status
       const withPayment =
@@ -1039,6 +1080,8 @@ const AppMain = ({ session, onLogout }) => {
         }
       } else if (status === 'cancelled') {
         addToast('Agendamento cancelado.', 'warning')
+      } else if (status === 'no_show') {
+        addToast('Falta registrada. O horário ficou livre.', 'warning')
       } else if (status === 'confirmed' && prevStatus === 'pending') {
         addToast('Agendamento confirmado!', 'success')
       } else if (status === 'done') {
@@ -1148,14 +1191,14 @@ const AppMain = ({ session, onLogout }) => {
 
   const countSoonAppointments = () =>
     appointments.filter((a) => {
-      if (a.blocked || a.status === 'cancelled') return false
+      if (a.blocked || freesSlot(a)) return false
       const diff = (new Date(a.date + 'T' + a.time) - new Date()) / 60000
       return diff > 0 && diff < 30
     }).length
 
   const soonItems = appointments
     .filter((a) => {
-      if (a.blocked || a.status === 'cancelled') return false
+      if (a.blocked || freesSlot(a)) return false
       const diff = (new Date(a.date + 'T' + a.time) - new Date()) / 60000
       return diff > 0 && diff < 30
     })
@@ -1191,8 +1234,10 @@ const AppMain = ({ session, onLogout }) => {
         if (Array.isArray(next) && next.length) setNotifications(next)
       }).catch(() => {})
     }
-    const date = item?.payload?.date || appointments.find((a) => a.id === item?.appointmentId)?.date
-    openAgendaFromNotice(date, item?.appointmentId)
+    // Avisos de resposta no WhatsApp guardam o agendamento no payload.
+    const appointmentId = item?.appointmentId || item?.payload?.appointmentId || null
+    const date = item?.payload?.date || appointments.find((a) => a.id === appointmentId)?.date
+    openAgendaFromNotice(date, appointmentId)
   }
 
   const handleSoonClick = (item) => {
@@ -1273,7 +1318,7 @@ const AppMain = ({ session, onLogout }) => {
     } catch {}
 
     window.prompt('Copie o link de agendamento:', link)
-    addToast('Nao foi possivel copiar automaticamente. Copie manualmente.', 'warning')
+    addToast('Não foi possível copiar automaticamente. Copie manualmente.', 'warning')
   }
 
   if (loading) return <DashboardSkeleton />
@@ -1346,6 +1391,16 @@ const AppMain = ({ session, onLogout }) => {
       />
 
 
+      <BottomNav
+        active={page}
+        onNavigate={(id) => { setSidebarOpen(false); setPage(id) }}
+        onNew={() => {
+          if (guardRestrictedWrite('Desbloqueie para criar agendamentos.')) return
+          setNewApptInitial(null)
+          setNewApptModal(true)
+        }}
+        onMore={() => setSidebarOpen(true)}
+      />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, overflow: 'visible' }}>
         <Topbar
           title={NAV_TITLES[page]}
@@ -1371,7 +1426,7 @@ const AppMain = ({ session, onLogout }) => {
             setNewApptModal(true)
           }}
           offline={!online}
-          isDemo={!canUserEdit}
+          isDemo={isDemo}
           canUserEdit={canUserEdit}
           trialDays={trialDays}
           accessEnded={accessEnded}
@@ -1381,8 +1436,25 @@ const AppMain = ({ session, onLogout }) => {
           operator={activeOperator}
           onSwitchOperator={requestOperatorSwitch}
         />
+        {isDemo && (
+          <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 12, background: 'var(--rose-light)', border: '1px solid var(--rose)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <p style={{ flex: '1 1 220px', margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.45 }}>
+              <strong>Você está na demonstração.</strong> Teste à vontade: crie clientes e agendamentos. Nada aqui vai para a nuvem.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                onLogout()
+                window.location.assign('/?mode=signup')
+              }}
+              style={{ border: 'none', borderRadius: 999, padding: '9px 16px', background: 'var(--rose-deep)', color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Criar minha conta grátis
+            </button>
+          </div>
+        )}
 
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div className="es-has-bottom-nav" style={{ flex: 1, minWidth: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {page === 'dashboard' && (
             <Dashboard
               appointments={appointments}
@@ -1405,7 +1477,7 @@ const AppMain = ({ session, onLogout }) => {
                 userId,
                 onNewClient: () => { setClientsAutoNew(true); setPage('clients') },
                 onReminder: () => {
-                  setPage('settings')
+                  setSettingsTab('whatsapp'); setPage('settings')
                   setTimeout(() => {
                     document.getElementById('whatsapp-auto-reminder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                   }, 350)
@@ -1432,7 +1504,7 @@ const AppMain = ({ session, onLogout }) => {
               canUserEdit={canUserEdit}
               onBlockedAction={guardRestrictedWrite}
               onUpgrade={() => openPaywall('Desbloqueie para criar agendamentos')}
-              onGoSettings={() => setPage('settings')}
+              onGoSettings={() => { setSettingsTab('agenda'); setPage('settings') }}
               focusAppointment={agendaFocus}
             />
           )}
@@ -1449,7 +1521,7 @@ const AppMain = ({ session, onLogout }) => {
               professionalType={professionalType}
               config={config}
               onOpenSettings={() => {
-                setPage('settings')
+                setSettingsTab('whatsapp'); setPage('settings')
                 setTimeout(() => {
                   document.getElementById('whatsapp-maintenance-reminder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }, 350)
@@ -1514,6 +1586,8 @@ const AppMain = ({ session, onLogout }) => {
           )}
           {page === 'settings' && (
             <Settings
+              tab={settingsTab}
+              onTabChange={setSettingsTab}
               config={config}
               setConfig={saveConfig}
               addToast={addToast}
@@ -1547,20 +1621,20 @@ const AppMain = ({ session, onLogout }) => {
 
       <Modal open={pwaOnboardingOpen} onClose={dismissPwaOnboarding} title="Instale o app no celular">
         <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 12 }}>
-          Em poucos passos, voce coloca o {APP_NAME} na tela inicial e abre como aplicativo.
+          Em poucos passos, você coloca o {APP_NAME} na tela inicial e abre como aplicativo.
         </p>
 
         {isIosDevice ? (
           <ol style={{ margin: '0 0 14px 18px', color: 'var(--text)', lineHeight: 1.7, fontSize: 13 }}>
             <li>Toque no botao Compartilhar do Safari.</li>
-            <li>Role o menu e toque em Adicionar a Tela de Inicio.</li>
+            <li>Role o menu e toque em Adicionar à Tela de Início.</li>
             <li>Confirme em Adicionar para criar o icone do app.</li>
           </ol>
         ) : (
           <ol style={{ margin: '0 0 14px 18px', color: 'var(--text)', lineHeight: 1.7, fontSize: 13 }}>
-            <li>Toque no menu do navegador (tres pontos).</li>
+            <li>Toque no menu do navegador (três pontos).</li>
             <li>Escolha Instalar app ou Adicionar a tela inicial.</li>
-            <li>Confirme para finalizar a instalacao.</li>
+            <li>Confirme para finalizar a instalação.</li>
           </ol>
         )}
 
@@ -1576,10 +1650,10 @@ const AppMain = ({ session, onLogout }) => {
           )}
           <button
             type="button"
-            onClick={() => { setPage('settings'); dismissPwaOnboarding() }}
+            onClick={() => { setSettingsTab('conta'); setPage('settings'); dismissPwaOnboarding() }}
             style={{ background: 'var(--surface)', color: 'var(--rose-dark)', border: '1px solid var(--rose-light)', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            Ver em Configuracoes
+            Ver em Configurações
           </button>
           <button
             type="button"
@@ -1713,7 +1787,7 @@ const PasswordRecoveryScreen = ({ onBackToLogin }) => {
       setRecoveryFlowActive(false)
       setDone(true)
     } catch (e) {
-      setError(e?.message || 'Nao foi possivel redefinir sua senha.')
+      setError(e?.message || 'Não foi possível redefinir sua senha.')
     } finally {
       setLoading(false)
     }

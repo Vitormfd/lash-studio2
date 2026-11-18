@@ -48,6 +48,8 @@ const writeFailed = (error) => {
   let message = 'Não foi possível salvar no servidor. Nada foi alterado; tente de novo.'
   if (offline || /failed to fetch|networkerror|load failed|network request failed/i.test(raw)) {
     message = 'Sem conexão com a internet: nada foi salvo. Tente de novo quando a conexão voltar.'
+  } else if (/horario_ocupado/i.test(raw)) {
+    message = 'Esse horário acabou de ser ocupado (pode ter sido um agendamento online). A agenda foi atualizada: escolha outro horário.'
   } else if (/full plan required|access denied/i.test(raw)) {
     message = 'Seu acesso terminou, então a alteração não foi salva. Assine para continuar editando.'
   }
@@ -866,6 +868,7 @@ export const DB = {
         whatsappAutoTemplate: String(data.whatsapp_auto_template || '').trim(),
         whatsappAutoEnabled: !!data.whatsapp_auto_enabled,
         whatsappAutoHoursBefore: Number(data.whatsapp_auto_hours_before) > 0 ? Number(data.whatsapp_auto_hours_before) : 24,
+        whatsappConfirmByReply: data.whatsapp_confirm_by_reply !== false,
         whatsappMaintenanceEnabled: !!data.whatsapp_maintenance_enabled,
         whatsappMaintenanceTemplate: String(data.whatsapp_maintenance_template || '').trim(),
         themeId: data.theme_id || '',
@@ -884,6 +887,7 @@ export const DB = {
       whatsappAutoTemplate: String(stored?.whatsappAutoTemplate || '').trim(),
       whatsappAutoEnabled: !!stored?.whatsappAutoEnabled,
       whatsappAutoHoursBefore: Number(stored?.whatsappAutoHoursBefore) > 0 ? Number(stored.whatsappAutoHoursBefore) : 24,
+      whatsappConfirmByReply: stored?.whatsappConfirmByReply !== false,
       whatsappMaintenanceEnabled: !!stored?.whatsappMaintenanceEnabled,
       whatsappMaintenanceTemplate: String(stored?.whatsappMaintenanceTemplate || '').trim(),
       themeId: stored?.themeId || '',
@@ -909,6 +913,7 @@ export const DB = {
         whatsapp_auto_template: String(nextConfig.whatsappAutoTemplate || '').trim() || null,
         whatsapp_auto_enabled: !!nextConfig.whatsappAutoEnabled,
         whatsapp_auto_hours_before: Number(nextConfig.whatsappAutoHoursBefore) > 0 ? Number(nextConfig.whatsappAutoHoursBefore) : 24,
+        whatsapp_confirm_by_reply: nextConfig.whatsappConfirmByReply !== false,
         whatsapp_maintenance_enabled: !!nextConfig.whatsappMaintenanceEnabled,
         whatsapp_maintenance_template: String(nextConfig.whatsappMaintenanceTemplate || '').trim() || null,
         theme_id: nextConfig.themeId || null,
@@ -916,6 +921,11 @@ export const DB = {
         booking_confirm_template: String(nextConfig.bookingConfirmTemplate || '').trim() || null,
       }
       let { error } = await sb.from('config').upsert(row, { onConflict: 'user_id' })
+      if (error && /whatsapp_confirm_by_reply/.test(error.message || '')) {
+        // Coluna da confirmação por resposta ainda não criada (p1_agenda.sql)
+        delete row.whatsapp_confirm_by_reply
+        ;({ error } = await sb.from('config').upsert(row, { onConflict: 'user_id' }))
+      }
       if (error) {
         // Colunas da confirmação pelo WhatsApp ainda não criadas (booking_whatsapp_confirm.sql)
         delete row.business_whatsapp

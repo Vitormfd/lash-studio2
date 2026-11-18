@@ -54,25 +54,31 @@ const WINDOW_MS = 10 * 60 * 1000
 // Brazil is UTC-3 (no DST for most states including SP/RJ).
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000
 
+// Fuso de cada estado (o Brasil não tem horário de verão desde 2019). Sem estado salvo, usa Brasília.
+// O horário do agendamento é o horário local da profissional.
+const UF_UTC_OFFSET_HOURS: Record<string, number> = { AC: 5, AM: 4, RR: 4, RO: 4, MT: 4, MS: 4 }
+const utcOffsetHoursForUf = (uf: string | null | undefined) => UF_UTC_OFFSET_HOURS[String(uf || '').trim().toUpperCase()] ?? 3
+// Fuso por conta, carregado no início de cada execução do cron.
+const offsetHoursByUser = new Map<string, number>()
+
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders })
 
 const parseBearerToken = (header: string | null) =>
   header?.replace(/^Bearer\s+/i, '').trim() || ''
 
-const parseAppointmentDate = (date: string, time: string) => {
+const parseAppointmentDate = (date: string, time: string, offsetHours = 3) => {
   const [hoursRaw, minutesRaw] = String(time || '').slice(0, 5).split(':')
   const hours = Number(hoursRaw)
   const minutes = Number(minutesRaw)
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
-  // Appointment date/time is stored in BRT (UTC-3). Suffix the offset so the
-  // JS engine converts to UTC correctly instead of treating it as UTC.
-  return new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00-03:00`)
+  // Data e hora do agendamento estão no horário local da profissional (fuso do estado dela).
+  return new Date(`${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00-0${offsetHours}:00`)
 }
 
 const isAppointmentDue = (appt: AppointmentRow, minutesBefore: number, nowMs: number) => {
-  const at = parseAppointmentDate(appt.date, appt.time)
+  const at = parseAppointmentDate(appt.date, appt.time, offsetHoursByUser.get(appt.user_id) ?? 3)
   if (!at) return false
   const fireAt = at.getTime() - minutesBefore * 60 * 1000
   const delta = nowMs - fireAt
@@ -271,7 +277,7 @@ const sendDailySummaries = async (
   const dueUsers: Array<{ userId: string; appts: DayAppointment[] }> = []
   for (const [userId, appts] of byUser) {
     appts.sort((a, b) => String(a.time).localeCompare(String(b.time)))
-    const first = parseAppointmentDate(appts[0].date, appts[0].time)
+    const first = parseAppointmentDate(appts[0].date, appts[0].time, offsetHoursByUser.get(userId) ?? 3)
     if (!first) continue
     const delta = nowMs - (first.getTime() - SUMMARY_MINUTES_BEFORE * 60 * 1000)
     if (delta >= 0 && delta <= WINDOW_MS) dueUsers.push({ userId, appts })
@@ -673,6 +679,12 @@ Deno.serve(async (req) => {
   const professionalTypeByUserId = new Map<string, string>()
   for (const profile of (profiles || []) as ProfileRow[]) {
     professionalTypeByUserId.set(profile.id, profile.professional_type || 'lash')
+  }
+
+  offsetHoursByUser.clear()
+  const { data: tzRows } = await sb.from('config').select('user_id,state_uf').in('user_id', userIds)
+  for (const row of (tzRows || []) as Array<{ user_id: string; state_uf: string | null }>) {
+    offsetHoursByUser.set(row.user_id, utcOffsetHoursForUf(row.state_uf))
   }
 
   const summary = await sendDailySummaries(sb, userIds, professionalTypeByUserId, todayBrt, Date.now())

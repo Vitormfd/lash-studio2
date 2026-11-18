@@ -70,7 +70,7 @@ export const getMaintenanceOverview = (clients, appointments, professionalType, 
 
   for (const a of appointments) {
     if (!a.clientId || a.blocked) continue
-    if (a.status !== 'cancelled' && a.status !== 'done' && a.date >= today) {
+    if (a.status !== 'cancelled' && a.status !== 'no_show' && a.status !== 'done' && a.date >= today) {
       const cur = nextByClient.get(a.clientId)
       if (!cur || (a.date + a.time).localeCompare(cur.date + cur.time) < 0) nextByClient.set(a.clientId, a)
     }

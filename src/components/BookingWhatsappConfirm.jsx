@@ -54,7 +54,7 @@ const BookingWhatsappConfirm = ({ config, setConfig, addToast, isDemo = false })
 
   const save = () => {
     if (isDemo) {
-      addToast('Modo demonstracao: configuracoes em somente leitura.', 'info')
+      addToast('Modo demonstração: configurações em somente leitura.', 'info')
       return
     }
     const digits = phone.replace(/\D/g, '')

@@ -140,7 +140,7 @@ const getClientSpendMetrics = (client, appointments) => {
 const getNextFixedDate = (client, appointments) => {
   if (!client.isFixed || !client.fixedFrequency) return null
   const last = appointments
-    .filter((a) => a.clientId === client.id && !a.blocked && a.status !== 'cancelled')
+    .filter((a) => a.clientId === client.id && !a.blocked && a.status !== 'cancelled' && a.status !== 'no_show')
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0]
   if (!last) return null
   return addRecurringInterval(last.date, client.fixedFrequency)
@@ -547,7 +547,8 @@ const Clients = ({
     setIntervalEdit(null)
   }
 
-  const getApptCount = (id) => appointments.filter((a) => a.clientId === id && a.status !== 'cancelled').length
+  const getApptCount = (id) => appointments.filter((a) => a.clientId === id && a.status !== 'cancelled' && a.status !== 'no_show').length
+  const getNoShowCount = (id) => appointments.filter((a) => a.clientId === id && a.status === 'no_show').length
 
   const getClientHistory = (clientId) =>
     appointments
@@ -784,7 +785,7 @@ const Clients = ({
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.name}</span>
-                    {isBarber && c.isFixed && (
+                    {c.isFixed && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, color: '#0F766E', background: 'rgba(15,118,110,0.1)', padding: '2px 7px', borderRadius: 999 }}>
                         <Icon name="repeat" size={10} color="#0F766E" /> Fixo
                       </span>
@@ -793,7 +794,7 @@ const Clients = ({
                   <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{c.phone}</div>
                 </div>
               </div>
-              {isBarber && c.isFixed && (
+              {c.isFixed && (
                 <div style={{ fontSize: 11, color: '#0F766E', background: 'rgba(15,118,110,0.08)', padding: '6px 10px', borderRadius: 8, marginBottom: 10, lineHeight: 1.4 }}>
                   {RECURRING_FREQUENCY_LABELS[c.fixedFrequency] || ''}
                   {c.fixedWeekday != null && ` · ${WEEKDAY_LABELS_FULL[c.fixedWeekday]}`}
@@ -854,7 +855,15 @@ const Clients = ({
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{count} {appointmentsLabel}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-light)' }}>
+                  {count} {count === 1 ? appointmentLabelSingular : appointmentsLabel}
+                  {(() => {
+                    const faltas = getNoShowCount(c.id)
+                    return faltas > 0
+                      ? <span style={{ color: '#92400E', fontWeight: 600 }}>{` · faltou ${faltas} ${faltas === 1 ? 'vez' : 'vezes'}`}</span>
+                      : null
+                  })()}
+                </span>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <Btn variant="ghost" sm onClick={() => setHistoryClient(c)} title={`Histórico de ${appointmentsLabel}`}>
                     <Icon name="calendar" size={12} /> Histórico
@@ -908,7 +917,7 @@ const Clients = ({
             placeholder={`Padrão: ${defaultMaintenanceDays} dias`}
           />
         </Field>
-        {isBarber && (
+        {(
           <>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)', cursor: 'pointer', margin: '4px 0 10px' }}>
               <input
@@ -917,7 +926,7 @@ const Clients = ({
                 onChange={(e) => setForm((f) => ({ ...f, isFixed: e.target.checked }))}
                 style={{ width: 18, height: 18, accentColor: 'var(--rose-deep)' }}
               />
-              <Icon name="repeat" size={13} color="var(--rose-deep)" /> Cliente fixo
+              <Icon name="repeat" size={13} color="var(--rose-deep)" /> {isBarber ? 'Cliente fixo' : 'Cliente com horário fixo'}
             </label>
             {form.isFixed && (
               <div style={{ marginBottom: 12 }}>
@@ -941,7 +950,9 @@ const Clients = ({
                   </Field>
                 </div>
                 <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -4, lineHeight: 1.4 }}>
-                  Isso só marca a preferência do cliente. Para criar os próximos cortes automaticamente, marque "Cliente fixo" na hora de agendar um corte para ele.
+                  {isBarber
+                    ? 'Isso só marca a preferência do cliente. Para criar os próximos cortes automaticamente, marque "Cliente fixo" na hora de agendar um corte para ele.'
+                    : 'Isso só marca a preferência da cliente. Para criar os próximos atendimentos automaticamente, marque "Repetir este horário" na hora de agendar.'}
                 </p>
               </div>
             )}

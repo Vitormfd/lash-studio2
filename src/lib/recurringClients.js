@@ -3,6 +3,7 @@ import { toLocalYmd } from './dashboardStats'
 export const RECURRING_FREQUENCY_OPTIONS = [
   { value: 'weekly', label: 'Toda semana' },
   { value: 'biweekly', label: 'A cada 15 dias' },
+  { value: 'triweekly', label: 'A cada 3 semanas' },
   { value: 'monthly', label: 'Todo mês' },
 ]
 
@@ -48,5 +49,6 @@ export const addRecurringInterval = (ymd, frequency) => {
   const freq = normalizeRecurringFrequency(frequency)
   if (freq === 'weekly') return shiftYmdByDays(ymd, 7)
   if (freq === 'biweekly') return shiftYmdByDays(ymd, 14)
+  if (freq === 'triweekly') return shiftYmdByDays(ymd, 21)
   return shiftYmdByMonths(ymd, 1)
 }

@@ -148,3 +148,31 @@ textarea {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* ── Barra inferior (celular) ─────────────────────────────────────────────── */
+.es-bottom-nav { display: none; }
+@media (max-width: 768px) {
+  .es-bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--rose-light);
+    box-shadow: 0 -6px 20px rgba(44, 26, 30, 0.06);
+  }
+  .es-bottom-nav__item {
+    flex: 1; min-width: 0; min-height: 48px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    background: none; border: none; font-family: inherit; cursor: pointer;
+    font-size: 11px; font-weight: 600; color: var(--text-light);
+  }
+  .es-bottom-nav__item.is-active { color: var(--rose-deep); }
+  .es-bottom-nav__new {
+    width: 52px; height: 52px; margin-top: -18px; border-radius: 50%; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--rose) 0%, var(--rose-deep) 100%);
+    box-shadow: 0 8px 20px rgba(139, 77, 85, 0.35);
+  }
+  /* Espaço para a barra não cobrir o fim das telas */
+  .es-has-bottom-nav { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+}

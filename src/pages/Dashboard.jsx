@@ -6,6 +6,7 @@ import FirstSteps from '../components/FirstSteps'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
 import { normalizeServiceColor, hexToRgba, formatDurationLabel, apptDurationMin } from '../lib/utils'
 import { getTodaySummary, getTodayStr, getNextAppointmentToday, todayActiveList, toLocalYmd } from '../lib/dashboardStats'
+import { freesSlot } from '../lib/appointmentStatus'
 import { getPersonalityMessage } from '../lib/dayMessages'
 import { summarizeMonth } from '../lib/finance'
 
@@ -47,12 +48,11 @@ const Dashboard = ({
   const todayOrdered = todayActiveList(appointments, today)
   const vibeLine = getPersonalityMessage(todaySummary, isBarber ? 'barbeiro' : undefined)
 
-  const todayAppts = real.filter((a) => a.date === today && a.status !== 'cancelled').sort((a, b) => a.time.localeCompare(b.time))
-  const tomorrowAppts = real.filter((a) => a.date === tomorrow && a.status !== 'cancelled')
+  const tomorrowAppts = real.filter((a) => a.date === tomorrow && !freesSlot(a))
   const weekAppts = real.filter((a) => {
     const d = new Date(a.date + 'T12:00')
-    return d >= monday && d <= sunday && a.status !== 'cancelled'
-  })
+    return d >= monday && d <= sunday && a.date > tomorrow && !freesSlot(a)
+  }).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
 
   const getClientName = (id) => clients.find((c) => c.id === id)?.name || '—'
   const getServiceName = (id) => services.find((s) => s.id === id)?.name || '—'
@@ -110,24 +110,24 @@ const Dashboard = ({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
           <StatCard label={appointmentsTodayLabel} value={todaySummary.count} icon="check" color="var(--rose-deep)" />
           <StatCard
-            label="Horas trabalhadas"
+            label="Horas agendadas"
             value={formatDurationLabel(todaySummary.totalMinutes || 0)}
             icon="clock"
             color="var(--rose-dark)"
           />
           <StatCard
-            label="Ganho do dia (realizado)"
+            label="Recebido hoje"
             value={`R$ ${todaySummary.revenueDone.toFixed(2).replace('.', ',')}`}
             icon="dollar"
             color="#059669"
           />
           <StatCard
-            label="A receber hoje (pendente + confirmado)"
+            label="Ainda a receber hoje"
             value={`R$ ${todaySummary.revenueScheduled.toFixed(2).replace('.', ',')}`}
             icon="chart"
             color="var(--rose-dark)"
           />
-          <StatCard label="Clientes (distintos)" value={todaySummary.uniqueClients} icon="users" color="var(--rose-deep)" />
+          <StatCard label="Clientes hoje" value={todaySummary.uniqueClients} icon="users" color="var(--rose-deep)" />
         </div>
 
         {/* Próximo atendimento */}
@@ -241,20 +241,19 @@ const Dashboard = ({
       {/* Schedule cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
         {[
-          { title: 'Hoje', list: todayAppts, color: 'var(--rose-deep)' },
           { title: 'Amanhã', list: tomorrowAppts, color: 'var(--rose)' },
-          { title: 'Esta semana', list: weekAppts, color: 'var(--nude-dark)' },
+          { title: 'Resto da semana', list: weekAppts, color: 'var(--nude-dark)' },
         ].map(({ title, list, color }) => (
           <div key={title} style={{ background: 'var(--surface)', borderRadius: 14, padding: 16, border: '1px solid var(--rose-light)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{title}</h3>
               <span style={{ background: 'var(--rose-light)', color, fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
-                {list.length} {list.length === 1 ? 'apto.' : 'aptos.'}
+                {list.length} {list.length === 1 ? 'horário' : 'horários'}
               </span>
             </div>
             {list.length === 0 ? (
               <p style={{ fontSize: 13, color: 'var(--text-light)', textAlign: 'center', padding: '12px 0' }}>
-                {title === 'Hoje' ? 'Nenhum cliente agendado hoje' : 'Nenhum agendamento'}
+                Nenhum agendamento
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

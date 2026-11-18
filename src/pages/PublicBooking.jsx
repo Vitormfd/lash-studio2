@@ -257,7 +257,7 @@ const PublicBooking = ({ professionalId }) => {
       } catch {
         if (!alive) return
         setServices([])
-        setErrorMsg('Nao foi possivel carregar os servicos deste link.')
+        setErrorMsg('Não foi possível carregar os serviços deste link.')
       } finally {
         if (alive) setLoadingServices(false)
       }
@@ -383,7 +383,7 @@ const PublicBooking = ({ professionalId }) => {
       setSlots(generated)
     } catch {
       setSlots([])
-      setErrorMsg('Nao foi possivel carregar os horarios para esta data.')
+      setErrorMsg('Não foi possível carregar os horários para esta data.')
     } finally {
       setLoadingSlots(false)
     }

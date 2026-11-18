@@ -9,7 +9,7 @@ import {
   apptDurationMin, apptCoversSlotHour, apptStartsInHourRow, apptIntervalsOverlap,
   formatDurationLabel, endTimeLabel, getFullDayBlockMinutes,
 } from '../lib/utils'
-import { statusMeta } from '../lib/appointmentStatus'
+import { statusMeta, freesSlot } from '../lib/appointmentStatus'
 import AppointmentStatusBadge from '../components/AppointmentStatusBadge'
 import { toLocalYmd, getTodaySummary } from '../lib/dashboardStats'
 import { getHolidaysMap, formatHolidaySummary, holidayTypeLabel } from '../lib/holidays'
@@ -124,7 +124,7 @@ const Agenda = ({
       onClick={(e) => {
         e.stopPropagation()
         if (!canUserEdit) {
-          onBlockedAction?.('Desbloqueie para marcar atendimento como concluido.')
+          onBlockedAction?.('Desbloqueie para marcar atendimento como concluído.')
           return
         }
         if (next === 'done') {
@@ -163,11 +163,14 @@ const Agenda = ({
   const QuickStatusRow = ({ appt }) => {
     if (appt.blocked || !onMarkStatus) return null
     if (appt.status === 'cancelled') return null
+    // "Faltou" só aparece a partir do dia do atendimento.
+    const canMarkNoShow = appt.date <= toLocalYmd(new Date())
     if (appt.status === 'pending') {
       return (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
           {quickBtn('Confirmar', appt, 'confirmed', { border: '#93C5FD', color: '#1D4ED8' })}
           {quickBtn('Concluir', appt, 'done', { border: '#6EE7B7', color: '#065F46' })}
+          {canMarkNoShow && quickBtn('Faltou', appt, 'no_show', { border: '#FCD34D', color: '#92400E' })}
           {quickBtn('Cancelar', appt, 'cancelled', { border: '#FCA5A5', color: '#991B1B' })}
         </div>
       )
@@ -176,7 +179,15 @@ const Agenda = ({
       return (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
           {quickBtn('Concluir', appt, 'done', { border: '#6EE7B7', color: '#065F46' })}
+          {canMarkNoShow && quickBtn('Faltou', appt, 'no_show', { border: '#FCD34D', color: '#92400E' })}
           {quickBtn('Cancelar', appt, 'cancelled', { border: '#FCA5A5', color: '#991B1B' })}
+        </div>
+      )
+    }
+    if (appt.status === 'no_show') {
+      return (
+        <div style={{ marginTop: 6 }}>
+          {quickBtn('Desfazer falta', appt, 'confirmed', { border: '#93C5FD', color: '#1D4ED8' })}
         </div>
       )
     }
@@ -412,7 +423,7 @@ const Agenda = ({
           {cells.map((day, i) => {
             if (!day) return <div key={i} />
             const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-            const appts = appointments.filter((a) => a.date === ds && !a.blocked && a.status !== 'cancelled')
+            const appts = appointments.filter((a) => a.date === ds && !a.blocked && !freesSlot(a))
             const isToday = ds === todayStr
             const hols = holidaysByDate.get(ds) || []
             return (
@@ -602,7 +613,7 @@ const Agenda = ({
             <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
               {formatDurationLabel(daySummary.totalMinutes || 0)}
             </span>
-            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>trabalhadas</span>
+            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>agendadas</span>
           </div>
         </div>
       )}
@@ -627,7 +638,7 @@ const Agenda = ({
               }
               const dur = Number(form.durationMinutes) || 60
               const clash = appointments.find((a) =>
-                apptIntervalsOverlap(form.date, form.time, dur, a.date, a.time, apptDurationMin(a))
+                !freesSlot(a) && apptIntervalsOverlap(form.date, form.time, dur, a.date, a.time, apptDurationMin(a))
               )
               if (clash) { addToast(form.blocked ? 'Esse intervalo já está ocupado.' : 'Horário conflita com outro agendamento.', 'error'); return }
               const hols = holidaysByDate.get(form.date) || []

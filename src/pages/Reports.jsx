@@ -16,6 +16,25 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
     : []
   const revenue = filtered.reduce((s, a) => s + paidAmount(a), 0)
 
+  // Faltas e cancelamentos no período; a taxa de faltas olha só concluídos + faltas.
+  const inRange = (a) => !!range && !a.blocked && a.date >= range[0] && a.date <= range[1]
+  const noShows = appointments.filter((a) => inRange(a) && a.status === 'no_show')
+  const cancelled = appointments.filter((a) => inRange(a) && a.status === 'cancelled')
+  const attendedOrMissed = filtered.length + noShows.length
+  const noShowRate = attendedOrMissed > 0 ? Math.round((noShows.length / attendedOrMissed) * 100) : null
+
+  // Clientes novas x que voltaram: primeira visita concluída dentro ou antes do período.
+  const firstDoneByClient = new Map()
+  for (const a of appointments) {
+    if (!isDoneAppointment(a) || !a.clientId) continue
+    const prev = firstDoneByClient.get(a.clientId)
+    if (!prev || a.date < prev) firstDoneByClient.set(a.clientId, a.date)
+  }
+  const clientsInPeriod = new Set(filtered.map((a) => a.clientId).filter(Boolean))
+  let newClients = 0
+  for (const id of clientsInPeriod) if (range && firstDoneByClient.get(id) >= range[0]) newClients += 1
+  const returningClients = clientsInPeriod.size - newClients
+
   // Daily chart data
   const dailyMap = {}
   filtered.forEach((a) => { dailyMap[a.date] = (dailyMap[a.date] || 0) + paidAmount(a) })
@@ -84,6 +103,14 @@ const Reports = ({ appointments, services, clients, isBarber }) => {
         <StatCard label="Faturamento" value={`R$ ${revenue.toFixed(2).replace('.', ',')}`} icon="dollar" />
         <StatCard label={`${appointmentsLabel} concluídos`} value={filtered.length} icon="check" />
         <StatCard label="Ticket médio" value={`R$ ${filtered.length ? (revenue / filtered.length).toFixed(2).replace('.', ',') : '0,00'}`} icon="star" />
+        <StatCard
+          label="Faltas"
+          value={noShows.length}
+          sub={noShowRate != null ? `${noShowRate}% dos horários que já passaram` : 'nenhum horário encerrado'}
+          icon="clock"
+        />
+        <StatCard label="Cancelamentos" value={cancelled.length} icon="calendar" />
+        <StatCard label="Clientes novas" value={newClients} sub={`${returningClients} voltaram no período`} icon="users" />
       </div>
 
       {/* Daily chart */}

@@ -211,7 +211,7 @@ const AuthScreen = ({ onLogin }) => {
           )}
 
           <button onClick={handle} disabled={loading} style={{ width: '100%', marginTop: 20, padding: '12px 0', borderRadius: 12, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', background: loading ? 'var(--rose)' : 'var(--rose-deep)', color: '#fff', transition: 'background 0.2s' }}>
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar conta' : 'Enviar link de recuperacao'}
+            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar conta' : 'Enviar link de recuperação'}
           </button>
         </div>
 

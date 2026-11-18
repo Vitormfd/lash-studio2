@@ -12,7 +12,7 @@ export const toLocalYmd = (d = new Date()) => {
 
 export const getTodayStr = (d = new Date()) => toLocalYmd(d)
 
-export const isRealAppointment = (a) => !a.blocked && a.status !== 'cancelled'
+export const isRealAppointment = (a) => !a.blocked && a.status !== 'cancelled' && a.status !== 'no_show'
 
 /** Agendamentos “ativos” no dia (não cancelados, não bloqueio) */
 export const todayActiveList = (appointments, todayStr = getTodayStr()) =>
@@ -49,7 +49,7 @@ export const getTodaySummary = (appointments, todayStr = getTodayStr()) => {
  * Prefere o primeiro horário >= agora; se todos passaram, retorna o primeiro da lista ou null.
  */
 export const getNextAppointmentToday = (appointments, todayStr = getTodayStr(), now = new Date()) => {
-  const list = todayActiveList(appointments, todayStr).filter((a) => a.status !== 'done')
+  const list = todayActiveList(appointments, todayStr).filter((a) => a.status === 'pending' || a.status === 'confirmed')
   if (list.length === 0) return null
   const nowMin = now.getHours() * 60 + now.getMinutes()
   for (const a of list) {

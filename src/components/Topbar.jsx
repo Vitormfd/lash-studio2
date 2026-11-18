@@ -47,7 +47,7 @@ const Topbar = ({
         </button>
       ) : isDemo && (
         <span style={{ fontSize: 11, fontWeight: 600, color: '#7C2D12', background: '#FFEDD5', padding: '4px 10px', borderRadius: 20, border: '1px solid #FDBA74' }}>
-          Teste gratis
+          Demonstração
         </span>
       )}
       {!isDemo && pixDaysLeft != null && pixDaysLeft <= 7 && (

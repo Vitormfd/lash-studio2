@@ -66,7 +66,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked,
   }, [form.serviceId])
 
   useEffect(() => {
-    if (!isNewAppointment || !isBarber || !form.clientId) return
+    if (!isNewAppointment || !form.clientId) return
     const c = clients.find((x) => x.id === form.clientId)
     if (c?.isFixed) {
       setForm((f) => ({ ...f, fixedClient: true, fixedFrequency: normalizeRecurringFrequency(c.fixedFrequency) }))
@@ -308,7 +308,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked,
         </Field>
       </div>
 
-      {!blocked && isBarber && isNewAppointment && (
+      {!blocked && isNewAppointment && (
         <div style={{ marginBottom: 14 }}>
           <label
             style={{
@@ -330,7 +330,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked,
             />
             <span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                <Icon name="repeat" size={13} color="var(--rose-deep)" /> Cliente fixo
+                <Icon name="repeat" size={13} color="var(--rose-deep)" /> {isBarber ? 'Cliente fixo' : 'Repetir este horário'}
               </span>
               <span style={{ display: 'block', fontSize: 12, color: 'var(--text-light)', marginTop: 3, lineHeight: 1.4 }}>
                 {`Repete sempre ${WEEKDAY_LABELS_FULL[new Date(`${form.date}T12:00:00`).getDay()]} às ${timeStr}.`}
@@ -347,7 +347,7 @@ const AppointmentForm = ({ initial, onSave, onClose, clients, services, blocked,
                 </Sel>
               </Field>
               <p style={{ fontSize: 11, color: 'var(--text-light)', marginTop: -6 }}>
-                {`Vamos criar os próximos ${FIXED_CLIENT_FUTURE_OCCURRENCES} cortes automaticamente nesse mesmo horário.`}
+                {`Vamos criar os próximos ${FIXED_CLIENT_FUTURE_OCCURRENCES} ${isBarber ? 'cortes' : 'atendimentos'} automaticamente nesse mesmo horário.`}
               </p>
             </div>
           )}

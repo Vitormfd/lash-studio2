@@ -47,6 +47,11 @@ const INSTANCE_PREFIX = (Deno.env.get('EVOLUTION_INSTANCE_PREFIX') || 'easystudi
 
 // Brazil is UTC-3 (no DST for most states including SP/RJ).
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000
+
+// Fuso de cada estado (o Brasil não tem horário de verão desde 2019). Sem estado salvo, usa Brasília.
+// O horário do agendamento é o horário local da profissional.
+const UF_UTC_OFFSET_HOURS: Record<string, number> = { AC: 5, AM: 4, RR: 4, RO: 4, MT: 4, MS: 4 }
+const utcOffsetHoursForUf = (uf: string | null | undefined) => UF_UTC_OFFSET_HOURS[String(uf || '').trim().toUpperCase()] ?? 3
 // Don't send if the appointment starts in less than this.
 const MIN_LEAD_MS = 15 * 60 * 1000
 // Keep each cron run well under the Edge Function time limit.
@@ -55,6 +60,46 @@ const DELAY_BETWEEN_SENDS_MS = 1200
 
 const DEFAULT_TEMPLATE =
   'Oi, {nome}! Passando para te lembrar do seu atendimento no dia {data} às {hora}. Te espero ✨🤍'
+
+// Confirmação por resposta: vai no fim do lembrete quando a conta deixa ligado (padrão).
+const CONFIRM_BY_REPLY_FOOTER = '\n\nPara confirmar, responda *SIM*. Se precisar remarcar, é só me avisar por aqui.'
+// Respostas aceitas como confirmação / pedido de remarcar (a mensagem inteira, sem pontuação).
+// O texto chega sem acentos e sem pontuação (normalizeReply). Pedido de remarcar vence a confirmação.
+const CONFIRM_REPLY_RE = /^(1|s|sim+|confirm\w*|ok+|okay|pode ser|combinado|certo|beleza|blz|estarei|vou sim|com certeza|claro|perfeito|otimo|👍|✅|❤|🥰|😍)(\s|$)/i
+const RESCHEDULE_REPLY_RE = /(^2$|^nao$|remarc|desmarc|cancel|nao vou|nao posso|nao consigo|imprevisto|outro horario|outro dia)/i
+// Só vale resposta até 3 dias depois do lembrete.
+const REPLY_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+
+/** Token do webhook de cada instância: não precisa de segredo novo e não é adivinhável. */
+const webhookTokenFor = async (instance: string) => {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(`whatsapp-webhook:${CRON_SECRET}`),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(instance))
+  return [...new Uint8Array(sig)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+const webhookUrlFor = async (instance: string) =>
+  `${PROJECT_URL}/functions/v1/whatsapp-reminders?hook=${encodeURIComponent(instance)}&t=${await webhookTokenFor(instance)}`
+
+/** Pede para a Evolution avisar esta função quando chegar mensagem nesta instância. */
+const ensureWebhook = async (instance: string) => {
+  const url = await webhookUrlFor(instance)
+  // Formato da Evolution v2 (aninhado); versões antigas aceitam o formato plano.
+  let res = await evo('POST', `/webhook/set/${instance}`, {
+    webhook: { enabled: true, url, byEvents: false, base64: false, events: ['MESSAGES_UPSERT'] },
+  })
+  if (!res.ok && res.status === 400) {
+    res = await evo('POST', `/webhook/set/${instance}`, {
+      enabled: true, url, webhookByEvents: false, webhookBase64: false, events: ['MESSAGES_UPSERT'],
+    })
+  }
+  if (!res.ok) throw new Error(`Evolution webhook ${res.status}: ${errorMessageOf(res.data)}`)
+}
 
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders })
@@ -75,9 +120,10 @@ const loadInstanceName = async (sb: Sb, userId: string) => {
 }
 
 const saveInstanceName = async (sb: Sb, userId: string, instance: string | null) => {
+  // Instância nova precisa do webhook de novo (o cron liga no primeiro lembrete).
   const patch = instance
-    ? { whatsapp_instance: instance }
-    : { whatsapp_instance: null, whatsapp_auto_enabled: false }
+    ? { whatsapp_instance: instance, whatsapp_webhook_at: null }
+    : { whatsapp_instance: null, whatsapp_auto_enabled: false, whatsapp_webhook_at: null }
   const { data, error } = await sb.from('config').update(patch).eq('user_id', userId).select('user_id')
   if (error) throw new Error(`config update failed: ${error.message}`)
   if (!data?.length && instance) {
@@ -242,13 +288,14 @@ const formatDateBr = (ymd: string) => {
   return y && m && d ? `${d}/${m}/${y}` : ymd
 }
 
-const parseAppointmentDate = (date: string, time: string) => {
+const parseAppointmentDate = (date: string, time: string, offsetHours = 3) => {
   const [h, m] = String(time || '').slice(0, 5).split(':').map(Number)
   if (!Number.isFinite(h) || !Number.isFinite(m)) return null
-  return new Date(`${String(date).slice(0, 10)}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00-03:00`)
+  const tz = `-0${offsetHours}:00`
+  return new Date(`${String(date).slice(0, 10)}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00${tz}`)
 }
 
-const brtYmd = (ms: number) => new Date(ms - BRT_OFFSET_MS).toISOString().slice(0, 10)
+const brtYmd = (ms: number, offsetHours = 3) => new Date(ms - offsetHours * 60 * 60 * 1000).toISOString().slice(0, 10)
 
 // ─── Cron: envia lembretes ───────────────────────────────────────────────────
 
@@ -290,7 +337,7 @@ const keepFullAccessAccounts = async <T extends { user_id: string }>(
 const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
   const { data: configs, error: cfgError } = await sb
     .from('config')
-    .select('user_id,whatsapp_instance,whatsapp_auto_hours_before,whatsapp_reminder_template,whatsapp_auto_template')
+    .select('user_id,whatsapp_instance,whatsapp_auto_hours_before,whatsapp_reminder_template,whatsapp_auto_template,state_uf,whatsapp_confirm_by_reply,whatsapp_webhook_at')
     .eq('whatsapp_auto_enabled', true)
 
   const nowMs = Date.now()
@@ -308,8 +355,9 @@ const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
 
     const hoursBefore = Number(cfg.whatsapp_auto_hours_before) > 0 ? Number(cfg.whatsapp_auto_hours_before) : 24
     const leadMs = hoursBefore * 60 * 60 * 1000
+    const offsetHours = utcOffsetHoursForUf((cfg as { state_uf?: string | null }).state_uf)
     const dates = new Set<string>()
-    for (let t = nowMs - 86400000; t <= nowMs + leadMs + 86400000; t += 86400000) dates.add(brtYmd(t))
+    for (let t = nowMs - 86400000; t <= nowMs + leadMs + 86400000; t += 86400000) dates.add(brtYmd(t, offsetHours))
 
     const { data: appts, error: apptError } = await sb
       .from('appointments')
@@ -327,7 +375,7 @@ const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
 
     const due = ((appts || []) as AppointmentRow[]).filter((a) => {
       if (a.blocked) return false
-      const at = parseAppointmentDate(a.date, a.time)
+      const at = parseAppointmentDate(a.date, a.time, offsetHours)
       if (!at) return false
       const startMs = at.getTime()
       return nowMs >= startMs - leadMs && nowMs <= startMs - MIN_LEAD_MS
@@ -350,6 +398,16 @@ const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
       // Not marked as sent: it retries next run if the WhatsApp is reconnected in time.
       skippedAccounts[cfg.user_id] = `whatsapp_${state}`
       continue
+    }
+
+    // Instâncias conectadas antes da confirmação por resposta: liga o webhook uma vez.
+    if (!(cfg as { whatsapp_webhook_at?: string | null }).whatsapp_webhook_at) {
+      try {
+        await ensureWebhook(instance)
+        await sb.from('config').update({ whatsapp_webhook_at: new Date().toISOString() }).eq('user_id', cfg.user_id)
+      } catch (error) {
+        console.error('[whatsapp] webhook setup failed', { userId: cfg.user_id, message: error instanceof Error ? error.message : String(error) })
+      }
     }
 
     const clientIds = [...new Set(due.map((a) => a.client_id).filter(Boolean))] as string[]
@@ -384,12 +442,16 @@ const sendDueReminders = async (sb: Sb): Promise<RunResult> => {
         .select('id')
       if (!claimed?.length) continue
 
-      const text = buildMessage(cfg.whatsapp_auto_template || cfg.whatsapp_reminder_template, {
+      const baseText = buildMessage(cfg.whatsapp_auto_template || cfg.whatsapp_reminder_template, {
         fullName: String(client?.name || ''),
         date: formatDateBr(appt.date),
         time: String(appt.time).slice(0, 5),
         service: String((serviceById.get(appt.service_id) as { name?: string } | undefined)?.name || ''),
       })
+      // Pedido de confirmação só para quem ainda não confirmou.
+      const askReply = (cfg as { whatsapp_confirm_by_reply?: boolean | null }).whatsapp_confirm_by_reply !== false
+        && appt.status === 'pending'
+      const text = askReply ? `${baseText}${CONFIRM_BY_REPLY_FOOTER}` : baseText
 
       try {
         await sendText(instance, number, text)
@@ -472,14 +534,15 @@ const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResu
   const skippedAccounts: Record<string, string> = {}
 
   const nowMs = Date.now()
-  const brtHour = new Date(nowMs - BRT_OFFSET_MS).getUTCHours()
-  if (brtHour < MAINTENANCE_SEND_HOURS.from || brtHour >= MAINTENANCE_SEND_HOURS.to) {
+  // Hora local de cada conta; antes de 9h em Brasília ninguém está no horário ainda.
+  const localHour = (offsetHours: number) => new Date(nowMs - offsetHours * 60 * 60 * 1000).getUTCHours()
+  if (localHour(3) < MAINTENANCE_SEND_HOURS.from) {
     return { accounts: 0, sent, failed, skippedAccounts }
   }
 
   const { data: configs, error: cfgError } = await sb
     .from('config')
-    .select('user_id,whatsapp_instance,whatsapp_maintenance_template')
+    .select('user_id,whatsapp_instance,whatsapp_maintenance_template,state_uf')
     .eq('whatsapp_maintenance_enabled', true)
 
   // Coluna ainda não criada (whatsapp_maintenance_reminders.sql): só não envia.
@@ -493,6 +556,13 @@ const sendMaintenanceReminders = async (sb: Sb, budget: number): Promise<RunResu
 
   for (const cfg of eligible) {
     if (sent + failed >= budget) break
+
+    const offsetHours = utcOffsetHoursForUf((cfg as { state_uf?: string | null }).state_uf)
+    const hourHere = localHour(offsetHours)
+    if (hourHere < MAINTENANCE_SEND_HOURS.from || hourHere >= MAINTENANCE_SEND_HOURS.to) {
+      skippedAccounts[cfg.user_id] = 'fora_do_horario_local'
+      continue
+    }
 
     const { data: profile } = await sb.from('profiles').select('professional_type').eq('id', cfg.user_id).maybeSingle()
     const professionalType = String((profile as any)?.professional_type || '')
@@ -659,6 +729,129 @@ const runCron = async (sb: Sb) => {
   })
 }
 
+// ─── Respostas das clientes (webhook da Evolution) ───────────────────────────
+
+const normalizeReply = (text: string) =>
+  String(text || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[.!?,;:*~_"'()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const extractText = (message: any): string =>
+  String(
+    message?.conversation
+      ?? message?.extendedTextMessage?.text
+      ?? message?.buttonsResponseMessage?.selectedDisplayText
+      ?? message?.listResponseMessage?.title
+      ?? (message?.reactionMessage?.text ? message.reactionMessage.text : '')
+      ?? '',
+  )
+
+/** Telefone de quem respondeu. Com o "LID" do WhatsApp o número pode vir em outro campo. */
+const senderPhoneDigits = (data: any): string => {
+  const key = data?.key || {}
+  const candidates = [key.remoteJidAlt, key.senderPn, data?.senderPn, key.participantAlt, key.remoteJid]
+  for (const jid of candidates) {
+    const value = String(jid || '')
+    if (value.endsWith('@s.whatsapp.net')) return value.split('@')[0].split(':')[0].replace(/\D/g, '')
+  }
+  return ''
+}
+
+const handleIncomingWebhook = async (sb: Sb, url: URL, payload: any) => {
+  const instance = String(url.searchParams.get('hook') || '')
+  const token = String(url.searchParams.get('t') || '')
+  if (!CRON_SECRET || !instance.startsWith(`${INSTANCE_PREFIX}_`) || token !== await webhookTokenFor(instance)) {
+    return json(401, { ok: false })
+  }
+
+  const event = String(payload?.event || '').toLowerCase().replace('_', '.')
+  if (event !== 'messages.upsert') return json(200, { ok: true, ignored: 'event' })
+  const items = Array.isArray(payload?.data) ? payload.data : [payload?.data]
+
+  const { data: cfg } = await sb.from('config').select('user_id,whatsapp_confirm_by_reply').eq('whatsapp_instance', instance).maybeSingle()
+  const userId = (cfg as { user_id?: string } | null)?.user_id
+  if (!userId) return json(200, { ok: true, ignored: 'instance' })
+  if ((cfg as { whatsapp_confirm_by_reply?: boolean | null }).whatsapp_confirm_by_reply === false) {
+    return json(200, { ok: true, ignored: 'disabled' })
+  }
+
+  let handled = 0
+  for (const data of items) {
+    if (!data || data?.key?.fromMe) continue
+    if (String(data?.key?.remoteJid || '').endsWith('@g.us')) continue
+    const reply = normalizeReply(extractText(data?.message))
+    if (!reply) continue
+    const reschedule = RESCHEDULE_REPLY_RE.test(reply)
+    const confirms = !reschedule && CONFIRM_REPLY_RE.test(reply)
+    if (!confirms && !reschedule) continue
+
+    const digits = senderPhoneDigits(data)
+    const local = digits.startsWith('55') ? digits.slice(2) : digits
+    if (local.length < 10) continue
+    const ddd = local.slice(0, 2)
+    const last8 = local.slice(-8)
+
+    const { data: clients } = await sb
+      .from('clients')
+      .select('id,name')
+      .eq('user_id', userId)
+      .like('phone', `+55${ddd}%${last8}`)
+      .limit(5)
+    const clientIds = ((clients || []) as { id: string }[]).map((c) => c.id)
+    if (!clientIds.length) continue
+
+    // O atendimento cujo lembrete saiu nos últimos dias e ainda não passou.
+    const since = new Date(Date.now() - REPLY_WINDOW_MS).toISOString()
+    const { data: appts } = await sb
+      .from('appointments')
+      .select('id,client_id,date,time,status,service_id')
+      .eq('user_id', userId)
+      .in('client_id', clientIds)
+      .in('status', ['pending', 'confirmed'])
+      .gte('whatsapp_reminder_sent_at', since)
+      .gte('date', brtYmd(Date.now() - 86400000))
+      .order('date', { ascending: true })
+      .order('time', { ascending: true })
+      .limit(1)
+    const appt = (appts || [])[0] as { id: string; client_id: string; date: string; time: string; status: string; service_id: string | null } | undefined
+    if (!appt) continue
+
+    const clientName = String(((clients || []) as { id: string; name?: string }[]).find((c) => c.id === appt.client_id)?.name || 'Cliente').trim()
+    const when = `${formatDateBr(appt.date).slice(0, 5)} às ${String(appt.time).slice(0, 5)}`
+
+    if (confirms) {
+      if (appt.status === 'pending') {
+        await sb.from('appointments').update({ status: 'confirmed' }).eq('id', appt.id).eq('status', 'pending')
+        await sb.rpc('insert_team_app_notifications', {
+          p_user_id: userId,
+          p_type: 'whatsapp_confirmed',
+          p_title: 'Confirmado pelo WhatsApp',
+          p_body: `${clientName} confirmou o horário de ${when}.`,
+          // Sem appointment_id: o índice único (conta, perfil, agendamento) descartaria este aviso
+          // quando o agendamento veio do link público e já tem o aviso de "Novo agendamento".
+          p_appointment_id: null,
+          p_payload: { reply: reply.slice(0, 80), appointmentId: appt.id, date: appt.date, time: String(appt.time).slice(0, 5) },
+        })
+      }
+    } else {
+      await sb.rpc('insert_team_app_notifications', {
+        p_user_id: userId,
+        p_type: 'whatsapp_reschedule',
+        p_title: 'Cliente quer remarcar',
+        p_body: `${clientName} respondeu o lembrete de ${when}: "${reply.slice(0, 80)}"`,
+        p_appointment_id: null,
+        p_payload: { reply: reply.slice(0, 200), appointmentId: appt.id, date: appt.date, time: String(appt.time).slice(0, 5) },
+      })
+    }
+    handled += 1
+  }
+
+  return json(200, { ok: true, handled })
+}
+
 // ─── Ações do app (usuária logada) ───────────────────────────────────────────
 
 const handleUserAction = async (sb: Sb, userId: string, body: RequestBody) => {
@@ -683,6 +876,13 @@ const handleUserAction = async (sb: Sb, userId: string, body: RequestBody) => {
         instance = newInstanceName(userId)
         await saveInstanceName(sb, userId, instance)
         const result = await connectInstance(instance, pairingNumber || undefined)
+        // Confirmação por resposta: a Evolution avisa esta função quando a cliente responder.
+        try {
+          await ensureWebhook(instance)
+          await sb.from('config').update({ whatsapp_webhook_at: new Date().toISOString() }).eq('user_id', userId)
+        } catch (error) {
+          console.error('[whatsapp] webhook setup on connect failed', { userId, message: error instanceof Error ? error.message : String(error) })
+        }
         return json(200, { ok: true, ...result })
       }
       case 'disconnect': {
@@ -741,6 +941,17 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
   const token = parseBearerToken(req.headers.get('Authorization'))
+
+  // Webhook da Evolution (resposta da cliente ao lembrete): autenticado pelo token da URL.
+  const url = new URL(req.url)
+  if (url.searchParams.has('hook')) {
+    try {
+      return await handleIncomingWebhook(sb, url, body)
+    } catch (error) {
+      console.error('[whatsapp] webhook failed', error instanceof Error ? error.message : String(error))
+      return json(200, { ok: false })
+    }
+  }
 
   // Manutenção: chama a Evolution passo a passo e devolve as respostas cruas.
   if (body.action === 'diagnose') {

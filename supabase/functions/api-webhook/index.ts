@@ -434,7 +434,15 @@ const handleStripeWebhook = async (
     return json(200, { ok: true, provider: 'stripe', event: event.type, userId, plan: 'active', access_level: 'full' })
   }
 
-  if (event.type === 'invoice.payment_failed' || event.type === 'customer.subscription.deleted') {
+  // Uma cobrança recusada não corta o acesso: a Stripe tenta de novo nos dias seguintes e a
+  // assinatura fica past_due (acesso mantido). O corte vem com customer.subscription.updated
+  // (unpaid/canceled) ou customer.subscription.deleted, quando as tentativas acabam.
+  if (event.type === 'invoice.payment_failed') {
+    console.log('[stripe] cobrança recusada, acesso mantido até a Stripe desistir', { userId, event: event.id })
+    return json(200, { ok: true, provider: 'stripe', event: event.type, userId, kept: true })
+  }
+
+  if (event.type === 'customer.subscription.deleted') {
     const currentProfile = await getProfileSnapshot(sb, userId)
     if (shouldProtectManualFullAccess(currentProfile, 'canceled', 'demo')) {
       return json(200, {

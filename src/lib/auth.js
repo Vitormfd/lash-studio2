@@ -215,7 +215,7 @@ export const AUTH = {
     ensureDemoSeed(normalizedType)
     return {
       userId: DEMO_USER_ID,
-      name: 'Conta Demonstracao',
+      name: 'Conta Demonstração',
       email: 'demo@easystudio.com.br',
       isDemo: true,
       professionalType: normalizedType,
@@ -286,7 +286,7 @@ export const AUTH = {
       if (error) throw new Error(error.message)
       return
     }
-    throw new Error('Recuperacao de senha disponivel apenas para contas em nuvem.')
+    throw new Error('Recuperação de senha disponível apenas para contas em nuvem.')
   },
 
   async getSession() {

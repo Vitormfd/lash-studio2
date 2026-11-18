@@ -70,12 +70,12 @@ export const openCheckout = async ({ userId, email, method = 'card' } = {}) => {
 
   const sb = getClient()
   if (!sb) {
-    throw new Error('Servico de autenticacao indisponivel para iniciar checkout.')
+    throw new Error('Serviço de login indisponível no momento. Tente de novo em instantes.')
   }
 
   const { data, error } = await sb.auth.getSession()
   if (error || !data?.session?.access_token) {
-    throw new Error('Sessao invalida. Faca login novamente para assinar.')
+    throw new Error('Sua sessão expirou. Entre de novo para assinar.')
   }
 
   const baseUrl = getFunctionsBaseUrl()
@@ -107,13 +107,13 @@ export const openCheckout = async ({ userId, email, method = 'card' } = {}) => {
   } catch {}
 
   if (!response.ok) {
-    const message = typeof payload?.error === 'string' ? payload.error : 'Nao foi possivel iniciar o checkout.'
+    const message = typeof payload?.error === 'string' ? payload.error : 'Não foi possível abrir o pagamento.'
     throw new Error(message)
   }
 
   const checkoutUrl = typeof payload?.url === 'string' ? payload.url : ''
   if (!isHttpUrl(checkoutUrl)) {
-    throw new Error('Checkout retornou URL invalida.')
+    throw new Error('O pagamento não abriu. Tente de novo em instantes.')
   }
 
   redirectTo(checkoutUrl)

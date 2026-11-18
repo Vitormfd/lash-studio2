@@ -5,7 +5,11 @@ export const APPOINTMENT_STATUS = {
   confirmed: 'confirmed',
   done: 'done',
   cancelled: 'cancelled',
+  noShow: 'no_show',
 }
+
+/** Cancelado ou falta: o horário fica livre e não conta como atendimento. */
+export const freesSlot = (a) => !!a && (a.status === 'cancelled' || a.status === 'no_show')
 
 export const statusMeta = (status) => {
   switch (status) {
@@ -17,6 +21,8 @@ export const statusMeta = (status) => {
       return { label: 'Concluído', bg: '#D1FAE5', border: '#6EE7B7', text: '#065F46', dot: '#10B981' }
     case 'cancelled':
       return { label: 'Cancelado', bg: '#FEE2E2', border: '#FCA5A5', text: '#991B1B', dot: '#EF4444' }
+    case 'no_show':
+      return { label: 'Faltou', bg: '#FEF3C7', border: '#FCD34D', text: '#92400E', dot: '#F59E0B' }
     default:
       return { label: status || '—', bg: '#F3F4F6', border: '#E5E7EB', text: '#6B7280', dot: '#9CA3AF' }
   }

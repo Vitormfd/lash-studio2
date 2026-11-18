@@ -120,7 +120,7 @@ const MaintenanceReminder = ({ config, setConfig, addToast, isDemo, connected, p
       <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Lembrete de manutenção</h4>
       <p style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 14, lineHeight: 1.55 }}>
         No dia em que a manutenção vence, o app chama a cliente no WhatsApp, se ela ainda não tiver horário marcado.
-        O prazo é a média de retorno dela (ou o padrão da sua área, até ter 2 visitas concluídas).
+        O prazo é o período de manutenção da cliente (você ajusta na aba Manutenção, em Clientes) ou o padrão da sua área.
       </p>
 
       {!connected ? (
@@ -471,6 +471,30 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
             Vale para agendamentos pendentes e confirmados. Se o horário for remarcado, o lembrete é enviado de novo.
           </p>
 
+          <label style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6, cursor: isDemo ? 'default' : 'pointer' }}>
+            <span>
+              <span style={{ display: 'block', fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>Pedir confirmação por resposta</span>
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--text-light)', marginTop: 3, lineHeight: 1.5 }}>
+                O lembrete termina com "Para confirmar, responda SIM". Quando a cliente responde, o horário fica confirmado na agenda e você recebe um aviso.
+                Se ela pedir para remarcar, você recebe um aviso para combinar com ela.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={config.whatsappConfirmByReply !== false}
+              onChange={() => {
+                if (isDemo) return
+                const next = config.whatsappConfirmByReply === false
+                setConfig({ ...config, whatsappConfirmByReply: next }).then((ok) => {
+                  if (ok !== false) addToast(next ? 'Confirmação por resposta ligada!' : 'Confirmação por resposta desligada.', 'success')
+                })
+              }}
+              disabled={isDemo}
+              style={{ width: 20, height: 20, accentColor: 'var(--rose-deep)', flexShrink: 0, marginTop: 2 }}
+            />
+          </label>
+          <div style={{ height: 10 }} />
+
           <Field label="Mensagem do lembrete">
             <Textarea
               id="whatsapp-auto-template"
@@ -489,6 +513,7 @@ const WhatsappAutoReminder = ({ config, setConfig, addToast, isDemo, professiona
             </p>
             <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
               {buildWhatsappReminderText(autoTemplate, PREVIEW_VARS)}
+              {config.whatsappConfirmByReply !== false ? `\n\nPara confirmar, responda *SIM*. Se precisar remarcar, é só me avisar por aqui.` : ''}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
