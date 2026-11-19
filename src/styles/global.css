@@ -68,6 +68,19 @@ textarea {
   outline: none;
 }
 
+/* iPhone: campos de data/hora têm largura mínima própria e vazavam para fora da janela */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 42px;
+}
+input::-webkit-date-and-time-value { text-align: left; }
+
 /* ─── SCROLLBAR ─────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 4px;

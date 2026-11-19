@@ -1,8 +1,11 @@
+import { createPortal } from 'react-dom'
 import Icon from './Icon'
 
 const Modal = ({ open, onClose, title, children, wide }) => {
   if (!open) return null
-  return (
+  // Renderiza direto no <body>: no iPhone a área de rolagem da página criava uma "camada"
+  // própria e a janela ficava por baixo da barra do topo e da barra inferior.
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -14,7 +17,7 @@ const Modal = ({ open, onClose, title, children, wide }) => {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'var(--surface)', borderRadius: 20, width: '100%',
-          maxWidth: wide ? 600 : 460, maxHeight: '92vh', overflow: 'auto',
+          maxWidth: wide ? 600 : 460, maxHeight: '92dvh', overflowY: 'auto', overflowX: 'hidden', minWidth: 0,
           boxShadow: '0 20px 60px rgba(139,77,85,0.2)',
         }}
       >
@@ -29,7 +32,8 @@ const Modal = ({ open, onClose, title, children, wide }) => {
         </div>
         <div style={{ padding: 24 }}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

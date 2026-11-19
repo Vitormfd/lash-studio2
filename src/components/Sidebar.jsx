@@ -27,13 +27,13 @@ const Sidebar = ({ active, setActive, open, setOpen, session, onLogout, allowedN
     {open && (
       <div
         onClick={() => setOpen(false)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 49 }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 95 }}
       />
     )}
     <aside
       style={{
         position: 'fixed', top: 0, left: open ? 0 : -280, width: 240, height: '100dvh',
-        background: 'var(--surface)', borderRight: '1px solid var(--rose-light)', zIndex: 50,
+        background: 'var(--surface)', borderRight: '1px solid var(--rose-light)', zIndex: 96, // acima da barra do topo (90)
         display: 'flex', flexDirection: 'column', transition: 'left 0.3s ease',
         boxShadow: open ? '4px 0 30px rgba(139,77,85,0.12)' : 'none',
       }}
